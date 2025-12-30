@@ -28,22 +28,35 @@
 
         /* Cartão principal */
         .card {
-            width: 420px;
-            padding: 40px 36px;
-            border: 1px solid #cfcfcf;
-            border-radius: 20px;
+            width: 520px;
+            padding: 56px 48px;
+            border: 1px solid #e0e0e0;
+            border-radius: 24px;
             background: #fff;
+
+            box-shadow:
+                0 12px 24px rgba(0, 0, 0, 0.06),
+                0 40px 80px rgba(0, 0, 0, 0.08);
+                
+            transition:transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow:
+                0 16px 32px rgba(0, 0, 0, 0.12),
+                0 48px 96px rgba(0, 0, 0, 0.16);
         }
 
         /* Logo */
         .logo {
             display: flex;
             justify-content: center;
-            margin-bottom: 32px;
+            margin-bottom: 40px;
         }
 
         .logo img {
-            height: 48px;
+            height: 72px;
         }
 
         /* Inputs */
@@ -126,12 +139,16 @@
             color: #fff;
         }
 
-        @media (max-width: 480px) {
-            .card {
-                width: 90%;
-                padding: 32px 24px;
+        @media (max-width: 600px) {
+             .card {
+                width: 92%;
+                padding: 36px 28px;
+            }
+             .logo img {
+                height: 60px;
             }
         }
+
     </style>
 </head>
 <body>
