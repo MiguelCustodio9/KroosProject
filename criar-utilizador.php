@@ -147,6 +147,16 @@ input {
     opacity: 0.85;
 }
 
+.btn-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: #fff;
+    cursor: pointer;
+}
+
+
 @keyframes pageIn {
     from {
         opacity: 0;
@@ -236,7 +246,9 @@ input {
                 </div>
 
                 <div class="btn-container">
-                    <button class="btn-submit">Continuar</button>
+                    <a href="juntar-criar-clube.php" class="btn-submit btn-link" id="goClub">
+                        Continuar
+                    </a>
                 </div>
 
             </div>
@@ -245,6 +257,16 @@ input {
     </div>
 
 </div>
+<script>
+document.getElementById('goClub').addEventListener('click', function (e) {
+    e.preventDefault();
+    document.body.style.opacity = '0';
+    document.body.style.transform = 'translateY(-12px)';
 
+    setTimeout(() => {
+        window.location.href = this.href;
+    }, 250);
+});
+</script>
 </body>
 </html>
