@@ -24,6 +24,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            animation: pageIn 0.4s ease-out;
+            transition:opacity 0.25s ease, transform 0.25s ease;
         }
 
         /* Cartão principal */
@@ -100,6 +102,18 @@
             cursor: pointer;
         }
 
+        .btn-link {
+            display: flex;
+        align-items: center;
+        justify-content: center;
+
+        text-decoration: none;
+        color: #fff;
+
+        cursor: pointer;
+    }
+
+
         .btn-primary {
             background: #000;
             color: #fff;
@@ -139,6 +153,17 @@
             color: #fff;
         }
 
+        @keyframes pageIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+    }
+    
         @media (max-width: 600px) {
              .card {
                 width: 92%;
@@ -187,12 +212,23 @@
                 Ainda não tem conta?
             </div>
 
-            <button class="btn btn-secondary" type="button">
+            <a href="criar-utilizador.php" class="btn btn-secondary btn-link" id="goRegister">
                 Criar Conta
-            </button>
+            </a>
         </form>
 
     </div>
+<script>
+document.getElementById('goRegister').addEventListener('click', function (e) {
+    e.preventDefault();
+    document.body.style.opacity = '0';
+    document.body.style.transform = 'translateY(-12px)';
+
+    setTimeout(() => {
+        window.location.href = this.href;
+    }, 250);
+});
+</script>
 
 </body>
 </html>
