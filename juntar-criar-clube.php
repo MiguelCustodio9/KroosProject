@@ -175,6 +175,16 @@ body {
     cursor: pointer;
 }
 
+.btn-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: #fff;
+    cursor: pointer;
+}
+
+
 /* MOBILE */
 @media (max-width: 900px) {
     .main {
@@ -240,7 +250,10 @@ body {
                     <img src="assets/create.png" alt="Criar">
                 </div>
 
-                <button class="btn">Criar</button>
+                <a href="criar-clube.php" class="btn btn-link" id="goCreateClub">
+                     Criar
+                </a>
+
             </div>
 
         </div>
@@ -248,6 +261,17 @@ body {
     </div>
 
 </div>
+<script>
+document.getElementById('goCreateClub').addEventListener('click', function (e) {
+    e.preventDefault();
 
+    document.body.style.opacity = '0';
+    document.body.style.transform = 'translateY(-12px)';
+
+    setTimeout(() => {
+        window.location.href = this.href;
+    }, 250);
+});
+</script>
 </body>
 </html>
