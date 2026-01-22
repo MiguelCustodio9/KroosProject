@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Tempo de geração: 22-Jan-2026 às 17:39
+-- Tempo de geração: 22-Jan-2026 às 17:58
 -- Versão do servidor: 10.4.32-MariaDB
 -- versão do PHP: 8.0.30
 
@@ -196,6 +196,13 @@ CREATE TABLE `utilizador` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Extraindo dados da tabela `utilizador`
+--
+
+INSERT INTO `utilizador` (`id_utilizador`, `nome_utilizador`, `foto_perfil`, `email_utilizador`, `telefone_utilizador`, `primeiro_nome`, `último_nome`, `data_nascimento`, `password`, `tipo_utilizador`) VALUES
+(1, 'admin', '', 'admin@gmail.com', '966666666', 'admin', 'admin', '2026-01-22', '21232f297a57a5a743894a0e4a801fc3', 'admin');
+
+--
 -- Acionadores `utilizador`
 --
 DELIMITER $$
@@ -246,6 +253,13 @@ CREATE TABLE `validação_utilizador` (
   `password` varchar(255) NOT NULL,
   `tipo_utilizador` enum('admin_clube','treinador','jogador','') NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Extraindo dados da tabela `validação_utilizador`
+--
+
+INSERT INTO `validação_utilizador` (`id_validação`, `nome_utilizador`, `foto_perfil`, `email_utilizador`, `telefone_utilizador`, `primeiro_nome`, `último_nome`, `data_nascimento`, `password`, `tipo_utilizador`) VALUES
+(1, 'miguel_custodio_', '', 'migacusta9@gmail.com', '963353681', 'miguel', 'custódio', '2005-12-13', 'Mfcusta9_', 'treinador');
 
 -- --------------------------------------------------------
 
@@ -441,7 +455,7 @@ ALTER TABLE `mensagens`
 -- AUTO_INCREMENT de tabela `utilizador`
 --
 ALTER TABLE `utilizador`
-  MODIFY `id_utilizador` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_utilizador` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT de tabela `validação_transferência`
@@ -453,7 +467,7 @@ ALTER TABLE `validação_transferência`
 -- AUTO_INCREMENT de tabela `validação_utilizador`
 --
 ALTER TABLE `validação_utilizador`
-  MODIFY `id_validação` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_validação` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT de tabela `época`
