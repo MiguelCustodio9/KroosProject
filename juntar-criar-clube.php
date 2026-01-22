@@ -1,5 +1,7 @@
 <?php
 // juntar-criar-clube.php – Step 2
+
+
 ?>
 <!DOCTYPE html>
 <html lang="pt">

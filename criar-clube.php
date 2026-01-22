@@ -1,5 +1,7 @@
 <?php
 // criar-clube.php – Step 3 (Criar Clube)
+
+include basedados.h;
 ?>
 <!DOCTYPE html>
 <html lang="pt">

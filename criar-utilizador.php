@@ -1,3 +1,122 @@
+<?php
+session_start();
+include 'basedados.h';
+
+// Verificar se está conectado à BD
+if (!$conn || $conn->connect_error) {
+    die("Erro: Base de dados não está configurada. Importe o ficheiro SQL.");
+}
+
+$erros = [];
+$primeiro_nome = '';
+$ultimo_nome = '';
+$nome_utilizador = '';
+$email = '';
+$telefone = '';
+$data_nascimento = '';
+$tipo_utilizador = '';
+
+// Processar formulário de registo
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // Obter dados do formulário
+    $nome_utilizador = isset($_POST['nome_utilizador']) ? trim($_POST['nome_utilizador']) : '';
+    $email = isset($_POST['email']) ? trim($_POST['email']) : '';
+    $telefone = isset($_POST['telefone']) ? trim($_POST['telefone']) : '';
+    $primeiro_nome = isset($_POST['primeiro_nome']) ? trim($_POST['primeiro_nome']) : '';
+    $ultimo_nome = isset($_POST['ultimo_nome']) ? trim($_POST['ultimo_nome']) : '';
+    $data_nascimento = isset($_POST['data_nascimento']) ? $_POST['data_nascimento'] : '';
+    $password = isset($_POST['password']) ? $_POST['password'] : '';
+    $password_confirm = isset($_POST['password_confirm']) ? $_POST['password_confirm'] : '';
+    $tipo_utilizador = isset($_POST['tipo_utilizador']) ? $_POST['tipo_utilizador'] : '';
+    
+    // Validação dos dados
+    if (empty($primeiro_nome)) {
+        $erros[] = 'Primeiro nome é obrigatório!';
+    }
+    
+    if (empty($ultimo_nome)) {
+        $erros[] = 'Último nome é obrigatório!';
+    }
+    
+    if (empty($nome_utilizador)) {
+        $erros[] = 'Nome de utilizador é obrigatório!';
+    }
+    
+    if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $erros[] = 'Email inválido!';
+    }
+    
+    if (empty($data_nascimento)) {
+        $erros[] = 'Data de nascimento é obrigatória!';
+    }
+    
+    if (empty($password) || strlen($password) < 6) {
+        $erros[] = 'Password deve ter pelo menos 6 caracteres!';
+    }
+    
+    if ($password !== $password_confirm) {
+        $erros[] = 'As passwords não coincidem!';
+    }
+    
+    if (empty($tipo_utilizador)) {
+        $erros[] = 'Tipo de utilizador é obrigatório!';
+    }
+    
+    if (empty($erros)) {
+        // Verificar se o email já existe
+        $sql_check = "SELECT id_validação FROM validação_utilizador WHERE email_utilizador = ? OR nome_utilizador = ?";
+        $stmt_check = $conn->prepare($sql_check);
+        $stmt_check->bind_param("ss", $email, $nome_utilizador);
+        $stmt_check->execute();
+        $result_check = $stmt_check->get_result();
+        
+        if ($result_check->num_rows > 0) {
+            $erros[] = 'Este email ou nome de utilizador já está registado!';
+        } else {
+            // Preparar inserção na tabela de validação
+            $sql = "INSERT INTO validação_utilizador 
+                    (nome_utilizador, email_utilizador, telefone_utilizador, primeiro_nome, último_nome, 
+                     data_nascimento, password, tipo_utilizador, foto_perfil) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            
+            $stmt = $conn->prepare($sql);
+            
+            if (!$stmt) {
+                $erros[] = 'Erro na base de dados: ' . $conn->error;
+            } else {
+                // Usar foto padrão
+                $foto_padrao = '';
+                
+                // Vincular parâmetros
+                $stmt->bind_param("sssssssss", 
+                    $nome_utilizador, 
+                    $email, 
+                    $telefone, 
+                    $primeiro_nome, 
+                    $ultimo_nome, 
+                    $data_nascimento, 
+                    $password, 
+                    $tipo_utilizador,
+                    $foto_padrao
+                );
+                
+                // Executar inserção
+                if ($stmt->execute()) {
+                    // Sucesso - redirecionar com mensagem
+                    $_SESSION['sucesso'] = 'Registo realizado com sucesso! Aguarde aprovação do administrador.';
+                    header('Location: login.php');
+                    exit();
+                } else {
+                    $erros[] = 'Erro ao registar utilizador: ' . $stmt->error;
+                }
+                
+                $stmt->close();
+            }
+        }
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="pt">
 <head>
@@ -113,13 +232,60 @@ label {
     font-weight: 500;
 }
 
-input {
+input,
+select {
     padding: 20px 24px;
     border-radius: 999px;
     border: 1px solid #ccc;
     background: #f2f2f2;
     font-size: 16px;
     outline: none;
+}
+
+input:focus,
+select:focus {
+    border-color: #000;
+    background: #fafafa;
+}
+
+select {
+    cursor: pointer;
+}
+
+/* Mensagens de erro */
+.alert {
+    grid-column: 1 / -1;
+    padding: 14px 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    animation: slideDown 0.3s ease-out;
+}
+
+.alert-error {
+    background: #fee;
+    color: #c33;
+    border: 1px solid #fcc;
+}
+
+.alert ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.alert li {
+    margin: 5px 0;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* BOTÃO */
@@ -217,38 +383,74 @@ input {
         </div>
 
         <!-- FORM -->
-        <form>
+        <form method="post" action="">
             <div class="form-grid">
 
+                <?php if (!empty($erros)): ?>
+                    <div class="alert alert-error">
+                        <strong>Erros encontrados:</strong>
+                        <ul>
+                            <?php foreach ($erros as $erro_msg): ?>
+                                <li><?php echo htmlspecialchars($erro_msg); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+
                 <div class="input-group">
-                    <label>Nome</label>
-                    <input type="text" placeholder="Introduzir nome">
+                    <label>Primeiro Nome</label>
+                    <input type="text" name="primeiro_nome" placeholder="Introduzir primeiro nome" value="<?php echo htmlspecialchars($primeiro_nome); ?>" required>
                 </div>
 
                 <div class="input-group">
-                    <label>Password</label>
-                    <input type="password" placeholder="Introduzir password">
+                    <label>Último Nome</label>
+                    <input type="text" name="ultimo_nome" placeholder="Introduzir último nome" value="<?php echo htmlspecialchars($ultimo_nome); ?>" required>
                 </div>
 
                 <div class="input-group">
-                    <label>Sobrenome</label>
-                    <input type="text" placeholder="Introduzir sobrenome">
+                    <label>Nome de Utilizador</label>
+                    <input type="text" name="nome_utilizador" placeholder="Introduzir nome de utilizador" value="<?php echo htmlspecialchars($nome_utilizador); ?>" required>
                 </div>
 
                 <div class="input-group">
-                    <label>Confirmar password</label>
-                    <input type="password" placeholder="Confirmar password">
+                    <label>Telefone</label>
+                    <input type="tel" name="telefone" placeholder="Introduzir telefone" value="<?php echo htmlspecialchars($telefone); ?>">
                 </div>
 
                 <div class="input-group">
                     <label>Email</label>
-                    <input type="email" placeholder="Introduzir email">
+                    <input type="email" name="email" placeholder="Introduzir email" value="<?php echo htmlspecialchars($email); ?>" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Data de Nascimento</label>
+                    <input type="date" name="data_nascimento" value="<?php echo htmlspecialchars($data_nascimento); ?>" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" name="password" placeholder="Introduzir password (mín. 6 caracteres)" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Confirmar Password</label>
+                    <input type="password" name="password_confirm" placeholder="Confirmar password" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Tipo de Utilizador</label>
+                    <select name="tipo_utilizador" required>
+                        <option value="">Selecione um tipo...</option>
+                        <option value="jogador" <?php echo ($tipo_utilizador === 'jogador') ? 'selected' : ''; ?>>Jogador</option>
+                        <option value="treinador" <?php echo ($tipo_utilizador === 'treinador') ? 'selected' : ''; ?>>Treinador</option>
+                        <option value="admin_clube" <?php echo ($tipo_utilizador === 'admin_clube') ? 'selected' : ''; ?>>Admin Clube</option>
+                    </select>
                 </div>
 
                 <div class="btn-container">
-                    <a href="juntar-criar-clube.php" class="btn-submit btn-link" id="goClub">
-                        Continuar
-                    </a>
+                    <button type="submit" class="btn-submit">
+                        Registar
+                    </button>
                 </div>
 
             </div>
@@ -257,16 +459,6 @@ input {
     </div>
 
 </div>
-<script>
-document.getElementById('goClub').addEventListener('click', function (e) {
-    e.preventDefault();
-    document.body.style.opacity = '0';
-    document.body.style.transform = 'translateY(-12px)';
 
-    setTimeout(() => {
-        window.location.href = this.href;
-    }, 250);
-});
-</script>
 </body>
 </html>

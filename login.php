@@ -1,10 +1,10 @@
 <?php
 session_start();
-require_once 'config.php';
+include 'basedados.h';
 
 // Verificar se já está autenticado
 if (isset($_SESSION['id_utilizador'])) {
-    header('Location: dashboard.php');
+    header('Location: index.php');
     exit();
 }
 
