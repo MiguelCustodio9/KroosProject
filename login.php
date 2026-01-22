@@ -1,5 +1,76 @@
 <?php
-// login.php – apenas UI (sem lógica de autenticação)
+session_start();
+require_once 'config.php';
+
+// Verificar se já está autenticado
+if (isset($_SESSION['id_utilizador'])) {
+    header('Location: dashboard.php');
+    exit();
+}
+
+$erro = '';
+$sucesso = '';
+
+// Processar formulário de login
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // Obter dados do formulário
+    $email = isset($_POST['email']) ? trim($_POST['email']) : '';
+    $password = isset($_POST['password']) ? $_POST['password'] : '';
+    
+    // Validação básica
+    if (empty($email) || empty($password)) {
+        $erro = 'Por favor, preencha todos os campos!';
+    } else {
+        // Preparar query (usar prepared statements para segurança)
+        $sql = "SELECT id_utilizador, nome_utilizador, email_utilizador, tipo_utilizador, password 
+                FROM utilizador 
+                WHERE email_utilizador = ?";
+        
+        $stmt = $conn->prepare($sql);
+        
+        if (!$stmt) {
+            $erro = 'Erro na base de dados: ' . $conn->error;
+        } else {
+            // Vincular parâmetros
+            $stmt->bind_param("s", $email);
+            
+            // Executar query
+            $stmt->execute();
+            
+            // Obter resultado
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows === 1) {
+                $usuario = $result->fetch_assoc();
+                
+                // A password vem já encriptada (MD5) da base de dados via trigger
+                // Comparar a password encriptada com MD5 da password introduzida
+                $password_md5 = md5($password);
+                
+                if ($password_md5 === $usuario['password']) {
+                    // Login bem-sucedido
+                    $_SESSION['id_utilizador'] = $usuario['id_utilizador'];
+                    $_SESSION['nome_utilizador'] = $usuario['nome_utilizador'];
+                    $_SESSION['email_utilizador'] = $usuario['email_utilizador'];
+                    $_SESSION['tipo_utilizador'] = $usuario['tipo_utilizador'];
+                    
+                    // Redirecionar para página inicial ou dashboard
+                    header('Location: dashboard.php');
+                    exit();
+                } else {
+                    // Password incorreta
+                    $erro = 'Email ou password incorretos!';
+                }
+            } else {
+                // Utilizador não encontrado
+                $erro = 'Email ou password incorretos!';
+            }
+            
+            $stmt->close();
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -153,6 +224,38 @@
             color: #fff;
         }
 
+        /* Mensagens de erro/sucesso */
+        .alert {
+            padding: 14px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .alert-error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+
+        .alert-success {
+            background: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         @keyframes pageIn {
             from {
                 opacity: 0;
@@ -184,7 +287,19 @@
             <img src="assets/kroos-logo.png" alt="Kroos">
         </div>
 
-        <form method="post" action="#">
+        <?php if (!empty($erro)): ?>
+            <div class="alert alert-error">
+                <?php echo htmlspecialchars($erro); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($sucesso)): ?>
+            <div class="alert alert-success">
+                <?php echo htmlspecialchars($sucesso); ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" action="">
             <div class="field">
                 <input type="email" name="email" placeholder="Email" required>
             </div>

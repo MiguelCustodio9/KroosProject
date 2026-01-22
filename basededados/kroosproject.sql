@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Tempo de geração: 21-Jan-2026 às 17:29
+-- Tempo de geração: 22-Jan-2026 às 17:39
 -- Versão do servidor: 10.4.32-MariaDB
 -- versão do PHP: 8.0.30
 
@@ -195,6 +195,39 @@ CREATE TABLE `utilizador` (
   `tipo_utilizador` enum('admin','treinador','jogador','admin_clube') NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Acionadores `utilizador`
+--
+DELIMITER $$
+CREATE TRIGGER `tg_encrypt_password_insert` BEFORE INSERT ON `utilizador` FOR EACH ROW BEGIN
+    SET NEW.password = MD5(NEW.password);
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `tg_encrypt_password_update` BEFORE UPDATE ON `utilizador` FOR EACH ROW BEGIN
+    -- Só encripta se a senha enviada for diferente da senha atual
+    IF NEW.password <> OLD.password THEN
+        SET NEW.password = MD5(NEW.password);
+    END IF;
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `validação_transferência`
+--
+
+CREATE TABLE `validação_transferência` (
+  `id_validação_transferência` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `id_clube_origem` int(11) NOT NULL,
+  `id_clube_destino` int(11) NOT NULL,
+  `valor` float DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- --------------------------------------------------------
 
 --
@@ -321,6 +354,15 @@ ALTER TABLE `utilizador`
   ADD UNIQUE KEY `foto_perfil` (`foto_perfil`) USING HASH;
 
 --
+-- Índices para tabela `validação_transferência`
+--
+ALTER TABLE `validação_transferência`
+  ADD PRIMARY KEY (`id_validação_transferência`),
+  ADD KEY `fk_id_origem_vd` (`id_clube_origem`),
+  ADD KEY `fk_id_destino_vd` (`id_clube_destino`),
+  ADD KEY `fk_id_jogador_vd` (`id_jogador`);
+
+--
 -- Índices para tabela `validação_utilizador`
 --
 ALTER TABLE `validação_utilizador`
@@ -402,6 +444,12 @@ ALTER TABLE `utilizador`
   MODIFY `id_utilizador` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT de tabela `validação_transferência`
+--
+ALTER TABLE `validação_transferência`
+  MODIFY `id_validação_transferência` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT de tabela `validação_utilizador`
 --
 ALTER TABLE `validação_utilizador`
@@ -471,6 +519,14 @@ ALTER TABLE `lesões`
 ALTER TABLE `mensagens`
   ADD CONSTRAINT `fk_destino` FOREIGN KEY (`destino`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_origem` FOREIGN KEY (`origem`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE;
+
+--
+-- Limitadores para a tabela `validação_transferência`
+--
+ALTER TABLE `validação_transferência`
+  ADD CONSTRAINT `fk_id_destino_vd` FOREIGN KEY (`id_clube_destino`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogador_vd` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_origem_vd` FOREIGN KEY (`id_clube_origem`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
