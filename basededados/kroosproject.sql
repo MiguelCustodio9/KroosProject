@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Tempo de geração: 22-Jan-2026 às 17:58
+-- Tempo de geração: 26-Jan-2026 às 18:50
 -- Versão do servidor: 10.4.32-MariaDB
 -- versão do PHP: 8.0.30
 
@@ -31,6 +31,20 @@ CREATE TABLE `acesso_equipa` (
   `id_acesso` int(11) NOT NULL,
   `id_equipa` int(11) NOT NULL,
   `id_utilizador` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `assiduidade`
+--
+
+CREATE TABLE `assiduidade` (
+  `id_assiduidade` int(11) NOT NULL,
+  `id_treino` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `estado` enum('Presente','Não Presente Justificado','Não Presente Injustificado','Lesionado Presente','Lesionado Não Presente') NOT NULL,
+  `justificação_ausência` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -64,6 +78,59 @@ CREATE TABLE `clube` (
 -- --------------------------------------------------------
 
 --
+-- Estrutura da tabela `competição`
+--
+
+CREATE TABLE `competição` (
+  `id_competição` int(11) NOT NULL,
+  `id_nome_competição` int(11) NOT NULL,
+  `época` int(11) NOT NULL,
+  `número_fases` int(11) NOT NULL,
+  `id_vencedor` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `competição_default`
+--
+
+CREATE TABLE `competição_default` (
+  `id_competição_default` int(11) NOT NULL,
+  `nome_competição` varchar(100) NOT NULL,
+  `tipo_competição` enum('Prova a eliminar','Prova por jornadas') NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `convocatória`
+--
+
+CREATE TABLE `convocatória` (
+  `id_convocatória` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `id_jogo` int(11) NOT NULL,
+  `estado` enum('Convocado','Não Convocado','Lesionado') NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `detalhes_jogo`
+--
+
+CREATE TABLE `detalhes_jogo` (
+  `id_detalhes_jogo` int(11) NOT NULL,
+  `id_jogo` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `tipo_detalhes` enum('11 Inicial','Suplente Não Utilizado','Suplente Utilizado') NOT NULL,
+  `minuto_detalhe` enum('1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46','47','48','49','50','51','52','53','54','55','56','57','58','59','60','61','62','63','64','65','66','67','68','69','70','71','72','73','74','75','76','77','78','79','80','81','82','83','84','85','86','87','88','89','90') NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura da tabela `equipa`
 --
 
@@ -87,6 +154,120 @@ CREATE TABLE `estádio` (
   `nome_estádio` varchar(100) NOT NULL,
   `capacidade` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `eventos_jogo`
+--
+
+CREATE TABLE `eventos_jogo` (
+  `id_evento` int(11) NOT NULL,
+  `id_jogo` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `tipo_evento` enum('Golos','Amarelos','Vermelhos','Substituição') NOT NULL,
+  `jogador_entrada` int(11) DEFAULT NULL,
+  `jogador_saída` int(11) DEFAULT NULL,
+  `jogador_assistência` int(11) DEFAULT NULL,
+  `tipo_golo` enum('Construção Organizada','Transição','Canto Indireto','Canto Direto','Lançamento Lateral','Livre Indireto','Livre Direto','Grande Penalidade') DEFAULT NULL,
+  `zona_golo` enum('Dentro da Área','Fora da Área') DEFAULT NULL,
+  `zona_corpo_utilizado_golo` enum('Pé Esquerdo','Pé Direito','Cabeça','Outro') DEFAULT NULL,
+  `minuto_evento` enum('1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46','47','48','49','50','51','52','53','54','55','56','57','58','59','60','61','62','63','64','65','66','67','68','69','70','71','72','73','74','75','76','77','78','79','80','81','82','83','84','85','86','87','88','89','90') NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `exercícios`
+--
+
+CREATE TABLE `exercícios` (
+  `id_exercício` int(11) NOT NULL,
+  `esquema` mediumblob NOT NULL,
+  `estrutura` varchar(50) DEFAULT NULL,
+  `descrição_exercício` text NOT NULL,
+  `variantes` text DEFAULT NULL,
+  `fundamentos_ofensivos` text DEFAULT NULL,
+  `fundamentos_defensivos` text DEFAULT NULL,
+  `ações_ofensivas` text DEFAULT NULL,
+  `ações_defensivas` text DEFAULT NULL,
+  `duração` time NOT NULL,
+  `repetições` int(11) DEFAULT NULL,
+  `séries` int(11) DEFAULT NULL,
+  `pausa_entre_repetições` int(11) DEFAULT NULL,
+  `pausa_entre_séries` int(11) DEFAULT NULL,
+  `volume_exercício` time NOT NULL,
+  `recuperação_para_próximo` time NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `fase`
+--
+
+CREATE TABLE `fase` (
+  `id_fase` int(11) NOT NULL,
+  `fase` varchar(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Extraindo dados da tabela `fase`
+--
+
+INSERT INTO `fase` (`id_fase`, `fase`) VALUES
+(1, '1ª Jornada'),
+(2, '2ª Jornada'),
+(3, '3ª Jornada'),
+(4, '4ª Jornada'),
+(5, '5ª Jornada'),
+(6, '6ª Jornada'),
+(7, '7ª Jornada'),
+(8, '8ª Jornada'),
+(9, '9ª Jornada'),
+(10, '10ª Jornada'),
+(11, '11ª Jornada'),
+(12, '12ª Jornada'),
+(13, '13ª Jornada'),
+(14, '14ª Jornada'),
+(15, '15ª Jornada'),
+(16, '16ª Jornada'),
+(17, '17ª Jornada'),
+(18, '18ª Jornada'),
+(19, '19ª Jornada'),
+(20, '20ª Jornada'),
+(21, '21ª Jornada'),
+(22, '22ª Jornada'),
+(23, '23ª Jornada'),
+(24, '24ª Jornada'),
+(25, '25ª Jornada'),
+(26, '26ª Jornada'),
+(27, '27ª Jornada'),
+(28, '28ª Jornada'),
+(29, '29ª Jornada'),
+(30, '30ª Jornada'),
+(31, '31ª Jornada'),
+(32, '32ª Jornada'),
+(33, '33ª Jornada'),
+(34, '34ª Jornada'),
+(35, '35ª Jornada'),
+(36, '36ª Jornada'),
+(37, '37ª Jornada'),
+(38, '38ª Jornada'),
+(39, '39ª Jornada'),
+(40, '40ª Jornada'),
+(41, '1ª Eliminatória'),
+(42, '2ª Eliminatória'),
+(43, '3ª Eliminatória'),
+(44, '4ª Eliminatória'),
+(45, '5ª Eliminatória'),
+(46, '32 Avos de Final'),
+(47, '16 Avos de Final'),
+(48, 'Oitavos de Final'),
+(49, 'Quartos de Final'),
+(50, 'Meias Finais'),
+(51, 'Final'),
+(52, '3º e 4º Lugar');
 
 -- --------------------------------------------------------
 
@@ -149,6 +330,25 @@ CREATE TABLE `jogadores` (
 -- --------------------------------------------------------
 
 --
+-- Estrutura da tabela `jogos`
+--
+
+CREATE TABLE `jogos` (
+  `id_jogo` int(11) NOT NULL,
+  `id_competição` int(11) NOT NULL,
+  `id_fase` int(11) NOT NULL,
+  `clube_casa` int(11) NOT NULL,
+  `clube_visitante` int(11) NOT NULL,
+  `data_jogo` date NOT NULL,
+  `hora_jogo` time NOT NULL,
+  `local_jogo` int(11) NOT NULL,
+  `resultado_casa` int(11) DEFAULT NULL,
+  `resultado_fora` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura da tabela `lesões`
 --
 
@@ -174,6 +374,43 @@ CREATE TABLE `mensagens` (
   `destino` int(11) NOT NULL,
   `conteúdo` text NOT NULL,
   `estado` enum('Lida','Não Lida') NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `plano_treino`
+--
+
+CREATE TABLE `plano_treino` (
+  `id_plano_treino` int(11) NOT NULL,
+  `exercício_1` int(11) NOT NULL,
+  `exercício_2` int(11) NOT NULL,
+  `exercício_3` int(11) NOT NULL,
+  `exercício_4` int(11) NOT NULL,
+  `exercício_5` int(11) NOT NULL,
+  `exercício_6` int(11) NOT NULL,
+  `exercício_7` int(11) NOT NULL,
+  `exercício_8` int(11) NOT NULL,
+  `exercício_9` int(11) NOT NULL,
+  `exercício_10` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `treino`
+--
+
+CREATE TABLE `treino` (
+  `id_treino` int(11) NOT NULL,
+  `número_treino` int(11) NOT NULL,
+  `data` date NOT NULL,
+  `hora` time NOT NULL,
+  `conteúdo` text NOT NULL,
+  `id_plano` int(11) DEFAULT NULL,
+  `observações` text DEFAULT NULL,
+  `dia_da_semana` enum('Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo') NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -293,12 +530,50 @@ ALTER TABLE `acesso_equipa`
   ADD KEY `fk_id_utilizador` (`id_utilizador`);
 
 --
+-- Índices para tabela `assiduidade`
+--
+ALTER TABLE `assiduidade`
+  ADD PRIMARY KEY (`id_assiduidade`),
+  ADD KEY `fk_id_treino` (`id_treino`),
+  ADD KEY `fk_id_jogador` (`id_jogador`);
+
+--
 -- Índices para tabela `clube`
 --
 ALTER TABLE `clube`
   ADD PRIMARY KEY (`id_clube`),
   ADD UNIQUE KEY `nome_clube` (`nome_clube`,`telefone_clube`,`email_clube`,`website_clube`,`presidente_clube`,`código_clube`),
   ADD UNIQUE KEY `instagram_clube` (`instagram_clube`,`facebook_clube`,`youtube_clube`,`twitter_clube`,`tiktok_clube`);
+
+--
+-- Índices para tabela `competição`
+--
+ALTER TABLE `competição`
+  ADD PRIMARY KEY (`id_competição`),
+  ADD KEY `fk_id_nome_competição` (`id_nome_competição`),
+  ADD KEY `fk_id_vencedor` (`id_vencedor`);
+
+--
+-- Índices para tabela `competição_default`
+--
+ALTER TABLE `competição_default`
+  ADD PRIMARY KEY (`id_competição_default`);
+
+--
+-- Índices para tabela `convocatória`
+--
+ALTER TABLE `convocatória`
+  ADD PRIMARY KEY (`id_convocatória`),
+  ADD KEY `fk_id_jogador_conv` (`id_jogador`),
+  ADD KEY `fk_id_jogo_conv` (`id_jogo`);
+
+--
+-- Índices para tabela `detalhes_jogo`
+--
+ALTER TABLE `detalhes_jogo`
+  ADD PRIMARY KEY (`id_detalhes_jogo`),
+  ADD KEY `fk_id_jogador1` (`id_jogador`),
+  ADD KEY `fk_id_jogo` (`id_jogo`);
 
 --
 -- Índices para tabela `equipa`
@@ -315,6 +590,29 @@ ALTER TABLE `estádio`
   ADD PRIMARY KEY (`id_estádio`),
   ADD UNIQUE KEY `nome_estádio` (`nome_estádio`),
   ADD KEY `fk_id_clube` (`id_clube`);
+
+--
+-- Índices para tabela `eventos_jogo`
+--
+ALTER TABLE `eventos_jogo`
+  ADD PRIMARY KEY (`id_evento`),
+  ADD KEY `fk_id_jogos` (`id_jogo`),
+  ADD KEY `fk_id_jogador3` (`id_jogador`),
+  ADD KEY `fk_id_jogador4` (`jogador_entrada`),
+  ADD KEY `fk_id_jogador5` (`jogador_saída`),
+  ADD KEY `fk_id_jogador6` (`jogador_assistência`);
+
+--
+-- Índices para tabela `exercícios`
+--
+ALTER TABLE `exercícios`
+  ADD PRIMARY KEY (`id_exercício`);
+
+--
+-- Índices para tabela `fase`
+--
+ALTER TABLE `fase`
+  ADD PRIMARY KEY (`id_fase`);
 
 --
 -- Índices para tabela `histórico_carreira`
@@ -342,6 +640,17 @@ ALTER TABLE `jogadores`
   ADD KEY `fk_id_equipa_jogadores` (`id_equipa`);
 
 --
+-- Índices para tabela `jogos`
+--
+ALTER TABLE `jogos`
+  ADD PRIMARY KEY (`id_jogo`),
+  ADD KEY `fk_id_competição1` (`id_competição`),
+  ADD KEY `fk_id_fase` (`id_fase`),
+  ADD KEY `fk_clube_casa` (`clube_casa`),
+  ADD KEY `fk_clube_visitante` (`clube_visitante`),
+  ADD KEY `fk_local_jogo` (`local_jogo`);
+
+--
 -- Índices para tabela `lesões`
 --
 ALTER TABLE `lesões`
@@ -355,6 +664,29 @@ ALTER TABLE `mensagens`
   ADD PRIMARY KEY (`id_mensagem`),
   ADD KEY `fk_origem` (`origem`),
   ADD KEY `fk_destino` (`destino`);
+
+--
+-- Índices para tabela `plano_treino`
+--
+ALTER TABLE `plano_treino`
+  ADD PRIMARY KEY (`id_plano_treino`),
+  ADD KEY `fk_exercício_1` (`exercício_1`),
+  ADD KEY `fk_exercício_2` (`exercício_2`),
+  ADD KEY `fk_exercício_3` (`exercício_3`),
+  ADD KEY `fk_exercício_4` (`exercício_4`),
+  ADD KEY `fk_exercício_5` (`exercício_5`),
+  ADD KEY `fk_exercício_6` (`exercício_6`),
+  ADD KEY `fk_exercício_7` (`exercício_7`),
+  ADD KEY `fk_exercício_8` (`exercício_8`),
+  ADD KEY `fk_exercício_9` (`exercício_9`),
+  ADD KEY `fk_exercício_10` (`exercício_10`);
+
+--
+-- Índices para tabela `treino`
+--
+ALTER TABLE `treino`
+  ADD PRIMARY KEY (`id_treino`),
+  ADD KEY `fk_id_plano` (`id_plano`);
 
 --
 -- Índices para tabela `utilizador`
@@ -404,10 +736,40 @@ ALTER TABLE `acesso_equipa`
   MODIFY `id_acesso` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT de tabela `assiduidade`
+--
+ALTER TABLE `assiduidade`
+  MODIFY `id_assiduidade` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT de tabela `clube`
 --
 ALTER TABLE `clube`
   MODIFY `id_clube` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `competição`
+--
+ALTER TABLE `competição`
+  MODIFY `id_competição` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `competição_default`
+--
+ALTER TABLE `competição_default`
+  MODIFY `id_competição_default` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `convocatória`
+--
+ALTER TABLE `convocatória`
+  MODIFY `id_convocatória` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `detalhes_jogo`
+--
+ALTER TABLE `detalhes_jogo`
+  MODIFY `id_detalhes_jogo` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de tabela `equipa`
@@ -420,6 +782,24 @@ ALTER TABLE `equipa`
 --
 ALTER TABLE `estádio`
   MODIFY `id_estádio` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `eventos_jogo`
+--
+ALTER TABLE `eventos_jogo`
+  MODIFY `id_evento` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `exercícios`
+--
+ALTER TABLE `exercícios`
+  MODIFY `id_exercício` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `fase`
+--
+ALTER TABLE `fase`
+  MODIFY `id_fase` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=53;
 
 --
 -- AUTO_INCREMENT de tabela `histórico_carreira`
@@ -440,6 +820,12 @@ ALTER TABLE `jogadores`
   MODIFY `id_jogador` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT de tabela `jogos`
+--
+ALTER TABLE `jogos`
+  MODIFY `id_jogo` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT de tabela `lesões`
 --
 ALTER TABLE `lesões`
@@ -450,6 +836,18 @@ ALTER TABLE `lesões`
 --
 ALTER TABLE `mensagens`
   MODIFY `id_mensagem` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `plano_treino`
+--
+ALTER TABLE `plano_treino`
+  MODIFY `id_plano_treino` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `treino`
+--
+ALTER TABLE `treino`
+  MODIFY `id_treino` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de tabela `utilizador`
@@ -487,6 +885,35 @@ ALTER TABLE `acesso_equipa`
   ADD CONSTRAINT `fk_id_utilizador` FOREIGN KEY (`id_utilizador`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE;
 
 --
+-- Limitadores para a tabela `assiduidade`
+--
+ALTER TABLE `assiduidade`
+  ADD CONSTRAINT `fk_id_jogador` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_treino` FOREIGN KEY (`id_treino`) REFERENCES `treino` (`id_treino`) ON UPDATE CASCADE;
+
+--
+-- Limitadores para a tabela `competição`
+--
+ALTER TABLE `competição`
+  ADD CONSTRAINT `fk_id_competição` FOREIGN KEY (`id_competição`) REFERENCES `competição_default` (`id_competição_default`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_nome_competição` FOREIGN KEY (`id_nome_competição`) REFERENCES `competição_default` (`id_competição_default`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_vencedor` FOREIGN KEY (`id_vencedor`) REFERENCES `equipa` (`id_equipa`) ON UPDATE CASCADE;
+
+--
+-- Limitadores para a tabela `convocatória`
+--
+ALTER TABLE `convocatória`
+  ADD CONSTRAINT `fk_id_jogador_conv` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogo_conv` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
+
+--
+-- Limitadores para a tabela `detalhes_jogo`
+--
+ALTER TABLE `detalhes_jogo`
+  ADD CONSTRAINT `fk_id_jogador1` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogo` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
+
+--
 -- Limitadores para a tabela `equipa`
 --
 ALTER TABLE `equipa`
@@ -498,6 +925,16 @@ ALTER TABLE `equipa`
 --
 ALTER TABLE `estádio`
   ADD CONSTRAINT `fk_id_clube` FOREIGN KEY (`id_clube`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE;
+
+--
+-- Limitadores para a tabela `eventos_jogo`
+--
+ALTER TABLE `eventos_jogo`
+  ADD CONSTRAINT `fk_id_jogador3` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogador4` FOREIGN KEY (`jogador_entrada`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogador5` FOREIGN KEY (`jogador_saída`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogador6` FOREIGN KEY (`jogador_assistência`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogos` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
 
 --
 -- Limitadores para a tabela `histórico_carreira`
@@ -522,6 +959,16 @@ ALTER TABLE `jogadores`
   ADD CONSTRAINT `fk_id_equipa_jogadores` FOREIGN KEY (`id_equipa`) REFERENCES `equipa` (`id_equipa`) ON UPDATE CASCADE;
 
 --
+-- Limitadores para a tabela `jogos`
+--
+ALTER TABLE `jogos`
+  ADD CONSTRAINT `fk_clube_casa` FOREIGN KEY (`clube_casa`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_clube_visitante` FOREIGN KEY (`clube_visitante`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_competição1` FOREIGN KEY (`id_competição`) REFERENCES `competição` (`id_competição`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_fase` FOREIGN KEY (`id_fase`) REFERENCES `fase` (`id_fase`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_local_jogo` FOREIGN KEY (`local_jogo`) REFERENCES `estádio` (`id_estádio`) ON UPDATE CASCADE;
+
+--
 -- Limitadores para a tabela `lesões`
 --
 ALTER TABLE `lesões`
@@ -533,6 +980,27 @@ ALTER TABLE `lesões`
 ALTER TABLE `mensagens`
   ADD CONSTRAINT `fk_destino` FOREIGN KEY (`destino`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_origem` FOREIGN KEY (`origem`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE;
+
+--
+-- Limitadores para a tabela `plano_treino`
+--
+ALTER TABLE `plano_treino`
+  ADD CONSTRAINT `fk_exercício_1` FOREIGN KEY (`exercício_1`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_10` FOREIGN KEY (`exercício_10`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_2` FOREIGN KEY (`exercício_2`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_3` FOREIGN KEY (`exercício_3`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_4` FOREIGN KEY (`exercício_4`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_5` FOREIGN KEY (`exercício_5`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_6` FOREIGN KEY (`exercício_6`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_7` FOREIGN KEY (`exercício_7`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_8` FOREIGN KEY (`exercício_8`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_exercício_9` FOREIGN KEY (`exercício_9`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE;
+
+--
+-- Limitadores para a tabela `treino`
+--
+ALTER TABLE `treino`
+  ADD CONSTRAINT `fk_id_plano` FOREIGN KEY (`id_plano`) REFERENCES `plano_treino` (`id_plano_treino`) ON UPDATE CASCADE;
 
 --
 -- Limitadores para a tabela `validação_transferência`
