@@ -2,9 +2,12 @@
 session_start();
 require_once __DIR__ . '/basedados.h';
 
+/* 🔐 Proteção da página */
 if (
     !isset($_SESSION['id_utilizador']) ||
-    $_SESSION['tipo_utilizador'] !== 'admin_clube'
+    !isset($_SESSION['tipo_utilizador']) ||
+    $_SESSION['tipo_utilizador'] !== 'admin_clube' ||
+    !isset($_SESSION['id_clube'])
 ) {
     header('Location: login.php');
     exit;
@@ -13,25 +16,34 @@ if (
 $id_utilizador = $_SESSION['id_utilizador'];
 $id_clube = $_SESSION['id_clube'];
 
-
-/*
- * Buscar o clube criado (assumindo 1 clube por admin)
- */
+/* 🏟️ Buscar APENAS o clube deste admin */
 $stmt = $conn->prepare("
-    SELECT *
+    SELECT nome_clube, sigla, cor, logotipo
     FROM clube
-    ORDER BY id_clube DESC
+    WHERE id_clube = ?
     LIMIT 1
 ");
+$stmt->bind_param("i", $id_clube);
 $stmt->execute();
 $clube = $stmt->get_result()->fetch_assoc();
 
-$nomeClube = $clube['nome_clube'] ?? 'Sem clube';
-$corClube  = $clube['cor'] ?? '#32329E';
-$logoClube = isset($clube['logotipo'])
+/* Segurança extra */
+if (!$clube) {
+    // sessão inválida ou clube apagado
+    session_destroy();
+    header('Location: login.php');
+    exit;
+}
+
+/* 🎨 Dados reais do clube */
+$nomeClube = $clube['nome_clube'];
+$siglaClube = $clube['sigla'];
+$corClube = $clube['cor']; // 🔥 NADA HARDCODED
+$logoClube = $clube['logotipo']
     ? 'data:image/png;base64,' . base64_encode($clube['logotipo'])
     : null;
 ?>
+
 
 <!DOCTYPE html>
 <html lang="pt">

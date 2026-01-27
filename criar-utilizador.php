@@ -3,7 +3,7 @@ session_start();
 require_once __DIR__ . '/basedados.h';
 
 $erro = '';
-$redirectTo = ''; // quando estiver preenchido, faz transição e redireciona
+$redirectTo = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -20,8 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
 
         $nome_utilizador = strtolower($nome . '_' . $sobrenome);
-        $password_md5 = md5($password);
 
+        // ⚠️ PASSWORD EM TEXTO LIMPO (SEM MD5 AQUI)
         $stmt = $conn->prepare("
             INSERT INTO validação_utilizador
             (nome_utilizador, email_utilizador, primeiro_nome, último_nome, password)
@@ -37,12 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $email,
                 $nome,
                 $sobrenome,
-                $password_md5
+                $password // 🔥 TEXTO LIMPO
             );
 
             if ($stmt->execute()) {
                 $_SESSION['id_validacao'] = $stmt->insert_id;
-                $redirectTo = 'juntar-criar-clube.php'; // ✅ passo 2
+                $redirectTo = 'juntar-criar-clube.php';
             } else {
                 $erro = 'Erro ao guardar utilizador.';
             }
@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="pt">
 <head>

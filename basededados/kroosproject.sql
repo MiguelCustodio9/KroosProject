@@ -729,7 +729,17 @@ ALTER TABLE `época`
   ADD UNIQUE KEY `época` (`época`);
 
 --
--- AUTO_INCREMENT de tabelas despejadas
+-- -- 🔗 Ligar utilizador a clube
+ALTER TABLE utilizador
+ADD COLUMN id_clube INT NULL AFTER tipo_utilizador;
+
+ALTER TABLE utilizador
+ADD CONSTRAINT fk_utilizador_clube
+FOREIGN KEY (id_clube)
+REFERENCES clube(id_clube)
+ON UPDATE CASCADE
+ON DELETE SET NULL;
+
 --
 
 --

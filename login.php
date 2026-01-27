@@ -1,5 +1,48 @@
 <?php
-// login.php – apenas UI (sem lógica de autenticação)
+session_start();
+require_once __DIR__ . '/basedados.h';
+
+$erro = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $email = trim($_POST['email'] ?? '');
+    $password = trim($_POST['password'] ?? '');
+
+    if (!$email || !$password) {
+        $erro = 'Preenche todos os campos.';
+    } else {
+
+        $password_md5 = $password;
+
+        $stmt = $conn->prepare("
+            SELECT id_utilizador, tipo_utilizador, id_clube
+            FROM utilizador
+            WHERE email_utilizador = ?
+            AND password = MD5(?)
+            AND tipo_utilizador = 'admin_clube'
+            LIMIT 1
+    ");
+
+
+        $stmt->bind_param("ss", $email, $password);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        if ($res->num_rows === 1) {
+            $user = $res->fetch_assoc();
+
+            $_SESSION['id_utilizador'] = $user['id_utilizador'];
+            $_SESSION['tipo_utilizador'] = $user['tipo_utilizador'];
+            $_SESSION['id_clube'] = $user['id_clube'];
+
+            header('Location: index-admin.php');
+            exit;
+        } else {
+            $erro = 'Email ou password inválidos.';
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -8,10 +51,11 @@
     <title>Kroos | Login</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- Fonte semelhante à do mockup -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-    <style>
+
+
+<style>
         * {
             box-sizing: border-box;
             font-family: 'Inter', sans-serif;
@@ -176,46 +220,52 @@
 </head>
 <body>
 
-    <div class="card">
+<div class="card">
 
-        <div class="logo">
-            <img src="assets/kroos-logo.png" alt="Kroos">
+    <div class="logo">
+        <img src="assets/kroos-logo.png" alt="Kroos">
+    </div>
+
+    <?php if ($erro): ?>
+        <div class="error"><?= htmlspecialchars($erro) ?></div>
+    <?php endif; ?>
+
+    <!-- 🔑 FORM ORIGINAL (apenas action real) -->
+    <form method="post">
+
+        <div class="field">
+            <input type="email" name="email" placeholder="Email" required>
         </div>
 
-        <form method="post" action="#">
-            <div class="field">
-                <input type="email" name="email" placeholder="Email" required>
-            </div>
+        <div class="field">
+            <input type="password" name="password" placeholder="Password" required>
+        </div>
 
-            <div class="field">
-                <input type="password" name="password" placeholder="Password" required>
-            </div>
+        <div class="forgot">
+            <a href="#">Esqueceu-se da password?</a>
+        </div>
 
-            <div class="forgot">
-                <a href="#">Esqueceu-se da password?</a>
-            </div>
+        <button class="btn btn-primary" type="submit">
+            Login
+        </button>
 
-            <button class="btn btn-primary" type="submit">
-                Login
-            </button>
+        <button class="btn btn-google" type="button">
+            <img src="https://www.svgrepo.com/show/475656/google-color.svg">
+            Continuar com Google
+        </button>
 
-            <button class="btn btn-google" type="button">
-                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google">
-                Continuar com Google
-            </button>
+        <div class="divider"></div>
 
-            <div class="divider"></div>
+        <div class="signup-text">
+            Ainda não tem conta?
+        </div>
 
-            <div class="signup-text">
-                Ainda não tem conta?
-            </div>
+        <a href="criar-utilizador.php" class="btn btn-secondary btn-link">
+            Criar Conta
+        </a>
+    </form>
 
-            <a href="criar-utilizador.php" class="btn btn-secondary btn-link" id="goRegister">
-                Criar Conta
-            </a>
-        </form>
-
-    </div>
+</div>
 <script>
 document.getElementById('goRegister').addEventListener('click', function (e) {
     e.preventDefault();
