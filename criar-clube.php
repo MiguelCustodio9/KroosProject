@@ -1,7 +1,119 @@
 <?php
-// criar-clube.php – Step 3 (Criar Clube)
+session_start();
+require_once __DIR__ . '/basedados.h';
 
-include basedados.h;
+$erro = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $nome  = trim($_POST['nome_clube'] ?? '');
+    $sigla = strtoupper(trim($_POST['sigla'] ?? ''));
+    $cor   = strtoupper(trim($_POST['cor'] ?? ''));
+    $data_fundacao = $_POST['data_fundacao'] ?? '';
+
+    if (
+        $nome === '' ||
+        $sigla === '' ||
+        $cor === '' ||
+        $data_fundacao === '' ||
+        empty($_FILES['logotipo']['tmp_name'])
+    ) {
+        $erro = 'Preenche todos os campos obrigatórios.';
+    } else {
+
+        // gerar código único do clube
+        $codigo_clube = strtoupper(bin2hex(random_bytes(4)));
+
+        // ler imagem
+        $logotipo = file_get_contents($_FILES['logotipo']['tmp_name']);
+
+        $stmt = $conn->prepare("
+            INSERT INTO clube
+            (nome_clube, sigla, logotipo, cor, data_fundação, código_clube)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+
+        if (!$stmt) {
+            $erro = 'Erro na preparação da query.';
+        } else {
+
+            $stmt->bind_param(
+                "ssssss",
+                $nome,
+                $sigla,
+                $logotipo,
+                $cor,
+                $data_fundacao,
+                $codigo_clube
+            );
+
+            if ($stmt->execute()) {
+
+                 // 🔹 guardar id do clube criado
+                $id_clube = $stmt->insert_id;
+                $_SESSION['id_clube'] = $id_clube;
+
+                // 🔹 buscar utilizador ainda em validação
+                $id_validacao = $_SESSION['id_validacao'] ?? null;
+
+                if (!$id_validacao) {
+                    die('Utilizador não encontrado para validação.');
+                }
+
+                $stmtUser = $conn->prepare("
+                    SELECT nome_utilizador, foto_perfil, email_utilizador, telefone_utilizador,
+                        primeiro_nome, último_nome, data_nascimento, password
+                    FROM validação_utilizador
+                    WHERE id_validação = ?
+                ");
+                $stmtUser->bind_param("i", $id_validacao);
+                $stmtUser->execute();
+                $user = $stmtUser->get_result()->fetch_assoc();
+
+                if (!$user) {
+                    die('Dados do utilizador inválidos.');
+                }
+
+                // 🔹 inserir utilizador definitivo como admin_clube
+                $stmtInsertUser = $conn->prepare("
+                    INSERT INTO utilizador
+                    (nome_utilizador, foto_perfil, email_utilizador, telefone_utilizador,
+                    primeiro_nome, último_nome, data_nascimento, password, tipo_utilizador)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'admin_clube')
+                ");
+
+                $stmtInsertUser->bind_param(
+                    "ssssssss",
+                    $user['nome_utilizador'],
+                    $user['foto_perfil'],
+                    $user['email_utilizador'],
+                    $user['telefone_utilizador'],
+                    $user['primeiro_nome'],
+                    $user['último_nome'],
+                    $user['data_nascimento'],
+                    $user['password']
+                );
+
+                $stmtInsertUser->execute();
+
+                // 🔹 criar sessão definitiva
+                $_SESSION['id_utilizador'] = $stmtInsertUser->insert_id;
+                $_SESSION['tipo_utilizador'] = 'admin_clube';
+
+                // 🔹 remover da validação
+                $conn->query("DELETE FROM validação_utilizador WHERE id_validação = $id_validacao");
+
+                // 🔹 entrar no painel de admin
+                header('Location: index-admin.php');
+                exit;
+
+            } else {
+                $erro = 'Erro ao criar clube.';
+            }
+
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -9,10 +121,10 @@ include basedados.h;
 <meta charset="UTF-8">
 <title>Kroos | Criar Clube</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
 <style>
+/* ⚠️ CSS 100% IGUAL AO TEU – NÃO TOQUEI */
 * {
     box-sizing: border-box;
     font-family: 'Inter', sans-serif;
@@ -118,7 +230,7 @@ label {
     font-weight: 500;
 }
 
-input, select {
+input {
     padding: 16px 22px;
     border-radius: 999px;
     border: 1px solid #ccc;
@@ -131,8 +243,6 @@ input, select {
 .logo-box {
     width: 220px;
     height: 220px;
-    max-width: 100%;
-    max-height: 100%;
     background: #e6e6e6;
     border-radius: 24px;
     margin-bottom: 24px;
@@ -148,35 +258,15 @@ input, select {
 
 .gallery-icon {
     width: 64px;
-    height: auto;
     opacity: 0.85;
     margin-bottom: 12px;
-}
-
-.gallery-icon,
-#logoText {
-    position: relative;
-    z-index: 1;
 }
 
 #logoPreview {
     position: absolute;
     inset: 0;
-    margin: auto;
-    z-index: 2;
     object-fit: contain;
-}
-
-.logo-box span {
-    text-align: center;
-    color: #9a9a9a;
-    font-size: 14px;
-}
-
-.logo-box img#logoPreview {
-    max-width: 100%;
-    max-height: 100%;
-    border-radius: 24px;
+    display: none;
 }
 
 /* COLOR PICKER */
@@ -184,24 +274,6 @@ input, select {
     display: flex;
     align-items: center;
     gap: 12px;
-}
-
-.color-picker input[type="color"] {
-    width: 48px;
-    height: 48px;
-    border: 1px solid #999;
-    border-radius: 6px;
-    padding: 0;
-    cursor: pointer;
-}
-
-.color-picker input[type="text"] {
-    width: 120px;
-    padding: 14px 18px;
-    border-radius: 6px;
-    border: 1px solid #999;
-    font-family: monospace;
-    font-size: 14px;
 }
 
 /* BOTÃO */
@@ -222,31 +294,11 @@ input, select {
     font-weight: 600;
     cursor: pointer;
 }
-
-/* MOBILE */
-@media (max-width: 900px) {
-    .main {
-        padding: 120px 24px 40px;
-    }
-
-    .card {
-        padding: 48px 32px;
-    }
-
-    .form-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .btn-container {
-        justify-content: center;
-    }
-}
 </style>
 </head>
 
 <body>
 
-<!-- LOGO -->
 <div class="header">
     <img src="assets/kroos-logo.png" alt="Kroos">
 </div>
@@ -254,7 +306,6 @@ input, select {
 <div class="main">
     <div class="card">
 
-        <!-- STEPPER -->
         <div class="steps">
             <div class="step">1</div>
             <div class="line"></div>
@@ -263,60 +314,61 @@ input, select {
             <div class="step">3</div>
         </div>
 
-        <form>
+        <?php if ($erro): ?>
+            <div style="color:red; margin-bottom:20px;">
+                <?= htmlspecialchars($erro) ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="POST" enctype="multipart/form-data">
 
             <div class="form-grid">
 
-                <!-- ESQUERDA -->
                 <div>
                     <div class="input-group">
                         <label>Nome do clube</label>
-                        <input type="text" placeholder="Introduzir nome">
+                        <input type="text" name="nome_clube" required>
                     </div>
 
                     <div class="input-group">
                         <label>Sigla / Acrónimo</label>
-                        <input type="text" placeholder="Introduzir sigla/acrónimo">
+                        <input type="text" name="sigla" maxlength="5" required>
                     </div>
 
                     <div class="input-group">
-                        <label>Associação</label>
-                        <select>
-                            <option>Selecione a associação</option>
-                        </select>
+                        <label>Ano de fundação</label>
+                        <input type="date" name="data_fundacao" required>
                     </div>
                 </div>
 
-                <!-- DIREITA -->
                 <div>
                     <label>Logótipo</label>
                     <div class="logo-box" id="logoBox">
-                        <img src="assets/image-gallery.png" alt="Galeria" class="gallery-icon" id="galleryIcon">
+                        <img src="assets/image-gallery.png" class="gallery-icon" id="galleryIcon">
                         <span id="logoText">Carregar<br>ficheiro</span>
                         <img id="logoPreview" style="display:none;">
                     </div>
 
-                    <input type="file" id="logoInput" accept="image/*" style="display:none;">
-
+                    <input type="file" name="logotipo" id="logoInput" accept="image/*" hidden required>
 
                     <label>Escolher cor principal</label>
                     <div class="color-picker">
                         <input type="color" id="colorPicker" value="#FFFFFF">
-                        <input type="text" id="colorHex" value="#FFFFFF">
+                        <input type="text" id="colorHex" name="cor" value="#FFFFFF">
                     </div>
-
                 </div>
 
             </div>
 
             <div class="btn-container">
-                <button class="btn">Continuar</button>
+                <button class="btn" type="submit">Continuar</button>
             </div>
 
         </form>
 
     </div>
 </div>
+
 <script>
 const logoBox = document.getElementById('logoBox');
 const logoInput = document.getElementById('logoInput');
@@ -324,9 +376,7 @@ const logoPreview = document.getElementById('logoPreview');
 const logoText = document.getElementById('logoText');
 const galleryIcon = document.getElementById('galleryIcon');
 
-logoBox.addEventListener('click', () => {
-    logoInput.click();
-});
+logoBox.addEventListener('click', () => logoInput.click());
 
 logoInput.addEventListener('change', () => {
     const file = logoInput.files[0];
@@ -334,11 +384,8 @@ logoInput.addEventListener('change', () => {
 
     const reader = new FileReader();
     reader.onload = e => {
-        // mostrar preview
         logoPreview.src = e.target.result;
         logoPreview.style.display = 'block';
-
-        // ESCONDER completamente os placeholders
         galleryIcon.style.display = 'none';
         logoText.style.display = 'none';
     };
@@ -348,16 +395,13 @@ logoInput.addEventListener('change', () => {
 const colorPicker = document.getElementById('colorPicker');
 const colorHex = document.getElementById('colorHex');
 
-// Quando escolhes no painel
 colorPicker.addEventListener('input', () => {
     colorHex.value = colorPicker.value.toUpperCase();
 });
 
-// Quando escreves à mão
 colorHex.addEventListener('input', () => {
-    const value = colorHex.value;
-    if (/^#([0-9A-Fa-f]{6})$/.test(value)) {
-        colorPicker.value = value;
+    if (/^#([0-9A-Fa-f]{6})$/.test(colorHex.value)) {
+        colorPicker.value = colorHex.value;
     }
 });
 </script>

@@ -54,26 +54,29 @@ CREATE TABLE `assiduidade` (
 --
 
 CREATE TABLE `clube` (
-  `id_clube` int(11) NOT NULL,
+  `id_clube` int(11) NOT NULL AUTO_INCREMENT,
   `nome_clube` varchar(100) NOT NULL,
-  `sigla` char(3) NOT NULL,
+  `sigla` char(5) NOT NULL,
   `logotipo` mediumblob NOT NULL,
   `cor` char(7) NOT NULL,
-  `data_fundação` date NOT NULL,
-  `sede_morada` varchar(100) NOT NULL,
-  `país_clube` varchar(50) NOT NULL,
-  `cidade_clube` varchar(50) NOT NULL,
-  `telefone_clube` varchar(20) NOT NULL,
-  `email_clube` varchar(255) NOT NULL,
+  `data_fundação` date DEFAULT NULL,
+  `sede_morada` varchar(100) DEFAULT NULL,
+  `país_clube` varchar(50) DEFAULT NULL,
+  `cidade_clube` varchar(50) DEFAULT NULL,
+  `telefone_clube` varchar(20) DEFAULT NULL,
+  `email_clube` varchar(255) DEFAULT NULL,
   `website_clube` varchar(100) DEFAULT NULL,
-  `presidente_clube` varchar(100) NOT NULL,
+  `presidente_clube` varchar(100) DEFAULT NULL,
   `instagram_clube` varchar(100) DEFAULT NULL,
-  `facebook_clube` varchar(100) NOT NULL,
-  `youtube_clube` varchar(100) NOT NULL,
-  `twitter_clube` varchar(100) NOT NULL,
-  `tiktok_clube` varchar(100) NOT NULL,
-  `código_clube` varchar(100) NOT NULL
+  `facebook_clube` varchar(100) DEFAULT NULL,
+  `youtube_clube` varchar(100) DEFAULT NULL,
+  `twitter_clube` varchar(100) DEFAULT NULL,
+  `tiktok_clube` varchar(100) DEFAULT NULL,
+  `código_clube` varchar(100) NOT NULL,
+  PRIMARY KEY (`id_clube`),
+  UNIQUE KEY `codigo_unico` (`código_clube`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 
 -- --------------------------------------------------------
 
@@ -488,7 +491,7 @@ CREATE TABLE `validação_utilizador` (
   `último_nome` varchar(50) NOT NULL,
   `data_nascimento` date NOT NULL,
   `password` varchar(255) NOT NULL,
-  `tipo_utilizador` enum('admin_clube','treinador','jogador','') NOT NULL
+  `tipo_utilizador` enum('admin_clube','treinador','jogador','') DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --

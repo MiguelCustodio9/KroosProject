@@ -1,12 +1,10 @@
 <?php
 // juntar-criar-clube.php – Step 2
-
-
 ?>
 <!DOCTYPE html>
 <html lang="pt">
 <head>
-<meta charset="UTF-8">
+    <meta charset="UTF-8">
 <title>Kroos | Clube</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -186,7 +184,6 @@ body {
     cursor: pointer;
 }
 
-
 /* MOBILE */
 @media (max-width: 900px) {
     .main {
@@ -204,7 +201,6 @@ body {
 }
 </style>
 </head>
-
 <body>
 
 <!-- LOGO -->
@@ -213,7 +209,6 @@ body {
 </div>
 
 <div class="main">
-
     <div class="card">
 
         <!-- STEPPER -->
@@ -221,11 +216,11 @@ body {
             <div class="step">1</div>
             <div class="line"></div>
             <div class="step">2</div>
-            <div class="line"></div>
+            <div class="line inactive"></div>
             <div class="step inactive">3</div>
         </div>
 
-        <!-- OPÇÕES -->
+        <!-- OPÇÕES (AGORA DENTRO DO CARD) -->
         <div class="club-options">
 
             <!-- JUNTAR -->
@@ -253,16 +248,15 @@ body {
                 </div>
 
                 <a href="criar-clube.php" class="btn btn-link" id="goCreateClub">
-                     Criar
+                    Criar
                 </a>
-
             </div>
 
         </div>
 
     </div>
-
 </div>
+
 <script>
 document.getElementById('goCreateClub').addEventListener('click', function (e) {
     e.preventDefault();
@@ -275,5 +269,7 @@ document.getElementById('goCreateClub').addEventListener('click', function (e) {
     }, 250);
 });
 </script>
+
 </body>
+
 </html>
