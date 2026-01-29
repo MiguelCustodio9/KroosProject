@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Tempo de geração: 26-Jan-2026 às 18:50
+-- Tempo de geração: 29-Jan-2026 às 16:27
 -- Versão do servidor: 10.4.32-MariaDB
 -- versão do PHP: 8.0.30
 
@@ -54,7 +54,7 @@ CREATE TABLE `assiduidade` (
 --
 
 CREATE TABLE `clube` (
-  `id_clube` int(11) NOT NULL AUTO_INCREMENT,
+  `id_clube` int(11) NOT NULL,
   `nome_clube` varchar(100) NOT NULL,
   `sigla` char(5) NOT NULL,
   `logotipo` mediumblob NOT NULL,
@@ -72,11 +72,8 @@ CREATE TABLE `clube` (
   `youtube_clube` varchar(100) DEFAULT NULL,
   `twitter_clube` varchar(100) DEFAULT NULL,
   `tiktok_clube` varchar(100) DEFAULT NULL,
-  `código_clube` varchar(100) NOT NULL,
-  PRIMARY KEY (`id_clube`),
-  UNIQUE KEY `codigo_unico` (`código_clube`)
+  `código_clube` varchar(100) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 
 -- --------------------------------------------------------
 
@@ -148,6 +145,76 @@ CREATE TABLE `equipa` (
 -- --------------------------------------------------------
 
 --
+-- Estrutura da tabela `estatísticas_jogadores`
+--
+
+CREATE TABLE `estatísticas_jogadores` (
+  `id_stats` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `id_jogo` int(11) NOT NULL,
+  `minutos_jogados` int(11) DEFAULT NULL,
+  `golos` int(11) DEFAULT NULL,
+  `remates` int(11) DEFAULT NULL,
+  `remates_baliza` int(11) DEFAULT NULL,
+  `assistências` int(11) DEFAULT NULL,
+  `passes_chave` int(11) DEFAULT NULL,
+  `passes` int(11) DEFAULT NULL,
+  `passes_certos` int(11) DEFAULT NULL,
+  `cruzamentos` int(11) DEFAULT NULL,
+  `cruzamentos_certos` int(11) DEFAULT NULL,
+  `toques_bola` int(11) DEFAULT NULL,
+  `dribles` int(11) DEFAULT NULL,
+  `dribles_certos` int(11) DEFAULT NULL,
+  `perdas` int(11) DEFAULT NULL,
+  `desarmes` int(11) DEFAULT NULL,
+  `desarmes_ganhos` int(11) DEFAULT NULL,
+  `interceções` int(11) DEFAULT NULL,
+  `alívios` int(11) DEFAULT NULL,
+  `bloqueios_remate` int(11) DEFAULT NULL,
+  `duelos` int(11) DEFAULT NULL,
+  `duelos_ganhos` int(11) DEFAULT NULL,
+  `faltas_sofridas` int(11) DEFAULT NULL,
+  `faltas_feitas` int(11) DEFAULT NULL,
+  `amarelos` int(11) DEFAULT NULL,
+  `vermelhos` int(11) DEFAULT NULL,
+  `defesas` int(11) DEFAULT NULL,
+  `remates_baliza_sofridos` int(11) DEFAULT NULL,
+  `golos_sofridos` int(11) DEFAULT NULL,
+  `clean_sheet` enum('Sim','Não') DEFAULT NULL,
+  `saídas` int(11) DEFAULT NULL,
+  `saídas_eficazes` int(11) DEFAULT NULL,
+  `oportunidades_claras_defendidas` int(11) DEFAULT NULL,
+  `class_média` decimal(10,0) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `estatísticas_jogo`
+--
+
+CREATE TABLE `estatísticas_jogo` (
+  `id_stats` int(11) NOT NULL,
+  `id_jogo` int(11) NOT NULL,
+  `posse_casa` int(11) NOT NULL,
+  `posse_fora` int(11) NOT NULL,
+  `remates_casa` int(11) NOT NULL,
+  `remates_fora` int(11) NOT NULL,
+  `remates_baliza_casa` int(11) NOT NULL,
+  `remates_baliza_fora` int(11) NOT NULL,
+  `grandes_oportunidades_casa` int(11) NOT NULL,
+  `grandes_oportunidades_fora` int(11) NOT NULL,
+  `cantos_casa` int(11) NOT NULL,
+  `cantos_fora` int(11) NOT NULL,
+  `passes_casa` int(11) NOT NULL,
+  `passes_fora` int(11) NOT NULL,
+  `passes_certos_casa` int(11) NOT NULL,
+  `passes_certos_fora` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura da tabela `estádio`
 --
 
@@ -156,6 +223,21 @@ CREATE TABLE `estádio` (
   `id_clube` int(11) NOT NULL,
   `nome_estádio` varchar(100) NOT NULL,
   `capacidade` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura da tabela `eventos_clube`
+--
+
+CREATE TABLE `eventos_clube` (
+  `id_evento` int(11) NOT NULL,
+  `id_equipa` int(11) NOT NULL,
+  `tipo_evento` enum('Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro') NOT NULL,
+  `descrição_evento` text DEFAULT NULL,
+  `estado_evento` enum('Por realizar','Realizado','Cancelado','Adiado') NOT NULL,
+  `data_evento` date NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -436,13 +518,6 @@ CREATE TABLE `utilizador` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Extraindo dados da tabela `utilizador`
---
-
-INSERT INTO `utilizador` (`id_utilizador`, `nome_utilizador`, `foto_perfil`, `email_utilizador`, `telefone_utilizador`, `primeiro_nome`, `último_nome`, `data_nascimento`, `password`, `tipo_utilizador`) VALUES
-(1, 'admin', '', 'admin@gmail.com', '966666666', 'admin', 'admin', '2026-01-22', '21232f297a57a5a743894a0e4a801fc3', 'admin');
-
---
 -- Acionadores `utilizador`
 --
 DELIMITER $$
@@ -494,13 +569,6 @@ CREATE TABLE `validação_utilizador` (
   `tipo_utilizador` enum('admin_clube','treinador','jogador','') DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Extraindo dados da tabela `validação_utilizador`
---
-
-INSERT INTO `validação_utilizador` (`id_validação`, `nome_utilizador`, `foto_perfil`, `email_utilizador`, `telefone_utilizador`, `primeiro_nome`, `último_nome`, `data_nascimento`, `password`, `tipo_utilizador`) VALUES
-(1, 'miguel_custodio_', '', 'migacusta9@gmail.com', '963353681', 'miguel', 'custódio', '2005-12-13', 'Mfcusta9_', 'treinador');
-
 -- --------------------------------------------------------
 
 --
@@ -545,8 +613,7 @@ ALTER TABLE `assiduidade`
 --
 ALTER TABLE `clube`
   ADD PRIMARY KEY (`id_clube`),
-  ADD UNIQUE KEY `nome_clube` (`nome_clube`,`telefone_clube`,`email_clube`,`website_clube`,`presidente_clube`,`código_clube`),
-  ADD UNIQUE KEY `instagram_clube` (`instagram_clube`,`facebook_clube`,`youtube_clube`,`twitter_clube`,`tiktok_clube`);
+  ADD UNIQUE KEY `codigo_unico` (`código_clube`);
 
 --
 -- Índices para tabela `competição`
@@ -587,12 +654,34 @@ ALTER TABLE `equipa`
   ADD KEY `fk_id_clube_equipa` (`id_clube`);
 
 --
+-- Índices para tabela `estatísticas_jogadores`
+--
+ALTER TABLE `estatísticas_jogadores`
+  ADD PRIMARY KEY (`id_stats`),
+  ADD KEY `fk_id_jogador2` (`id_jogador`),
+  ADD KEY `fk_id_jogador3` (`id_jogo`);
+
+--
+-- Índices para tabela `estatísticas_jogo`
+--
+ALTER TABLE `estatísticas_jogo`
+  ADD PRIMARY KEY (`id_stats`),
+  ADD KEY `fk_id_jogo_stats` (`id_jogo`);
+
+--
 -- Índices para tabela `estádio`
 --
 ALTER TABLE `estádio`
   ADD PRIMARY KEY (`id_estádio`),
   ADD UNIQUE KEY `nome_estádio` (`nome_estádio`),
   ADD KEY `fk_id_clube` (`id_clube`);
+
+--
+-- Índices para tabela `eventos_clube`
+--
+ALTER TABLE `eventos_clube`
+  ADD PRIMARY KEY (`id_evento`),
+  ADD KEY `fk_id_equipa_evento` (`id_equipa`);
 
 --
 -- Índices para tabela `eventos_jogo`
@@ -640,49 +729,34 @@ ALTER TABLE `histórico_transferência`
 --
 ALTER TABLE `jogadores`
   ADD PRIMARY KEY (`id_jogador`),
-  ADD KEY `fk_id_equipa_jogadores` (`id_equipa`);
+  ADD KEY `fk_id_equipa` (`id_equipa`);
 
 --
 -- Índices para tabela `jogos`
 --
 ALTER TABLE `jogos`
   ADD PRIMARY KEY (`id_jogo`),
-  ADD KEY `fk_id_competição1` (`id_competição`),
-  ADD KEY `fk_id_fase` (`id_fase`),
-  ADD KEY `fk_clube_casa` (`clube_casa`),
-  ADD KEY `fk_clube_visitante` (`clube_visitante`),
-  ADD KEY `fk_local_jogo` (`local_jogo`);
+  ADD KEY `fk_id_competição` (`id_competição`);
 
 --
 -- Índices para tabela `lesões`
 --
 ALTER TABLE `lesões`
   ADD PRIMARY KEY (`id_lesão`),
-  ADD KEY `fk_id_jogador_lesão` (`id_jogador`);
+  ADD KEY `fk_id_jogador` (`id_jogador`);
 
 --
 -- Índices para tabela `mensagens`
 --
 ALTER TABLE `mensagens`
   ADD PRIMARY KEY (`id_mensagem`),
-  ADD KEY `fk_origem` (`origem`),
-  ADD KEY `fk_destino` (`destino`);
+  ADD KEY `fk_origem` (`origem`);
 
 --
 -- Índices para tabela `plano_treino`
 --
 ALTER TABLE `plano_treino`
-  ADD PRIMARY KEY (`id_plano_treino`),
-  ADD KEY `fk_exercício_1` (`exercício_1`),
-  ADD KEY `fk_exercício_2` (`exercício_2`),
-  ADD KEY `fk_exercício_3` (`exercício_3`),
-  ADD KEY `fk_exercício_4` (`exercício_4`),
-  ADD KEY `fk_exercício_5` (`exercício_5`),
-  ADD KEY `fk_exercício_6` (`exercício_6`),
-  ADD KEY `fk_exercício_7` (`exercício_7`),
-  ADD KEY `fk_exercício_8` (`exercício_8`),
-  ADD KEY `fk_exercício_9` (`exercício_9`),
-  ADD KEY `fk_exercício_10` (`exercício_10`);
+  ADD PRIMARY KEY (`id_plano_treino`);
 
 --
 -- Índices para tabela `treino`
@@ -695,51 +769,31 @@ ALTER TABLE `treino`
 -- Índices para tabela `utilizador`
 --
 ALTER TABLE `utilizador`
-  ADD PRIMARY KEY (`id_utilizador`),
-  ADD UNIQUE KEY `nome_utilizador` (`nome_utilizador`),
-  ADD UNIQUE KEY `email_utilizador` (`email_utilizador`),
-  ADD UNIQUE KEY `telefone_utilizador` (`telefone_utilizador`),
-  ADD UNIQUE KEY `password` (`password`),
-  ADD UNIQUE KEY `foto_perfil` (`foto_perfil`) USING HASH;
+  ADD PRIMARY KEY (`id_utilizador`);
 
 --
 -- Índices para tabela `validação_transferência`
 --
 ALTER TABLE `validação_transferência`
   ADD PRIMARY KEY (`id_validação_transferência`),
-  ADD KEY `fk_id_origem_vd` (`id_clube_origem`),
-  ADD KEY `fk_id_destino_vd` (`id_clube_destino`),
-  ADD KEY `fk_id_jogador_vd` (`id_jogador`);
+  ADD KEY `fk_id_jogador1` (`id_jogador`),
+  ADD KEY `fk_clube_origem` (`id_clube_origem`),
+  ADD KEY `fk_clube_origem_destino` (`id_clube_destino`);
 
 --
 -- Índices para tabela `validação_utilizador`
 --
 ALTER TABLE `validação_utilizador`
-  ADD PRIMARY KEY (`id_validação`),
-  ADD UNIQUE KEY `nome_utilizador` (`nome_utilizador`),
-  ADD UNIQUE KEY `email_utilizador` (`email_utilizador`),
-  ADD UNIQUE KEY `telefone_utilizador` (`telefone_utilizador`),
-  ADD UNIQUE KEY `password` (`password`);
+  ADD PRIMARY KEY (`id_validação`);
 
 --
 -- Índices para tabela `época`
 --
 ALTER TABLE `época`
-  ADD PRIMARY KEY (`id_época`),
-  ADD UNIQUE KEY `época` (`época`);
+  ADD PRIMARY KEY (`id_época`);
 
 --
--- -- 🔗 Ligar utilizador a clube
-ALTER TABLE utilizador
-ADD COLUMN id_clube INT NULL AFTER tipo_utilizador;
-
-ALTER TABLE utilizador
-ADD CONSTRAINT fk_utilizador_clube
-FOREIGN KEY (id_clube)
-REFERENCES clube(id_clube)
-ON UPDATE CASCADE
-ON DELETE SET NULL;
-
+-- AUTO_INCREMENT de tabelas despejadas
 --
 
 --
@@ -791,10 +845,28 @@ ALTER TABLE `equipa`
   MODIFY `id_equipa` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT de tabela `estatísticas_jogadores`
+--
+ALTER TABLE `estatísticas_jogadores`
+  MODIFY `id_stats` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `estatísticas_jogo`
+--
+ALTER TABLE `estatísticas_jogo`
+  MODIFY `id_stats` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT de tabela `estádio`
 --
 ALTER TABLE `estádio`
   MODIFY `id_estádio` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de tabela `eventos_clube`
+--
+ALTER TABLE `eventos_clube`
+  MODIFY `id_evento` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de tabela `eventos_jogo`
@@ -866,7 +938,7 @@ ALTER TABLE `treino`
 -- AUTO_INCREMENT de tabela `utilizador`
 --
 ALTER TABLE `utilizador`
-  MODIFY `id_utilizador` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id_utilizador` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de tabela `validação_transferência`
@@ -878,7 +950,7 @@ ALTER TABLE `validação_transferência`
 -- AUTO_INCREMENT de tabela `validação_utilizador`
 --
 ALTER TABLE `validação_utilizador`
-  MODIFY `id_validação` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id_validação` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de tabela `época`
@@ -891,123 +963,47 @@ ALTER TABLE `época`
 --
 
 --
--- Limitadores para a tabela `acesso_equipa`
+-- Limitadores para a tabela `estatísticas_jogadores`
 --
-ALTER TABLE `acesso_equipa`
-  ADD CONSTRAINT `fk_id_equipa_acesso` FOREIGN KEY (`id_equipa`) REFERENCES `equipa` (`id_equipa`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_utilizador` FOREIGN KEY (`id_utilizador`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE;
+ALTER TABLE `estatísticas_jogadores`
+  ADD CONSTRAINT `fk_id_jogador2` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogador3` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
 
 --
--- Limitadores para a tabela `assiduidade`
+-- Limitadores para a tabela `estatísticas_jogo`
 --
-ALTER TABLE `assiduidade`
-  ADD CONSTRAINT `fk_id_jogador` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_treino` FOREIGN KEY (`id_treino`) REFERENCES `treino` (`id_treino`) ON UPDATE CASCADE;
+ALTER TABLE `estatísticas_jogo`
+  ADD CONSTRAINT `fk_id_jogo_stats` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
 
 --
--- Limitadores para a tabela `competição`
+-- Limitadores para a tabela `eventos_clube`
 --
-ALTER TABLE `competição`
-  ADD CONSTRAINT `fk_id_competição` FOREIGN KEY (`id_competição`) REFERENCES `competição_default` (`id_competição_default`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_nome_competição` FOREIGN KEY (`id_nome_competição`) REFERENCES `competição_default` (`id_competição_default`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_vencedor` FOREIGN KEY (`id_vencedor`) REFERENCES `equipa` (`id_equipa`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `convocatória`
---
-ALTER TABLE `convocatória`
-  ADD CONSTRAINT `fk_id_jogador_conv` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogo_conv` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `detalhes_jogo`
---
-ALTER TABLE `detalhes_jogo`
-  ADD CONSTRAINT `fk_id_jogador1` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogo` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `equipa`
---
-ALTER TABLE `equipa`
-  ADD CONSTRAINT `fk_id_clube_equipa` FOREIGN KEY (`id_clube`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_época` FOREIGN KEY (`id_época`) REFERENCES `época` (`id_época`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `estádio`
---
-ALTER TABLE `estádio`
-  ADD CONSTRAINT `fk_id_clube` FOREIGN KEY (`id_clube`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `eventos_jogo`
---
-ALTER TABLE `eventos_jogo`
-  ADD CONSTRAINT `fk_id_jogador3` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogador4` FOREIGN KEY (`jogador_entrada`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogador5` FOREIGN KEY (`jogador_saída`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogador6` FOREIGN KEY (`jogador_assistência`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogos` FOREIGN KEY (`id_jogo`) REFERENCES `jogos` (`id_jogo`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `histórico_carreira`
---
-ALTER TABLE `histórico_carreira`
-  ADD CONSTRAINT `fk_id_clube_carreira` FOREIGN KEY (`id_clube`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogador_carreira` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_época_carreira` FOREIGN KEY (`id_época`) REFERENCES `época` (`id_época`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `histórico_transferência`
---
-ALTER TABLE `histórico_transferência`
-  ADD CONSTRAINT `fk_id_clube_destino` FOREIGN KEY (`id_clube_destino`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_clube_origem` FOREIGN KEY (`id_clube_origem`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogador_transferência` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE;
+ALTER TABLE `eventos_clube`
+  ADD CONSTRAINT `fk_id_equipa_evento` FOREIGN KEY (`id_equipa`) REFERENCES `equipa` (`id_equipa`) ON UPDATE CASCADE;
 
 --
 -- Limitadores para a tabela `jogadores`
 --
 ALTER TABLE `jogadores`
-  ADD CONSTRAINT `fk_id_equipa_jogadores` FOREIGN KEY (`id_equipa`) REFERENCES `equipa` (`id_equipa`) ON UPDATE CASCADE;
+  ADD CONSTRAINT `fk_id_equipa` FOREIGN KEY (`id_equipa`) REFERENCES `equipa` (`id_equipa`) ON UPDATE CASCADE;
 
 --
 -- Limitadores para a tabela `jogos`
 --
 ALTER TABLE `jogos`
-  ADD CONSTRAINT `fk_clube_casa` FOREIGN KEY (`clube_casa`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_clube_visitante` FOREIGN KEY (`clube_visitante`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_competição1` FOREIGN KEY (`id_competição`) REFERENCES `competição` (`id_competição`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_fase` FOREIGN KEY (`id_fase`) REFERENCES `fase` (`id_fase`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_local_jogo` FOREIGN KEY (`local_jogo`) REFERENCES `estádio` (`id_estádio`) ON UPDATE CASCADE;
+  ADD CONSTRAINT `fk_id_competição` FOREIGN KEY (`id_competição`) REFERENCES `competição` (`id_competição`) ON UPDATE CASCADE;
 
 --
 -- Limitadores para a tabela `lesões`
 --
 ALTER TABLE `lesões`
-  ADD CONSTRAINT `fk_id_jogador_lesão` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE;
+  ADD CONSTRAINT `fk_id_jogador` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE;
 
 --
 -- Limitadores para a tabela `mensagens`
 --
 ALTER TABLE `mensagens`
-  ADD CONSTRAINT `fk_destino` FOREIGN KEY (`destino`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_origem` FOREIGN KEY (`origem`) REFERENCES `utilizador` (`id_utilizador`) ON UPDATE CASCADE;
-
---
--- Limitadores para a tabela `plano_treino`
---
-ALTER TABLE `plano_treino`
-  ADD CONSTRAINT `fk_exercício_1` FOREIGN KEY (`exercício_1`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_10` FOREIGN KEY (`exercício_10`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_2` FOREIGN KEY (`exercício_2`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_3` FOREIGN KEY (`exercício_3`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_4` FOREIGN KEY (`exercício_4`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_5` FOREIGN KEY (`exercício_5`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_6` FOREIGN KEY (`exercício_6`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_7` FOREIGN KEY (`exercício_7`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_8` FOREIGN KEY (`exercício_8`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_exercício_9` FOREIGN KEY (`exercício_9`) REFERENCES `exercícios` (`id_exercício`) ON UPDATE CASCADE;
 
 --
 -- Limitadores para a tabela `treino`
@@ -1019,9 +1015,9 @@ ALTER TABLE `treino`
 -- Limitadores para a tabela `validação_transferência`
 --
 ALTER TABLE `validação_transferência`
-  ADD CONSTRAINT `fk_id_destino_vd` FOREIGN KEY (`id_clube_destino`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_jogador_vd` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_id_origem_vd` FOREIGN KEY (`id_clube_origem`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE;
+  ADD CONSTRAINT `fk_clube_origem` FOREIGN KEY (`id_clube_origem`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_clube_origem_destino` FOREIGN KEY (`id_clube_destino`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_id_jogador1` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

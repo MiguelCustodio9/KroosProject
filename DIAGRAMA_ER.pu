@@ -1,0 +1,420 @@
+@startuml KroosProject_ER
+
+!define TABLENAME(x) class x << (T,#FFAAAA) >>
+!define PRIMARY_KEY(x) <color:red><b>x</b></color>
+!define FOREIGN_KEY(x) <color:blue><b>x</b></color>
+!define FIELD(x) <color:black>x</color>
+
+TABLENAME(UTILIZADOR) {
+  PRIMARY_KEY(utilizador_id) : int
+  FIELD(nome_utilizador) : varchar
+  FIELD(foto_perfil) : mediumblob
+  FIELD(email_utilizador) : varchar
+  FIELD(telefone_utilizador) : varchar
+  FIELD(primeiro_nome) : varchar
+  FIELD(último_nome) : varchar
+  FIELD(data_nascimento) : date
+  FIELD(password) : varchar
+  FIELD(tipo_utilizador) : enum
+}
+
+TABLENAME(VALIDACAO_UTILIZADOR) {
+  PRIMARY_KEY(validacao_id) : int
+  FIELD(nome_utilizador) : varchar
+  FIELD(foto_perfil) : mediumblob
+  FIELD(email_utilizador) : varchar
+  FIELD(telefone_utilizador) : varchar
+  FIELD(primeiro_nome) : varchar
+  FIELD(último_nome) : varchar
+  FIELD(data_nascimento) : date
+  FIELD(password) : varchar
+  FIELD(tipo_utilizador) : enum
+}
+
+TABLENAME(CLUBE) {
+  PRIMARY_KEY(clube_id) : int
+  FIELD(nome_clube) : varchar
+  FIELD(sigla) : char
+  FIELD(logotipo) : mediumblob
+  FIELD(cor) : char
+  FIELD(data_fundação) : date
+  FIELD(sede_morada) : varchar
+  FIELD(país_clube) : varchar
+  FIELD(cidade_clube) : varchar
+  FIELD(telefone_clube) : varchar
+  FIELD(email_clube) : varchar
+  FIELD(website_clube) : varchar
+  FIELD(presidente_clube) : varchar
+  FIELD(instagram_clube) : varchar
+  FIELD(facebook_clube) : varchar
+  FIELD(youtube_clube) : varchar
+  FIELD(twitter_clube) : varchar
+  FIELD(tiktok_clube) : varchar
+  FIELD(código_clube) : varchar
+}
+
+TABLENAME(EPOCA) {
+  PRIMARY_KEY(epoca_id) : int
+  FIELD(época) : varchar
+}
+
+TABLENAME(EQUIPA) {
+  PRIMARY_KEY(equipa_id) : int
+  FIELD(escalão) : enum
+  FIELD(hierarquia) : enum
+  FOREIGN_KEY(epoca_id) : int
+  FOREIGN_KEY(clube_id) : int
+}
+
+TABLENAME(ACESSO_EQUIPA) {
+  PRIMARY_KEY(acesso_id) : int
+  FOREIGN_KEY(equipa_id) : int
+  FOREIGN_KEY(utilizador_id) : int
+}
+
+TABLENAME(ESTADIO) {
+  PRIMARY_KEY(estadio_id) : int
+  FOREIGN_KEY(clube_id) : int
+  FIELD(nome_estádio) : varchar
+  FIELD(capacidade) : int
+}
+
+TABLENAME(JOGADORES) {
+  PRIMARY_KEY(jogador_id) : int
+  FIELD(foto_jogador) : mediumblob
+  FIELD(nome_completo) : varchar
+  FIELD(alcunha_jogador) : varchar
+  FIELD(número_favorito) : enum
+  FIELD(posição_principal) : enum
+  FIELD(posição_secundária) : enum
+  FIELD(data_nascimento) : date
+  FIELD(local_nascimento) : varchar
+  FIELD(nacionalidade) : varchar
+  FIELD(país_nascimento) : varchar
+  FIELD(pé_preferencial) : enum
+  FIELD(altura) : varchar
+  FIELD(peso) : varchar
+  FIELD(instagram) : varchar
+  FIELD(facebook) : varchar
+  FIELD(twitter) : varchar
+  FOREIGN_KEY(equipa_id) : int
+}
+
+TABLENAME(ASSIDUIDADE) {
+  PRIMARY_KEY(assiduidade_id) : int
+  FOREIGN_KEY(treino_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FIELD(estado) : enum
+  FIELD(justificação_ausência) : text
+}
+
+TABLENAME(LESOES) {
+  PRIMARY_KEY(lesao_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FIELD(nome_lesão) : varchar
+  FIELD(descrição_lesão) : varchar
+  FIELD(tipo_lesão) : enum
+  FIELD(tempo_recuperação) : enum
+  FIELD(estado_lesão) : enum
+}
+
+TABLENAME(HISTORICO_CARREIRA) {
+  PRIMARY_KEY(carreira_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FOREIGN_KEY(epoca_id) : int
+  FOREIGN_KEY(clube_id) : int
+  FIELD(jogos) : int
+  FIELD(golos_marcados) : int
+  FIELD(golos_sofridos) : int
+  FIELD(assistências) : int
+}
+
+TABLENAME(HISTORICO_TRANSFERENCIA) {
+  PRIMARY_KEY(transferencia_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FOREIGN_KEY(clube_origem_id) : int
+  FOREIGN_KEY(clube_destino_id) : int
+  FIELD(valor) : float
+}
+
+TABLENAME(VALIDACAO_TRANSFERENCIA) {
+  PRIMARY_KEY(validacao_transferencia_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FOREIGN_KEY(clube_origem_id) : int
+  FOREIGN_KEY(clube_destino_id) : int
+  FIELD(valor) : float
+}
+
+TABLENAME(EXERCICIOS) {
+  PRIMARY_KEY(exercicio_id) : int
+  FIELD(esquema) : mediumblob
+  FIELD(estrutura) : varchar
+  FIELD(descrição_exercício) : text
+  FIELD(variantes) : text
+  FIELD(fundamentos_ofensivos) : text
+  FIELD(fundamentos_defensivos) : text
+  FIELD(ações_ofensivas) : text
+  FIELD(ações_defensivas) : text
+  FIELD(duração) : time
+  FIELD(repetições) : int
+  FIELD(séries) : int
+  FIELD(pausa_entre_repetições) : int
+  FIELD(pausa_entre_séries) : int
+  FIELD(volume_exercício) : time
+  FIELD(recuperação_para_próximo) : time
+}
+
+TABLENAME(PLANO_TREINO) {
+  PRIMARY_KEY(plano_treino_id) : int
+  FOREIGN_KEY(exercicio_1_id) : int
+  FOREIGN_KEY(exercicio_2_id) : int
+  FOREIGN_KEY(exercicio_3_id) : int
+  FOREIGN_KEY(exercicio_4_id) : int
+  FOREIGN_KEY(exercicio_5_id) : int
+  FOREIGN_KEY(exercicio_6_id) : int
+  FOREIGN_KEY(exercicio_7_id) : int
+  FOREIGN_KEY(exercicio_8_id) : int
+  FOREIGN_KEY(exercicio_9_id) : int
+  FOREIGN_KEY(exercicio_10_id) : int
+}
+
+TABLENAME(TREINO) {
+  PRIMARY_KEY(treino_id) : int
+  FIELD(número_treino) : int
+  FIELD(data) : date
+  FIELD(hora) : time
+  FIELD(conteúdo) : text
+  FOREIGN_KEY(plano_id) : int
+  FIELD(observações) : text
+  FIELD(dia_da_semana) : enum
+}
+
+TABLENAME(FASE) {
+  PRIMARY_KEY(fase_id) : int
+  FIELD(fase) : varchar
+}
+
+TABLENAME(COMPETICAO_DEFAULT) {
+  PRIMARY_KEY(competicao_default_id) : int
+  FIELD(nome_competição) : varchar
+  FIELD(tipo_competição) : enum
+}
+
+TABLENAME(COMPETICAO) {
+  PRIMARY_KEY(competicao_id) : int
+  FOREIGN_KEY(nome_competicao_id) : int
+  FIELD(época) : int
+  FIELD(número_fases) : int
+  FOREIGN_KEY(vencedor_id) : int
+}
+
+TABLENAME(JOGOS) {
+  PRIMARY_KEY(jogo_id) : int
+  FOREIGN_KEY(competicao_id) : int
+  FOREIGN_KEY(fase_id) : int
+  FOREIGN_KEY(clube_casa_id) : int
+  FOREIGN_KEY(clube_visitante_id) : int
+  FIELD(data_jogo) : date
+  FIELD(hora_jogo) : time
+  FOREIGN_KEY(local_jogo_id) : int
+  FIELD(resultado_casa) : int
+  FIELD(resultado_fora) : int
+}
+
+TABLENAME(CONVOCATORIA) {
+  PRIMARY_KEY(convocatoria_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FOREIGN_KEY(jogo_id) : int
+  FIELD(estado) : enum
+}
+
+TABLENAME(DETALHES_JOGO) {
+  PRIMARY_KEY(detalhes_jogo_id) : int
+  FOREIGN_KEY(jogo_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FIELD(tipo_detalhes) : enum
+  FIELD(minuto_detalhe) : enum
+}
+
+TABLENAME(EVENTOS_JOGO) {
+  PRIMARY_KEY(evento_id) : int
+  FOREIGN_KEY(jogo_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FIELD(tipo_evento) : enum
+  FOREIGN_KEY(jogador_entrada_id) : int
+  FOREIGN_KEY(jogador_saida_id) : int
+  FOREIGN_KEY(jogador_assistencia_id) : int
+  FIELD(tipo_golo) : enum
+  FIELD(zona_golo) : enum
+  FIELD(zona_corpo_utilizado_golo) : enum
+  FIELD(minuto_evento) : enum
+}
+
+TABLENAME(ESTATISTICAS_JOGO) {
+  PRIMARY_KEY(stats_id) : int
+  FOREIGN_KEY(jogo_id) : int
+  FIELD(posse_casa) : int
+  FIELD(posse_fora) : int
+  FIELD(remates_casa) : int
+  FIELD(remates_fora) : int
+  FIELD(remates_baliza_casa) : int
+  FIELD(remates_baliza_fora) : int
+  FIELD(grandes_oportunidades_casa) : int
+  FIELD(grandes_oportunidades_fora) : int
+  FIELD(cantos_casa) : int
+  FIELD(cantos_fora) : int
+  FIELD(passes_casa) : int
+  FIELD(passes_fora) : int
+  FIELD(passes_certos_casa) : int
+  FIELD(passes_certos_fora) : int
+}
+
+TABLENAME(ESTATISTICAS_JOGADORES) {
+  PRIMARY_KEY(stats_id) : int
+  FOREIGN_KEY(jogador_id) : int
+  FOREIGN_KEY(jogo_id) : int
+  FIELD(minutos_jogados) : int
+  FIELD(golos) : int
+  FIELD(remates) : int
+  FIELD(remates_baliza) : int
+  FIELD(assistências) : int
+  FIELD(passes_chave) : int
+  FIELD(passes) : int
+  FIELD(passes_certos) : int
+  FIELD(cruzamentos) : int
+  FIELD(cruzamentos_certos) : int
+  FIELD(toques_bola) : int
+  FIELD(dribles) : int
+  FIELD(dribles_certos) : int
+  FIELD(perdas) : int
+  FIELD(desarmes) : int
+  FIELD(desarmes_ganhos) : int
+  FIELD(interceções) : int
+  FIELD(alívios) : int
+  FIELD(bloqueios_remate) : int
+  FIELD(duelos) : int
+  FIELD(duelos_ganhos) : int
+  FIELD(faltas_sofridas) : int
+  FIELD(faltas_feitas) : int
+  FIELD(amarelos) : int
+  FIELD(vermelhos) : int
+  FIELD(defesas) : int
+  FIELD(remates_baliza_sofridos) : int
+  FIELD(golos_sofridos) : int
+  FIELD(clean_sheet) : enum
+  FIELD(saídas) : int
+  FIELD(saídas_eficazes) : int
+  FIELD(oportunidades_claras_defendidas) : int
+  FIELD(class_média) : decimal
+}
+
+TABLENAME(EVENTOS_CLUBE) {
+  PRIMARY_KEY(evento_id) : int
+  FOREIGN_KEY(equipa_id) : int
+  FIELD(tipo_evento) : enum
+  FIELD(descrição_evento) : text
+  FIELD(estado_evento) : enum
+  FIELD(data_evento) : date
+}
+
+TABLENAME(MENSAGENS) {
+  PRIMARY_KEY(mensagem_id) : int
+  FOREIGN_KEY(origem_id) : int
+  FOREIGN_KEY(destino_id) : int
+  FIELD(conteúdo) : text
+  FIELD(estado) : enum
+}
+
+' Relacionamentos com cardinalidades
+
+' Clube (1) --- (*) Equipa
+CLUBE ||--o{ EQUIPA : "1:N\ntem"
+
+' Clube (1) --- (*) Estádio
+CLUBE ||--o{ ESTADIO : "1:N\npossui"
+
+' Clube (1) --- (*) Histórico Carreira
+CLUBE ||--o{ HISTORICO_CARREIRA : "1:N\ncontém carreira"
+
+' Clube (1) --- (*) Histórico Transferência (origem/destino)
+CLUBE ||--o{ HISTORICO_TRANSFERENCIA : "1:N\ntransferências"
+
+' Época (1) --- (*) Equipa
+EPOCA ||--o{ EQUIPA : "1:N\nagrupa"
+
+' Equipa (1) --- (*) Jogadores
+EQUIPA ||--o{ JOGADORES : "1:N\ncontém"
+
+' Equipa (1) --- (*) Acesso Equipa
+EQUIPA ||--o{ ACESSO_EQUIPA : "1:N\nacesso"
+
+' Equipa (1) --- (*) Eventos Clube
+EQUIPA ||--o{ EVENTOS_CLUBE : "1:N\nevento"
+
+' Utilizador (1) --- (*) Acesso Equipa
+UTILIZADOR ||--o{ ACESSO_EQUIPA : "1:N\nacede"
+
+' Utilizador (1) --- (*) Mensagens
+UTILIZADOR ||--o{ MENSAGENS : "1:N\nenvia/recebe"
+
+' Jogadores (1) --- (*) Assiduidade
+JOGADORES ||--o{ ASSIDUIDADE : "1:N\npresença"
+
+' Jogadores (1) --- (*) Lesões
+JOGADORES ||--o{ LESOES : "1:N\nsofre"
+
+' Jogadores (1) --- (*) Histórico Carreira
+JOGADORES ||--o{ HISTORICO_CARREIRA : "1:N\nhistória carreira"
+
+' Jogadores (1) --- (*) Histórico Transferência
+JOGADORES ||--o{ HISTORICO_TRANSFERENCIA : "1:N\ntransferências"
+
+' Jogadores (1) --- (*) Convocatória
+JOGADORES ||--o{ CONVOCATORIA : "1:N\nconvocado"
+
+' Jogadores (1) --- (*) Detalhes Jogo
+JOGADORES ||--o{ DETALHES_JOGO : "1:N\ndetalhes"
+
+' Jogadores (1) --- (*) Eventos Jogo
+JOGADORES ||--o{ EVENTOS_JOGO : "1:N\nevento"
+
+' Jogadores (1) --- (*) Estatísticas Jogadores
+JOGADORES ||--o{ ESTATISTICAS_JOGADORES : "1:N\nestadísticas"
+
+' Treino (1) --- (*) Assiduidade
+TREINO ||--o{ ASSIDUIDADE : "1:N\nregistra"
+
+' Plano Treino (1) --- (*) Treino
+PLANO_TREINO ||--o{ TREINO : "N:1\ndefine"
+
+' Plano Treino (N) --- (*) Exercícios (até 10 exercícios)
+PLANO_TREINO }o--o{ EXERCICIOS : "N:N\ncontém (até 10)"
+
+' Competição Default (1) --- (*) Competição
+COMPETICAO_DEFAULT ||--o{ COMPETICAO : "1:N\npadrão"
+
+' Competição (1) --- (*) Jogos
+COMPETICAO ||--o{ JOGOS : "1:N\ncontém"
+
+' Fase (1) --- (*) Jogos
+FASE ||--o{ JOGOS : "1:N\nestrutura"
+
+' Estádio (1) --- (*) Jogos
+ESTADIO ||--o{ JOGOS : "1:N\nlocaliza"
+
+' Jogos (1) --- (*) Convocatória
+JOGOS ||--o{ CONVOCATORIA : "1:N\nconvoca"
+
+' Jogos (1) --- (*) Detalhes Jogo
+JOGOS ||--o{ DETALHES_JOGO : "1:N\ndetalhes"
+
+' Jogos (1) --- (*) Eventos Jogo
+JOGOS ||--o{ EVENTOS_JOGO : "1:N\nevento"
+
+' Jogos (1) --- (1) Estatísticas Jogo
+JOGOS ||--|| ESTATISTICAS_JOGO : "1:1\nestatísticas"
+
+' Jogos (1) --- (*) Estatísticas Jogadores
+JOGOS ||--o{ ESTATISTICAS_JOGADORES : "1:N\nestadísticas jogadores"
+
+@enduml
