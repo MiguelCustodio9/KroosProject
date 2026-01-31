@@ -1,5 +1,47 @@
 <?php
-// juntar-criar-clube.php – Step 2
+session_start();
+require_once __DIR__ . '/basedados.h';
+
+$erro = '';
+
+// Verifica se o utilizador existe na sessão
+if (!isset($_SESSION['id_utilizador'])) {
+    header('Location: criar-utilizador.php');
+    exit;
+}
+
+// Processa o formulário de "juntar a clube"
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['codigo_clube'])) {
+    $codigo = trim($_POST['codigo_clube']);
+    if ($codigo === '') {
+        $erro = 'Insere o código do clube.';
+    } else {
+        $stmt = $conn->prepare("SELECT id_clube FROM clube WHERE `código_clube` = ? LIMIT 1");
+        $stmt->bind_param("s", $codigo);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        if ($res && $res->num_rows === 1) {
+            $club = $res->fetch_assoc();
+            $id_clube = (int) $club['id_clube'];
+            $id_utilizador = (int) $_SESSION['id_utilizador'];
+
+            $stmtUpd = $conn->prepare("UPDATE utilizador SET id_clube = ?, tipo_utilizador = 'admin_clube' WHERE id_utilizador = ?");
+            $stmtUpd->bind_param("ii", $id_clube, $id_utilizador);
+
+            if ($stmtUpd->execute()) {
+                $_SESSION['id_clube'] = $id_clube;
+                $_SESSION['tipo_utilizador'] = 'admin_clube';
+                header('Location: index-admin.php');
+                exit;
+            } else {
+                $erro = 'Erro ao associar o clube ao utilizador.';
+            }
+        } else {
+            $erro = 'Código de clube inválido.';
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -100,7 +142,7 @@ body {
 
 /* OPÇÕES */
 .club-options {
-    margin-top: 80px;
+    margin-top: 20px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 80px;
@@ -220,6 +262,10 @@ body {
             <div class="step inactive">3</div>
         </div>
 
+        <?php if ($erro): ?>
+            <div style="color:red;margin-bottom:16px"><?= htmlspecialchars($erro) ?></div>
+        <?php endif; ?>
+
         <!-- OPÇÕES (AGORA DENTRO DO CARD) -->
         <div class="club-options">
 
@@ -231,9 +277,9 @@ body {
                     <img src="assets/join.png" alt="Juntar">
                 </div>
 
-                <form>
+                <form method="post">
                     <div class="join">
-                        <input type="text" placeholder="Introduzir código">
+                        <input type="text" name="codigo_clube" placeholder="Introduzir código" required>
                         <button type="submit">→</button>
                     </div>
                 </form>

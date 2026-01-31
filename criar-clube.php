@@ -40,67 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $codigo_clube
         );
 
-        if ($stmt->execute()) {
-
-            $id_clube = $stmt->insert_id;
-            $_SESSION['id_clube'] = $id_clube;
-
-            $id_validacao = $_SESSION['id_validacao'] ?? null;
-            if (!$id_validacao) {
-                die('Utilizador em validação não encontrado.');
-            }
-
-            $stmtUser = $conn->prepare("
-                SELECT nome_utilizador, foto_perfil, email_utilizador,
-                       telefone_utilizador, primeiro_nome, último_nome,
-                       data_nascimento, password
-                FROM validação_utilizador
-                WHERE id_validação = ?
-            ");
-            $stmtUser->bind_param("i", $id_validacao);
-            $stmtUser->execute();
-            $user = $stmtUser->get_result()->fetch_assoc();
-
-            if (!$user) {
-                die('Dados do utilizador inválidos.');
-            }
-
-            $stmtInsert = $conn->prepare("
-                INSERT INTO utilizador
-                (nome_utilizador, foto_perfil, email_utilizador, telefone_utilizador,
-                 primeiro_nome, último_nome, data_nascimento, password,
-                 tipo_utilizador, id_clube)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'admin_clube', ?)
-            ");
-
-            $stmtInsert->bind_param(
-                "ssssssssi",
-                $user['nome_utilizador'],
-                $user['foto_perfil'],
-                $user['email_utilizador'],
-                $user['telefone_utilizador'],
-                $user['primeiro_nome'],
-                $user['último_nome'],
-                $user['data_nascimento'],
-                $user['password'],
-                $id_clube
-            );
-
-            $stmtInsert->execute();
-
-            $_SESSION['id_utilizador'] = $stmtInsert->insert_id;
-            $_SESSION['tipo_utilizador'] = 'admin_clube';
-
-            $conn->query("DELETE FROM validação_utilizador WHERE id_validação = $id_validacao");
-
-            header('Location: index-admin.php');
-            exit;
-
         } else {
             $erro = 'Erro ao criar clube.';
         }
     }
-}
 ?>
 <!DOCTYPE html>
 <html lang="pt">

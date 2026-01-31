@@ -16,11 +16,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password_md5 = $password;
 
         $stmt = $conn->prepare("
-            SELECT id_utilizador, tipo_utilizador, id_clube
+            SELECT id_utilizador, tipo_utilizador
             FROM utilizador
             WHERE email_utilizador = ?
             AND password = MD5(?)
-            AND tipo_utilizador = 'admin_clube'
             LIMIT 1
     ");
 
@@ -34,9 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $_SESSION['id_utilizador'] = $user['id_utilizador'];
             $_SESSION['tipo_utilizador'] = $user['tipo_utilizador'];
-            $_SESSION['id_clube'] = $user['id_clube'];
 
-            header('Location: index-admin.php');
+            header('Location: juntar-criar-clube.php');
             exit;
         } else {
             $erro = 'Email ou password inválidos.';
