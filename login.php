@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['id_utilizador'] = $user['id_utilizador'];
             $_SESSION['tipo_utilizador'] = $user['tipo_utilizador'];
 
-            header('Location: juntar-criar-clube.php');
+            header('Location: index-admin.php');
             exit;
         } else {
             $erro = 'Email ou password inválidos.';
