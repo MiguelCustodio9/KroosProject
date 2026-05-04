@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password_md5 = $password;
 
         $stmt = $conn->prepare("
-            SELECT id_utilizador, tipo_utilizador
+            SELECT id_utilizador, tipo_utilizador, id_clube
             FROM utilizador
             WHERE email_utilizador = ?
             AND password = MD5(?)
@@ -31,8 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($res->num_rows === 1) {
             $user = $res->fetch_assoc();
 
+            session_regenerate_id(true);
+
             $_SESSION['id_utilizador'] = $user['id_utilizador'];
             $_SESSION['tipo_utilizador'] = $user['tipo_utilizador'];
+            $_SESSION['id_clube'] = $user['id_clube']; 
 
             header('Location: index-admin.php');
             exit;

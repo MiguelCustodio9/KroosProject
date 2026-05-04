@@ -507,14 +507,15 @@ CREATE TABLE `treino` (
 CREATE TABLE `utilizador` (
   `id_utilizador` int(11) NOT NULL,
   `nome_utilizador` varchar(255) NOT NULL,
-  `foto_perfil` mediumblob NOT NULL,
+  `foto_perfil` mediumblob DEFAULT NULL,
   `email_utilizador` varchar(255) NOT NULL,
-  `telefone_utilizador` varchar(20) NOT NULL,
+  `telefone_utilizador` varchar(20) DEFAULT NULL,
   `primeiro_nome` varchar(50) NOT NULL,
   `último_nome` varchar(50) NOT NULL,
-  `data_nascimento` date NOT NULL,
+  `data_nascimento` date DEFAULT NULL,
   `password` varchar(255) NOT NULL,
-  `tipo_utilizador` enum('admin','treinador','jogador','admin_clube') NOT NULL
+  `tipo_utilizador` enum('admin','treinador','jogador','admin_clube') NOT NULL,
+  `id_clube` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -559,14 +560,14 @@ CREATE TABLE `validação_transferência` (
 CREATE TABLE `validação_utilizador` (
   `id_validação` int(11) NOT NULL,
   `nome_utilizador` varchar(255) NOT NULL,
-  `foto_perfil` mediumblob NOT NULL,
+  `foto_perfil` mediumblob DEFAULT NULL,
   `email_utilizador` varchar(255) NOT NULL,
-  `telefone_utilizador` varchar(20) NOT NULL,
+  `telefone_utilizador` varchar(20) DEFAULT NULL,
   `primeiro_nome` varchar(50) NOT NULL,
   `último_nome` varchar(50) NOT NULL,
-  `data_nascimento` date NOT NULL,
+  `data_nascimento` date DEFAULT NULL,
   `password` varchar(255) NOT NULL,
-  `tipo_utilizador` enum('admin_clube','treinador','jogador','') DEFAULT NULL
+  `tipo_utilizador` enum('admin_clube','treinador','jogador') DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -769,7 +770,8 @@ ALTER TABLE `treino`
 -- Índices para tabela `utilizador`
 --
 ALTER TABLE `utilizador`
-  ADD PRIMARY KEY (`id_utilizador`);
+  ADD PRIMARY KEY (`id_utilizador`),
+  ADD KEY `idx_utilizador_clube` (`id_clube`);
 
 --
 -- Índices para tabela `validação_transferência`
@@ -1018,6 +1020,13 @@ ALTER TABLE `validação_transferência`
   ADD CONSTRAINT `fk_clube_origem` FOREIGN KEY (`id_clube_origem`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_clube_origem_destino` FOREIGN KEY (`id_clube_destino`) REFERENCES `clube` (`id_clube`) ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_id_jogador1` FOREIGN KEY (`id_jogador`) REFERENCES `jogadores` (`id_jogador`) ON UPDATE CASCADE;
+
+ALTER TABLE `utilizador`
+  ADD CONSTRAINT `fk_utilizador_clube`
+  FOREIGN KEY (`id_clube`)
+  REFERENCES `clube` (`id_clube`)
+  ON DELETE SET NULL
+  ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
