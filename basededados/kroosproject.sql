@@ -674,7 +674,6 @@ ALTER TABLE `estatísticas_jogo`
 --
 ALTER TABLE `estádio`
   ADD PRIMARY KEY (`id_estádio`),
-  ADD UNIQUE KEY `nome_estádio` (`nome_estádio`),
   ADD KEY `fk_id_clube` (`id_clube`);
 
 --

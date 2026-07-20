@@ -16,7 +16,348 @@ if (
 $id_utilizador = $_SESSION['id_utilizador'];
 $id_clube      = $_SESSION['id_clube'];
 
-/* ── Buscar dados do clube + estádio ── */
+$erro = '';
+$sucesso = '';
+$activeTab = 'tab-info';
+
+/* ══════════════════════════════════
+   AÇÕES POST
+══════════════════════════════════ */
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $acao = $_POST['acao'] ?? '';
+
+    /* ── Editar informações do clube ── */
+    if ($acao === 'editar_clube') {
+
+        $activeTab = 'tab-info';
+
+        $editNome       = trim($_POST['nome_clube'] ?? '');
+        $editSigla      = strtoupper(trim($_POST['sigla'] ?? ''));
+        $editCor        = strtoupper(trim($_POST['cor'] ?? ''));
+        $editData       = trim($_POST['data_fundacao'] ?? '');
+        $editMorada     = trim($_POST['sede_morada'] ?? '');
+        $editCidade     = trim($_POST['cidade_clube'] ?? '');
+        $editPais       = trim($_POST['pais_clube'] ?? '');
+        $editTelefone   = trim($_POST['telefone_clube'] ?? '');
+        $editEmail      = trim($_POST['email_clube'] ?? '');
+        $editWebsite    = trim($_POST['website_clube'] ?? '');
+        $editPresidente = trim($_POST['presidente_clube'] ?? '');
+        $editEstadio    = trim($_POST['nome_estadio'] ?? '');
+
+        if ($editNome === '' || $editSigla === '' || $editCor === '') {
+            $erro = 'Nome, sigla e cor são obrigatórios.';
+        } elseif (!preg_match('/^#[0-9A-Fa-f]{6}$/', $editCor)) {
+            $erro = 'A cor tem de estar no formato hexadecimal. Exemplo: #32329E';
+        } elseif ($editEmail !== '' && !filter_var($editEmail, FILTER_VALIDATE_EMAIL)) {
+            $erro = 'O email do clube não é válido.';
+        } else {
+
+            $editData       = $editData !== '' ? $editData : null;
+            $editMorada     = $editMorada !== '' ? $editMorada : null;
+            $editCidade     = $editCidade !== '' ? $editCidade : null;
+            $editPais       = $editPais !== '' ? $editPais : null;
+            $editTelefone   = $editTelefone !== '' ? $editTelefone : null;
+            $editEmail      = $editEmail !== '' ? $editEmail : null;
+            $editWebsite    = $editWebsite !== '' ? $editWebsite : null;
+            $editPresidente = $editPresidente !== '' ? $editPresidente : null;
+
+            if ($editWebsite !== null && !preg_match('/^https?:\/\//i', $editWebsite)) {
+                $editWebsite = 'https://' . $editWebsite;
+            }
+
+            if (!empty($_FILES['logotipo']['tmp_name'])) {
+
+                $novoLogo = file_get_contents($_FILES['logotipo']['tmp_name']);
+
+                $stmtUpdate = $conn->prepare("
+                    UPDATE clube
+                    SET nome_clube = ?,
+                        sigla = ?,
+                        cor = ?,
+                        `data_fundação` = ?,
+                        sede_morada = ?,
+                        cidade_clube = ?,
+                        `país_clube` = ?,
+                        telefone_clube = ?,
+                        email_clube = ?,
+                        website_clube = ?,
+                        presidente_clube = ?,
+                        logotipo = ?
+                    WHERE id_clube = ?
+                ");
+
+                if ($stmtUpdate) {
+                    $stmtUpdate->bind_param(
+                        "ssssssssssssi",
+                        $editNome,
+                        $editSigla,
+                        $editCor,
+                        $editData,
+                        $editMorada,
+                        $editCidade,
+                        $editPais,
+                        $editTelefone,
+                        $editEmail,
+                        $editWebsite,
+                        $editPresidente,
+                        $novoLogo,
+                        $id_clube
+                    );
+                }
+
+            } else {
+
+                $stmtUpdate = $conn->prepare("
+                    UPDATE clube
+                    SET nome_clube = ?,
+                        sigla = ?,
+                        cor = ?,
+                        `data_fundação` = ?,
+                        sede_morada = ?,
+                        cidade_clube = ?,
+                        `país_clube` = ?,
+                        telefone_clube = ?,
+                        email_clube = ?,
+                        website_clube = ?,
+                        presidente_clube = ?
+                    WHERE id_clube = ?
+                ");
+
+                if ($stmtUpdate) {
+                    $stmtUpdate->bind_param(
+                        "sssssssssssi",
+                        $editNome,
+                        $editSigla,
+                        $editCor,
+                        $editData,
+                        $editMorada,
+                        $editCidade,
+                        $editPais,
+                        $editTelefone,
+                        $editEmail,
+                        $editWebsite,
+                        $editPresidente,
+                        $id_clube
+                    );
+                }
+            }
+
+            if (!$stmtUpdate) {
+                $erro = 'Erro na preparação da atualização do clube.';
+            } elseif (!$stmtUpdate->execute()) {
+                $erro = 'Erro ao atualizar os dados do clube.';
+            } else {
+
+                /* Atualizar ou criar estádio */
+                $stmtCheckEstadio = $conn->prepare("
+                    SELECT id_estádio
+                    FROM estádio
+                    WHERE id_clube = ?
+                    LIMIT 1
+                ");
+                $stmtCheckEstadio->bind_param("i", $id_clube);
+                $stmtCheckEstadio->execute();
+                $estadioAtual = $stmtCheckEstadio->get_result()->fetch_assoc();
+
+                if ($estadioAtual) {
+                    $stmtEstadio = $conn->prepare("
+                        UPDATE estádio
+                        SET nome_estádio = ?
+                        WHERE id_estádio = ?
+                    ");
+                    $stmtEstadio->bind_param(
+                        "si",
+                        $editEstadio,
+                        $estadioAtual['id_estádio']
+                    );
+                    $stmtEstadio->execute();
+                } elseif ($editEstadio !== '') {
+                    $capacidadeDefault = 0;
+
+                    $stmtEstadio = $conn->prepare("
+                        INSERT INTO estádio
+                        (id_clube, nome_estádio, capacidade)
+                        VALUES (?, ?, ?)
+                    ");
+                    $stmtEstadio->bind_param(
+                        "isi",
+                        $id_clube,
+                        $editEstadio,
+                        $capacidadeDefault
+                    );
+                    $stmtEstadio->execute();
+                }
+
+                $sucesso = 'Informações do clube atualizadas com sucesso.';
+            }
+        }
+    }
+
+    /* ── Criar escalão ── */
+    if ($acao === 'criar_escalao') {
+
+        $activeTab = 'tab-escaloes';
+
+        $escalao    = trim($_POST['escalao'] ?? '');
+        $hierarquia = trim($_POST['hierarquia'] ?? '');
+        $id_epoca   = (int)($_POST['id_epoca'] ?? 0);
+
+        $escaloesValidos = [
+            'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
+            'S16','S17','S18','S19','S20','S21','S22','S23','Seniores'
+        ];
+
+        $hierarquiasValidas = range('A', 'Z');
+
+        if (!in_array($escalao, $escaloesValidos, true)) {
+            $erro = 'Escalão inválido.';
+        } elseif (!in_array($hierarquia, $hierarquiasValidas, true)) {
+            $erro = 'Hierarquia inválida.';
+        } elseif ($id_epoca <= 0) {
+            $erro = 'Seleciona uma época.';
+        } else {
+
+            $stmtCheckEscalao = $conn->prepare("
+                SELECT id_equipa
+                FROM equipa
+                WHERE `escalão` = ?
+                  AND hierarquia = ?
+                  AND `id_época` = ?
+                  AND id_clube = ?
+                LIMIT 1
+            ");
+            $stmtCheckEscalao->bind_param("ssii", $escalao, $hierarquia, $id_epoca, $id_clube);
+            $stmtCheckEscalao->execute();
+            $escalaoExiste = $stmtCheckEscalao->get_result()->fetch_assoc();
+
+            if ($escalaoExiste) {
+                $erro = 'Esse escalão já existe para esta época.';
+            } else {
+                $stmtCreateEscalao = $conn->prepare("
+                    INSERT INTO equipa
+                    (`escalão`, hierarquia, `id_época`, id_clube)
+                    VALUES (?, ?, ?, ?)
+                ");
+
+                $stmtCreateEscalao->bind_param(
+                    "ssii",
+                    $escalao,
+                    $hierarquia,
+                    $id_epoca,
+                    $id_clube
+                );
+
+                if ($stmtCreateEscalao->execute()) {
+                    $sucesso = 'Escalão criado com sucesso.';
+                } else {
+                    $erro = 'Erro ao criar escalão.';
+                }
+            }
+        }
+    }
+
+    /* ── Criar treinador ── */
+    if ($acao === 'criar_treinador') {
+
+        $activeTab = 'tab-treinadores';
+
+        $primeiroNome       = trim($_POST['primeiro_nome'] ?? '');
+        $ultimoNome         = trim($_POST['ultimo_nome'] ?? '');
+        $emailTreinador     = trim($_POST['email_treinador'] ?? '');
+        $passwordTreinador  = $_POST['password_treinador'] ?? '';
+        $idEquipaTreinador  = (int)($_POST['id_equipa'] ?? 0);
+
+        if ($primeiroNome === '' || $ultimoNome === '' || $emailTreinador === '' || $passwordTreinador === '') {
+            $erro = 'Preenche todos os campos obrigatórios do treinador.';
+        } elseif (!filter_var($emailTreinador, FILTER_VALIDATE_EMAIL)) {
+            $erro = 'Email do treinador inválido.';
+        } else {
+
+            $stmtCheckEmail = $conn->prepare("
+                SELECT id_utilizador
+                FROM utilizador
+                WHERE email_utilizador = ?
+                LIMIT 1
+            ");
+            $stmtCheckEmail->bind_param("s", $emailTreinador);
+            $stmtCheckEmail->execute();
+            $emailExiste = $stmtCheckEmail->get_result()->fetch_assoc();
+
+            if ($emailExiste) {
+                $erro = 'Já existe um utilizador com esse email.';
+            } else {
+
+                $nomeUtilizadorTreinador = strtolower(
+                    preg_replace('/\s+/', '_', $primeiroNome . '_' . $ultimoNome . '_' . substr(md5($emailTreinador), 0, 6))
+                );
+
+                /*
+                    A password vai em texto normal.
+                    O trigger da tabela utilizador faz MD5 automaticamente.
+                */
+                $stmtCreateTreinador = $conn->prepare("
+                    INSERT INTO utilizador
+                    (nome_utilizador, email_utilizador, primeiro_nome, `último_nome`,
+                     password, tipo_utilizador, id_clube)
+                    VALUES (?, ?, ?, ?, ?, 'treinador', ?)
+                ");
+
+                if (!$stmtCreateTreinador) {
+                    $erro = 'Erro na preparação da criação do treinador.';
+                } else {
+                    $stmtCreateTreinador->bind_param(
+                        "sssssi",
+                        $nomeUtilizadorTreinador,
+                        $emailTreinador,
+                        $primeiroNome,
+                        $ultimoNome,
+                        $passwordTreinador,
+                        $id_clube
+                    );
+
+                    if ($stmtCreateTreinador->execute()) {
+
+                        $idNovoTreinador = $stmtCreateTreinador->insert_id;
+
+                        if ($idEquipaTreinador > 0) {
+                            $stmtCheckEquipa = $conn->prepare("
+                                SELECT id_equipa
+                                FROM equipa
+                                WHERE id_equipa = ?
+                                  AND id_clube = ?
+                                LIMIT 1
+                            ");
+                            $stmtCheckEquipa->bind_param("ii", $idEquipaTreinador, $id_clube);
+                            $stmtCheckEquipa->execute();
+                            $equipaExiste = $stmtCheckEquipa->get_result()->fetch_assoc();
+
+                            if ($equipaExiste) {
+                                $stmtAcesso = $conn->prepare("
+                                    INSERT INTO acesso_equipa
+                                    (id_equipa, id_utilizador)
+                                    VALUES (?, ?)
+                                ");
+                                $stmtAcesso->bind_param("ii", $idEquipaTreinador, $idNovoTreinador);
+                                $stmtAcesso->execute();
+                            }
+                        }
+
+                        $sucesso = 'Treinador criado com sucesso.';
+                    } else {
+                        $erro = 'Erro ao criar treinador.';
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ══════════════════════════════════
+   BUSCAR DADOS DO CLUBE
+══════════════════════════════════ */
+
 $stmt = $conn->prepare("
     SELECT c.nome_clube, c.sigla, c.cor, c.logotipo,
            c.data_fundação, c.sede_morada, c.cidade_clube,
@@ -41,7 +382,7 @@ if (!$clube) {
 /* ── Variáveis de conveniência ── */
 $nomeClube  = $clube['nome_clube'];
 $siglaClube = $clube['sigla'];
-$corClube   = $clube['cor'];
+$corClube   = $clube['cor'] ?: '#000000';
 $logoClube  = $clube['logotipo']
     ? 'data:image/png;base64,' . base64_encode($clube['logotipo'])
     : null;
@@ -61,6 +402,65 @@ $morada = implode(', ', array_filter([
     $clube['cidade_clube'],
     $clube['país_clube'],
 ]));
+
+/* ── Buscar épocas ── */
+$epocas = [];
+$resEpocas = $conn->query("
+    SELECT `id_época`, `época`
+    FROM `época`
+    ORDER BY `id_época` DESC
+");
+
+while ($row = $resEpocas->fetch_assoc()) {
+    $epocas[] = $row;
+}
+
+/* ── Buscar escalões do clube ── */
+$escaloesClube = [];
+
+$stmtEscaloes = $conn->prepare("
+    SELECT eq.id_equipa, eq.`escalão`, eq.hierarquia, ep.`época`, ep.`id_época`
+    FROM equipa eq
+    LEFT JOIN `época` ep ON ep.`id_época` = eq.`id_época`
+    WHERE eq.id_clube = ?
+    ORDER BY ep.`id_época` DESC, eq.`escalão`, eq.hierarquia
+");
+$stmtEscaloes->bind_param("i", $id_clube);
+$stmtEscaloes->execute();
+$resEscaloes = $stmtEscaloes->get_result();
+
+while ($row = $resEscaloes->fetch_assoc()) {
+    $escaloesClube[] = $row;
+}
+
+/* ── Buscar treinadores do clube ── */
+$treinadoresClube = [];
+
+$stmtTreinadores = $conn->prepare("
+    SELECT 
+        u.id_utilizador,
+        u.primeiro_nome,
+        u.`último_nome`,
+        u.email_utilizador,
+        COALESCE(
+            GROUP_CONCAT(DISTINCT CONCAT(eq.`escalão`, ' ', eq.hierarquia) ORDER BY eq.`escalão`, eq.hierarquia SEPARATOR ', '),
+            ''
+        ) AS equipas
+    FROM utilizador u
+    LEFT JOIN acesso_equipa ae ON ae.id_utilizador = u.id_utilizador
+    LEFT JOIN equipa eq ON eq.id_equipa = ae.id_equipa
+    WHERE u.id_clube = ?
+      AND u.tipo_utilizador = 'treinador'
+    GROUP BY u.id_utilizador, u.primeiro_nome, u.`último_nome`, u.email_utilizador
+    ORDER BY u.primeiro_nome, u.`último_nome`
+");
+$stmtTreinadores->bind_param("i", $id_clube);
+$stmtTreinadores->execute();
+$resTreinadores = $stmtTreinadores->get_result();
+
+while ($row = $resTreinadores->fetch_assoc()) {
+    $treinadoresClube[] = $row;
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -72,9 +472,9 @@ $morada = implode(', ', array_filter([
 
 <style>
 :root {
-    --club:   <?= htmlspecialchars($corClube) ?>;
+    --club: <?= htmlspecialchars($corClube) ?>;
     --sidebar-w: 68px;
-    --topbar-h:  64px;
+    --topbar-h: 64px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
@@ -269,6 +669,26 @@ body { background: #f0f2f7; }
 
 .btn-edit svg { width: 16px; height: 16px; color: #555; }
 
+/* ── Alerts ── */
+.alert {
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    margin-bottom: 18px;
+}
+
+.alert-error {
+    background: #fff1f1;
+    color: #b00020;
+    border: 1px solid #ffd0d0;
+}
+
+.alert-success {
+    background: #eefaf1;
+    color: #1f7a3a;
+    border: 1px solid #c8edcf;
+}
+
 /* ── Tabs ── */
 .tabs {
     display: flex;
@@ -369,7 +789,7 @@ body { background: #f0f2f7; }
     letter-spacing: -1px;
 }
 
-/* ── Estado vazio para outras tabs ── */
+/* ── Estado vazio ── */
 .empty-state {
     padding: 60px 20px;
     text-align: center;
@@ -383,6 +803,232 @@ body { background: #f0f2f7; }
     margin-bottom: 12px;
     opacity: .3;
 }
+
+/* ── Header das abas Escalões/Treinadores ── */
+.tab-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+}
+
+.tab-action-row h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #222;
+}
+
+.btn-create {
+    border: none;
+    background: var(--club);
+    color: #fff;
+    padding: 11px 18px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, transform .15s;
+}
+
+.btn-create:hover {
+    opacity: .88;
+    transform: translateY(-1px);
+}
+
+/* ── Tabelas ── */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.data-table th {
+    text-align: left;
+    padding: 12px 14px;
+    background: #f5f5f5;
+    color: #333;
+    font-weight: 700;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+.data-table td {
+    padding: 13px 14px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #444;
+}
+
+.data-table tr:hover td {
+    background: #fafafa;
+}
+
+.muted {
+    color: #aaa;
+    font-style: italic;
+}
+
+/* ══════════════════════════════════
+   MODAIS
+══════════════════════════════════ */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.35);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    padding: 24px;
+}
+
+.modal-backdrop.active {
+    display: flex;
+}
+
+.modal {
+    width: 100%;
+    max-width: 620px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: 0 24px 90px rgba(0,0,0,.28);
+    padding: 28px;
+}
+
+.modal.large {
+    max-width: 760px;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 22px;
+}
+
+.modal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #222;
+}
+
+.modal-close {
+    border: none;
+    background: #f3f3f3;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.edit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 20px;
+}
+
+.edit-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.edit-group.full {
+    grid-column: 1 / -1;
+}
+
+.edit-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+}
+
+.edit-group input,
+.edit-group select {
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 999px;
+    padding: 13px 16px;
+    font-size: 14px;
+    outline: none;
+    background: #f8f8f8;
+}
+
+.edit-group input:focus,
+.edit-group select:focus {
+    border-color: var(--club);
+    background: #fff;
+}
+
+.edit-color-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.edit-color-row input[type="color"] {
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    background: none;
+}
+
+.edit-color-row input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.edit-color-row input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 7px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 26px;
+}
+
+.btn-cancel,
+.btn-save {
+    border: none;
+    border-radius: 999px;
+    padding: 13px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-cancel {
+    background: #eee;
+    color: #333;
+}
+
+.btn-save {
+    background: var(--club);
+    color: #fff;
+}
+
+@media (max-width: 760px) {
+    .edit-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tab-action-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .info-layout {
+        flex-direction: column-reverse;
+    }
+}
 </style>
 </head>
 <body>
@@ -395,6 +1041,7 @@ body { background: #f0f2f7; }
             <span class="topbar-sigla"><?= htmlspecialchars($siglaClube) ?></span>
         <?php endif; ?>
     </div>
+
     <div class="topbar-right">
         <img src="assets/kroos-logo-branco.png" class="topbar-logo" alt="Kroos">
         <button class="topbar-menu" aria-label="Menu" onclick="toggleSidebar()">
@@ -436,7 +1083,7 @@ body { background: #f0f2f7; }
     <div class="card">
 
         <!-- Botão editar -->
-        <button class="btn-edit" title="Editar informações do clube">
+        <button class="btn-edit" type="button" title="Editar informações do clube" onclick="openModal('modalEditarClube')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -444,15 +1091,23 @@ body { background: #f0f2f7; }
             </svg>
         </button>
 
+        <?php if ($erro): ?>
+            <div class="alert alert-error"><?= htmlspecialchars($erro) ?></div>
+        <?php endif; ?>
+
+        <?php if ($sucesso): ?>
+            <div class="alert alert-success"><?= htmlspecialchars($sucesso) ?></div>
+        <?php endif; ?>
+
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab active" onclick="switchTab(this,'tab-info')">Info</button>
-            <button class="tab"        onclick="switchTab(this,'tab-escaloes')">Escalões</button>
-            <button class="tab"        onclick="switchTab(this,'tab-treinadores')">Treinadores</button>
+            <button class="tab <?= $activeTab === 'tab-info' ? 'active' : '' ?>" onclick="switchTab(this,'tab-info')">Info</button>
+            <button class="tab <?= $activeTab === 'tab-escaloes' ? 'active' : '' ?>" onclick="switchTab(this,'tab-escaloes')">Escalões</button>
+            <button class="tab <?= $activeTab === 'tab-treinadores' ? 'active' : '' ?>" onclick="switchTab(this,'tab-treinadores')">Treinadores</button>
         </div>
 
         <!-- ── Painel Info ── -->
-        <div class="tab-panel active" id="tab-info">
+        <div class="tab-panel <?= $activeTab === 'tab-info' ? 'active' : '' ?>" id="tab-info">
             <div class="info-layout">
 
                 <div class="info-fields">
@@ -525,7 +1180,7 @@ body { background: #f0f2f7; }
                     </div>
                     <?php endif; ?>
 
-                </div><!-- /.info-fields -->
+                </div>
 
                 <!-- Logo -->
                 <div class="club-logo-wrap">
@@ -536,50 +1191,355 @@ body { background: #f0f2f7; }
                     <?php endif; ?>
                 </div>
 
-            </div><!-- /.info-layout -->
-        </div><!-- /#tab-info -->
+            </div>
+        </div>
 
         <!-- ── Painel Escalões ── -->
-        <div class="tab-panel" id="tab-escaloes">
-            <div class="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 8v4M12 16h.01"/>
-                </svg>
-                <p>Ainda não há escalões criados.</p>
+        <div class="tab-panel <?= $activeTab === 'tab-escaloes' ? 'active' : '' ?>" id="tab-escaloes">
+
+            <div class="tab-action-row">
+                <h3>Escalões</h3>
+                <button class="btn-create" type="button" onclick="openModal('modalCriarEscalao')">
+                    + Criar Escalão
+                </button>
             </div>
+
+            <?php if (empty($escaloesClube)): ?>
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 8v4M12 16h.01"/>
+                    </svg>
+                    <p>Ainda não há escalões criados.</p>
+                </div>
+            <?php else: ?>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Escalão</th>
+                            <th>Hierarquia</th>
+                            <th>Época</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($escaloesClube as $esc): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($esc['escalão']) ?></td>
+                                <td><?= htmlspecialchars($esc['hierarquia']) ?></td>
+                                <td><?= htmlspecialchars($esc['época'] ?? 'Não definida') ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+
         </div>
 
         <!-- ── Painel Treinadores ── -->
-        <div class="tab-panel" id="tab-treinadores">
-            <div class="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 8v4M12 16h.01"/>
-                </svg>
-                <p>Ainda não há treinadores associados.</p>
+        <div class="tab-panel <?= $activeTab === 'tab-treinadores' ? 'active' : '' ?>" id="tab-treinadores">
+
+            <div class="tab-action-row">
+                <h3>Treinadores</h3>
+                <button class="btn-create" type="button" onclick="openModal('modalCriarTreinador')">
+                    + Criar Treinador
+                </button>
             </div>
+
+            <?php if (empty($treinadoresClube)): ?>
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 8v4M12 16h.01"/>
+                    </svg>
+                    <p>Ainda não há treinadores associados.</p>
+                </div>
+            <?php else: ?>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Email</th>
+                            <th>Equipas associadas</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($treinadoresClube as $treinador): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($treinador['primeiro_nome'] . ' ' . $treinador['último_nome']) ?></td>
+                                <td><?= htmlspecialchars($treinador['email_utilizador']) ?></td>
+                                <td>
+                                    <?= $treinador['equipas']
+                                        ? htmlspecialchars($treinador['equipas'])
+                                        : '<span class="muted">Sem equipa</span>' ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+
         </div>
 
-    </div><!-- /.card -->
-</div><!-- /.main -->
+    </div>
+</div>
+
+<!-- ══ MODAL EDITAR CLUBE ══ -->
+<div class="modal-backdrop" id="modalEditarClube">
+    <div class="modal large">
+        <div class="modal-header">
+            <div class="modal-title">Editar informações do clube</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalEditarClube')">×</button>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="acao" value="editar_clube">
+
+            <div class="edit-grid">
+
+                <div class="edit-group">
+                    <label>Nome do clube</label>
+                    <input type="text" name="nome_clube" value="<?= htmlspecialchars($clube['nome_clube'] ?? '') ?>" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Sigla</label>
+                    <input type="text" name="sigla" maxlength="5" value="<?= htmlspecialchars($clube['sigla'] ?? '') ?>" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Data de fundação</label>
+                    <input type="date" name="data_fundacao" value="<?= htmlspecialchars($clube['data_fundação'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>Estádio</label>
+                    <input type="text" name="nome_estadio" value="<?= htmlspecialchars($clube['nome_estádio'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group full">
+                    <label>Morada</label>
+                    <input type="text" name="sede_morada" value="<?= htmlspecialchars($clube['sede_morada'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>Cidade</label>
+                    <input type="text" name="cidade_clube" value="<?= htmlspecialchars($clube['cidade_clube'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>País</label>
+                    <input type="text" name="pais_clube" value="<?= htmlspecialchars($clube['país_clube'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>Telemóvel</label>
+                    <input type="text" name="telefone_clube" value="<?= htmlspecialchars($clube['telefone_clube'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>Email</label>
+                    <input type="email" name="email_clube" value="<?= htmlspecialchars($clube['email_clube'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>Website</label>
+                    <input type="text" name="website_clube" value="<?= htmlspecialchars($clube['website_clube'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>Presidente</label>
+                    <input type="text" name="presidente_clube" value="<?= htmlspecialchars($clube['presidente_clube'] ?? '') ?>">
+                </div>
+
+                <div class="edit-group">
+                    <label>Cor principal</label>
+                    <div class="edit-color-row">
+                        <input type="color" id="editColorPicker" value="<?= htmlspecialchars($clube['cor'] ?? '#000000') ?>">
+                        <input type="text" id="editColorHex" name="cor" value="<?= htmlspecialchars($clube['cor'] ?? '#000000') ?>" required>
+                    </div>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Alterar logótipo</label>
+                    <input type="file" name="logotipo" accept="image/*">
+                </div>
+
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalEditarClube')">Cancelar</button>
+                <button class="btn-save" type="submit">Guardar alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ MODAL CRIAR ESCALÃO ══ -->
+<div class="modal-backdrop" id="modalCriarEscalao">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Criar escalão</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalCriarEscalao')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="criar_escalao">
+
+            <div class="edit-grid">
+
+                <div class="edit-group">
+                    <label>Escalão</label>
+                    <select name="escalao" required>
+                        <option value="">Selecionar</option>
+                        <?php
+                        $listaEscaloes = [
+                            'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
+                            'S16','S17','S18','S19','S20','S21','S22','S23','Seniores'
+                        ];
+                        foreach ($listaEscaloes as $escalaoOption):
+                        ?>
+                            <option value="<?= $escalaoOption ?>"><?= $escalaoOption ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group">
+                    <label>Hierarquia</label>
+                    <select name="hierarquia" required>
+                        <option value="">Selecionar</option>
+                        <?php foreach (range('A', 'Z') as $letra): ?>
+                            <option value="<?= $letra ?>"><?= $letra ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Época</label>
+                    <select name="id_epoca" required>
+                        <option value="">Selecionar época</option>
+                        <?php foreach ($epocas as $epoca): ?>
+                            <option value="<?= (int)$epoca['id_época'] ?>">
+                                <?= htmlspecialchars($epoca['época']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalCriarEscalao')">Cancelar</button>
+                <button class="btn-save" type="submit">Criar escalão</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ MODAL CRIAR TREINADOR ══ -->
+<div class="modal-backdrop" id="modalCriarTreinador">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Criar treinador</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalCriarTreinador')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="criar_treinador">
+
+            <div class="edit-grid">
+
+                <div class="edit-group">
+                    <label>Primeiro nome</label>
+                    <input type="text" name="primeiro_nome" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Último nome</label>
+                    <input type="text" name="ultimo_nome" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Email</label>
+                    <input type="email" name="email_treinador" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Password inicial</label>
+                    <input type="password" name="password_treinador" required>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Equipa associada</label>
+                    <select name="id_equipa">
+                        <option value="0">Sem equipa por agora</option>
+                        <?php foreach ($escaloesClube as $equipa): ?>
+                            <option value="<?= (int)$equipa['id_equipa'] ?>">
+                                <?= htmlspecialchars($equipa['escalão'] . ' ' . $equipa['hierarquia'] . ' - ' . ($equipa['época'] ?? '')) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalCriarTreinador')">Cancelar</button>
+                <button class="btn-save" type="submit">Criar treinador</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script>
 function switchTab(btn, panelId) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+
     btn.classList.add('active');
     document.getElementById(panelId).classList.add('active');
 }
 
-// Sidebar pin/unpin com o botão do menu (opcional)
+/* Sidebar pin/unpin */
 let sidebarPinned = false;
 function toggleSidebar() {
     sidebarPinned = !sidebarPinned;
     const s = document.getElementById('sidebar');
     s.style.width = sidebarPinned ? '210px' : '';
+}
+
+/* Modais */
+function openModal(id) {
+    document.getElementById(id).classList.add('active');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+document.querySelectorAll('.modal-backdrop').forEach(modal => {
+    modal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.classList.remove('active');
+        }
+    });
+});
+
+/* Sincronizar color picker */
+const editColorPicker = document.getElementById('editColorPicker');
+const editColorHex = document.getElementById('editColorHex');
+
+if (editColorPicker && editColorHex) {
+    editColorPicker.addEventListener('input', () => {
+        editColorHex.value = editColorPicker.value.toUpperCase();
+    });
+
+    editColorHex.addEventListener('input', () => {
+        if (/^#([0-9A-Fa-f]{6})$/.test(editColorHex.value)) {
+            editColorPicker.value = editColorHex.value;
+        }
+    });
 }
 </script>
 
