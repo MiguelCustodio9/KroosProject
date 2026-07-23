@@ -20,6 +20,13 @@ $erro = '';
 $sucesso = '';
 $activeTab = 'tab-info';
 
+$listaEscaloesDisponiveis = [
+    'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
+    'S16','S17','S18','S19','S20','S21','S22','S23','Seniores'
+];
+
+$listaHierarquiasDisponiveis = range('A', 'Z');
+
 /* ══════════════════════════════════
    AÇÕES POST
 ══════════════════════════════════ */
@@ -204,16 +211,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hierarquia = trim($_POST['hierarquia'] ?? '');
         $id_epoca   = (int)($_POST['id_epoca'] ?? 0);
 
-        $escaloesValidos = [
-            'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
-            'S16','S17','S18','S19','S20','S21','S22','S23','Seniores'
-        ];
-
-        $hierarquiasValidas = range('A', 'Z');
-
-        if (!in_array($escalao, $escaloesValidos, true)) {
+        if (!in_array($escalao, $listaEscaloesDisponiveis, true)) {
             $erro = 'Escalão inválido.';
-        } elseif (!in_array($hierarquia, $hierarquiasValidas, true)) {
+        } elseif (!in_array($hierarquia, $listaHierarquiasDisponiveis, true)) {
             $erro = 'Hierarquia inválida.';
         } elseif ($id_epoca <= 0) {
             $erro = 'Seleciona uma época.';
@@ -253,6 +253,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sucesso = 'Escalão criado com sucesso.';
                 } else {
                     $erro = 'Erro ao criar escalão.';
+                }
+            }
+        }
+    }
+
+    /* ── Editar escalão ── */
+    if ($acao === 'editar_escalao') {
+
+        $activeTab = 'tab-escaloes';
+
+        $idEquipa   = (int)($_POST['id_equipa'] ?? 0);
+        $escalao    = trim($_POST['escalao'] ?? '');
+        $hierarquia = trim($_POST['hierarquia'] ?? '');
+        $id_epoca   = (int)($_POST['id_epoca'] ?? 0);
+
+        if ($idEquipa <= 0) {
+            $erro = 'Escalão inválido.';
+        } elseif (!in_array($escalao, $listaEscaloesDisponiveis, true)) {
+            $erro = 'Escalão inválido.';
+        } elseif (!in_array($hierarquia, $listaHierarquiasDisponiveis, true)) {
+            $erro = 'Hierarquia inválida.';
+        } elseif ($id_epoca <= 0) {
+            $erro = 'Seleciona uma época.';
+        } else {
+
+            $stmtCheckEquipa = $conn->prepare("
+                SELECT id_equipa
+                FROM equipa
+                WHERE id_equipa = ?
+                  AND id_clube = ?
+                LIMIT 1
+            ");
+            $stmtCheckEquipa->bind_param("ii", $idEquipa, $id_clube);
+            $stmtCheckEquipa->execute();
+            $equipaAtual = $stmtCheckEquipa->get_result()->fetch_assoc();
+
+            if (!$equipaAtual) {
+                $erro = 'Esse escalão não pertence ao teu clube.';
+            } else {
+
+                $stmtCheckDuplicado = $conn->prepare("
+                    SELECT id_equipa
+                    FROM equipa
+                    WHERE `escalão` = ?
+                      AND hierarquia = ?
+                      AND `id_época` = ?
+                      AND id_clube = ?
+                      AND id_equipa <> ?
+                    LIMIT 1
+                ");
+                $stmtCheckDuplicado->bind_param("ssiii", $escalao, $hierarquia, $id_epoca, $id_clube, $idEquipa);
+                $stmtCheckDuplicado->execute();
+                $duplicado = $stmtCheckDuplicado->get_result()->fetch_assoc();
+
+                if ($duplicado) {
+                    $erro = 'Já existe outro escalão igual nessa época.';
+                } else {
+
+                    $stmtUpdateEscalao = $conn->prepare("
+                        UPDATE equipa
+                        SET `escalão` = ?,
+                            hierarquia = ?,
+                            `id_época` = ?
+                        WHERE id_equipa = ?
+                          AND id_clube = ?
+                    ");
+
+                    $stmtUpdateEscalao->bind_param(
+                        "ssiii",
+                        $escalao,
+                        $hierarquia,
+                        $id_epoca,
+                        $idEquipa,
+                        $id_clube
+                    );
+
+                    if ($stmtUpdateEscalao->execute()) {
+                        $sucesso = 'Escalão atualizado com sucesso.';
+                    } else {
+                        $erro = 'Erro ao atualizar escalão.';
+                    }
                 }
             }
         }
@@ -352,6 +433,150 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+
+    /* ── Editar treinador ── */
+    if ($acao === 'editar_treinador') {
+
+        $activeTab = 'tab-treinadores';
+
+        $idTreinador       = (int)($_POST['id_treinador'] ?? 0);
+        $primeiroNome      = trim($_POST['primeiro_nome'] ?? '');
+        $ultimoNome        = trim($_POST['ultimo_nome'] ?? '');
+        $emailTreinador    = trim($_POST['email_treinador'] ?? '');
+        $novaPassword      = $_POST['nova_password_treinador'] ?? '';
+        $idEquipaTreinador = (int)($_POST['id_equipa'] ?? 0);
+
+        if ($idTreinador <= 0) {
+            $erro = 'Treinador inválido.';
+        } elseif ($primeiroNome === '' || $ultimoNome === '' || $emailTreinador === '') {
+            $erro = 'Preenche os dados obrigatórios do treinador.';
+        } elseif (!filter_var($emailTreinador, FILTER_VALIDATE_EMAIL)) {
+            $erro = 'Email do treinador inválido.';
+        } else {
+
+            $stmtCheckTreinador = $conn->prepare("
+                SELECT id_utilizador
+                FROM utilizador
+                WHERE id_utilizador = ?
+                  AND id_clube = ?
+                  AND tipo_utilizador = 'treinador'
+                LIMIT 1
+            ");
+            $stmtCheckTreinador->bind_param("ii", $idTreinador, $id_clube);
+            $stmtCheckTreinador->execute();
+            $treinadorAtual = $stmtCheckTreinador->get_result()->fetch_assoc();
+
+            if (!$treinadorAtual) {
+                $erro = 'Esse treinador não pertence ao teu clube.';
+            } else {
+
+                $stmtCheckEmail = $conn->prepare("
+                    SELECT id_utilizador
+                    FROM utilizador
+                    WHERE email_utilizador = ?
+                      AND id_utilizador <> ?
+                    LIMIT 1
+                ");
+                $stmtCheckEmail->bind_param("si", $emailTreinador, $idTreinador);
+                $stmtCheckEmail->execute();
+                $emailExiste = $stmtCheckEmail->get_result()->fetch_assoc();
+
+                if ($emailExiste) {
+                    $erro = 'Já existe outro utilizador com esse email.';
+                } else {
+
+                    if ($idEquipaTreinador > 0) {
+                        $stmtCheckEquipa = $conn->prepare("
+                            SELECT id_equipa
+                            FROM equipa
+                            WHERE id_equipa = ?
+                              AND id_clube = ?
+                            LIMIT 1
+                        ");
+                        $stmtCheckEquipa->bind_param("ii", $idEquipaTreinador, $id_clube);
+                        $stmtCheckEquipa->execute();
+                        $equipaValida = $stmtCheckEquipa->get_result()->fetch_assoc();
+
+                        if (!$equipaValida) {
+                            $erro = 'A equipa selecionada não pertence ao teu clube.';
+                        }
+                    }
+
+                    if (!$erro) {
+
+                        if ($novaPassword !== '') {
+                            $stmtUpdateTreinador = $conn->prepare("
+                                UPDATE utilizador
+                                SET primeiro_nome = ?,
+                                    `último_nome` = ?,
+                                    email_utilizador = ?,
+                                    password = ?
+                                WHERE id_utilizador = ?
+                                  AND id_clube = ?
+                                  AND tipo_utilizador = 'treinador'
+                            ");
+
+                            $stmtUpdateTreinador->bind_param(
+                                "ssssii",
+                                $primeiroNome,
+                                $ultimoNome,
+                                $emailTreinador,
+                                $novaPassword,
+                                $idTreinador,
+                                $id_clube
+                            );
+                        } else {
+                            $stmtUpdateTreinador = $conn->prepare("
+                                UPDATE utilizador
+                                SET primeiro_nome = ?,
+                                    `último_nome` = ?,
+                                    email_utilizador = ?
+                                WHERE id_utilizador = ?
+                                  AND id_clube = ?
+                                  AND tipo_utilizador = 'treinador'
+                            ");
+
+                            $stmtUpdateTreinador->bind_param(
+                                "sssii",
+                                $primeiroNome,
+                                $ultimoNome,
+                                $emailTreinador,
+                                $idTreinador,
+                                $id_clube
+                            );
+                        }
+
+                        if ($stmtUpdateTreinador->execute()) {
+
+                            $stmtDeleteAcesso = $conn->prepare("
+                                DELETE ae
+                                FROM acesso_equipa ae
+                                INNER JOIN equipa eq ON eq.id_equipa = ae.id_equipa
+                                WHERE ae.id_utilizador = ?
+                                  AND eq.id_clube = ?
+                            ");
+                            $stmtDeleteAcesso->bind_param("ii", $idTreinador, $id_clube);
+                            $stmtDeleteAcesso->execute();
+
+                            if ($idEquipaTreinador > 0) {
+                                $stmtAcesso = $conn->prepare("
+                                    INSERT INTO acesso_equipa
+                                    (id_equipa, id_utilizador)
+                                    VALUES (?, ?)
+                                ");
+                                $stmtAcesso->bind_param("ii", $idEquipaTreinador, $idTreinador);
+                                $stmtAcesso->execute();
+                            }
+
+                            $sucesso = 'Treinador atualizado com sucesso.';
+                        } else {
+                            $erro = 'Erro ao atualizar treinador.';
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /* ══════════════════════════════════
@@ -442,6 +667,7 @@ $stmtTreinadores = $conn->prepare("
         u.primeiro_nome,
         u.`último_nome`,
         u.email_utilizador,
+        MIN(eq.id_equipa) AS id_equipa_atual,
         COALESCE(
             GROUP_CONCAT(DISTINCT CONCAT(eq.`escalão`, ' ', eq.hierarquia) ORDER BY eq.`escalão`, eq.hierarquia SEPARATOR ', '),
             ''
@@ -543,6 +769,59 @@ body { background: #f0f2f7; }
     height: 2px;
     background: rgba(255,255,255,.85);
     border-radius: 2px;
+}
+
+/* ══════════════════════════════════
+   MENU SUPERIOR DIREITO
+══════════════════════════════════ */
+.topbar-user-menu-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.user-dropdown {
+    position: absolute;
+    top: calc(100% + 16px);
+    right: 0;
+    width: 230px;
+    background: var(--club);
+    display: none;
+    flex-direction: column;
+    border-radius: 0 0 4px 4px;
+    overflow: hidden;
+    box-shadow: 0 14px 34px rgba(0,0,0,.28);
+    z-index: 500;
+}
+
+.user-dropdown.active {
+    display: flex;
+}
+
+.user-dropdown a {
+    min-height: 58px;
+    padding: 0 22px;
+    display: flex;
+    align-items: center;
+    color: #fff;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(0,0,0,.22);
+    transition: background .15s;
+}
+
+.user-dropdown a:hover {
+    background: rgba(0,0,0,.14);
+}
+
+.user-dropdown a.logout-link {
+    color: #ff0000;
+    font-weight: 600;
+}
+
+.user-dropdown a.logout-link:hover {
+    background: rgba(0,0,0,.18);
 }
 
 /* ══════════════════════════════════
@@ -648,7 +927,7 @@ body { background: #f0f2f7; }
     position: relative;
 }
 
-/* ── Botão de edição ── */
+/* ── Botão de edição do clube ── */
 .btn-edit {
     position: absolute;
     top: 24px;
@@ -668,6 +947,38 @@ body { background: #f0f2f7; }
 .btn-edit:hover { background: #f5f5f5; border-color: #bbb; }
 
 .btn-edit svg { width: 16px; height: 16px; color: #555; }
+
+/* ── Botões de editar nas linhas ── */
+.actions-col {
+    width: 80px;
+    text-align: right;
+}
+
+.actions-cell {
+    text-align: right;
+}
+
+.btn-row-edit {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1.5px solid #ddd;
+    background: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    font-size: 15px;
+    font-weight: 700;
+    transition: background .15s, border-color .15s, color .15s;
+}
+
+.btn-row-edit:hover {
+    background: #f5f5f5;
+    border-color: #bbb;
+    color: var(--club);
+}
 
 /* ── Alerts ── */
 .alert {
@@ -1044,9 +1355,30 @@ body { background: #f0f2f7; }
 
     <div class="topbar-right">
         <img src="assets/kroos-logo-branco.png" class="topbar-logo" alt="Kroos">
-        <button class="topbar-menu" aria-label="Menu" onclick="toggleSidebar()">
-            <span></span><span></span><span></span>
-        </button>
+
+        <div class="topbar-user-menu-wrap">
+            <button class="topbar-menu" type="button" aria-label="Menu" onclick="toggleUserMenu(event)">
+                <span></span><span></span><span></span>
+            </button>
+
+            <div class="user-dropdown" id="userDropdown">
+                <a href="#">
+                    <span>Perfil</span>
+                </a>
+
+                <a href="#">
+                    <span>Clube</span>
+                </a>
+
+                <a href="#">
+                    <span>Notificações</span>
+                </a>
+
+                <a href="logout.php" class="logout-link">
+                    <span>Terminar sessão</span>
+                </a>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1082,8 +1414,15 @@ body { background: #f0f2f7; }
 <div class="main">
     <div class="card">
 
-        <!-- Botão editar -->
-        <button class="btn-edit" type="button" title="Editar informações do clube" onclick="openModal('modalEditarClube')">
+        <!-- Botão editar clube: só aparece na aba Info -->
+        <button
+            id="btnEditClube"
+            class="btn-edit"
+            type="button"
+            title="Editar informações do clube"
+            onclick="openModal('modalEditarClube')"
+            style="<?= $activeTab === 'tab-info' ? '' : 'display:none;' ?>"
+        >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -1220,6 +1559,7 @@ body { background: #f0f2f7; }
                             <th>Escalão</th>
                             <th>Hierarquia</th>
                             <th>Época</th>
+                            <th class="actions-col">Editar</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1228,6 +1568,16 @@ body { background: #f0f2f7; }
                                 <td><?= htmlspecialchars($esc['escalão']) ?></td>
                                 <td><?= htmlspecialchars($esc['hierarquia']) ?></td>
                                 <td><?= htmlspecialchars($esc['época'] ?? 'Não definida') ?></td>
+                                <td class="actions-cell">
+                                    <button
+                                        class="btn-row-edit"
+                                        type="button"
+                                        title="Editar escalão"
+                                        onclick="openModal('modalEditarEscalao<?= (int)$esc['id_equipa'] ?>')"
+                                    >
+                                        ✎
+                                    </button>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -1262,6 +1612,7 @@ body { background: #f0f2f7; }
                             <th>Nome</th>
                             <th>Email</th>
                             <th>Equipas associadas</th>
+                            <th class="actions-col">Editar</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1273,6 +1624,16 @@ body { background: #f0f2f7; }
                                     <?= $treinador['equipas']
                                         ? htmlspecialchars($treinador['equipas'])
                                         : '<span class="muted">Sem equipa</span>' ?>
+                                </td>
+                                <td class="actions-cell">
+                                    <button
+                                        class="btn-row-edit"
+                                        type="button"
+                                        title="Editar treinador"
+                                        onclick="openModal('modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>')"
+                                    >
+                                        ✎
+                                    </button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -1393,13 +1754,7 @@ body { background: #f0f2f7; }
                     <label>Escalão</label>
                     <select name="escalao" required>
                         <option value="">Selecionar</option>
-                        <?php
-                        $listaEscaloes = [
-                            'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
-                            'S16','S17','S18','S19','S20','S21','S22','S23','Seniores'
-                        ];
-                        foreach ($listaEscaloes as $escalaoOption):
-                        ?>
+                        <?php foreach ($listaEscaloesDisponiveis as $escalaoOption): ?>
                             <option value="<?= $escalaoOption ?>"><?= $escalaoOption ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -1409,7 +1764,7 @@ body { background: #f0f2f7; }
                     <label>Hierarquia</label>
                     <select name="hierarquia" required>
                         <option value="">Selecionar</option>
-                        <?php foreach (range('A', 'Z') as $letra): ?>
+                        <?php foreach ($listaHierarquiasDisponiveis as $letra): ?>
                             <option value="<?= $letra ?>"><?= $letra ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -1492,32 +1847,219 @@ body { background: #f0f2f7; }
     </div>
 </div>
 
+<!-- ══ MODAIS EDITAR ESCALÕES ══ -->
+<?php foreach ($escaloesClube as $esc): ?>
+<div class="modal-backdrop" id="modalEditarEscalao<?= (int)$esc['id_equipa'] ?>">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Editar escalão</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalEditarEscalao<?= (int)$esc['id_equipa'] ?>')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="editar_escalao">
+            <input type="hidden" name="id_equipa" value="<?= (int)$esc['id_equipa'] ?>">
+
+            <div class="edit-grid">
+
+                <div class="edit-group">
+                    <label>Escalão</label>
+                    <select name="escalao" required>
+                        <?php foreach ($listaEscaloesDisponiveis as $escalaoOption): ?>
+                            <option
+                                value="<?= $escalaoOption ?>"
+                                <?= $esc['escalão'] === $escalaoOption ? 'selected' : '' ?>
+                            >
+                                <?= $escalaoOption ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group">
+                    <label>Hierarquia</label>
+                    <select name="hierarquia" required>
+                        <?php foreach ($listaHierarquiasDisponiveis as $letra): ?>
+                            <option
+                                value="<?= $letra ?>"
+                                <?= $esc['hierarquia'] === $letra ? 'selected' : '' ?>
+                            >
+                                <?= $letra ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Época</label>
+                    <select name="id_epoca" required>
+                        <?php foreach ($epocas as $epoca): ?>
+                            <option
+                                value="<?= (int)$epoca['id_época'] ?>"
+                                <?= (int)$esc['id_época'] === (int)$epoca['id_época'] ? 'selected' : '' ?>
+                            >
+                                <?= htmlspecialchars($epoca['época']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalEditarEscalao<?= (int)$esc['id_equipa'] ?>')">Cancelar</button>
+                <button class="btn-save" type="submit">Guardar alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endforeach; ?>
+
+<!-- ══ MODAIS EDITAR TREINADORES ══ -->
+<?php foreach ($treinadoresClube as $treinador): ?>
+<div class="modal-backdrop" id="modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Editar treinador</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="editar_treinador">
+            <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
+
+            <div class="edit-grid">
+
+                <div class="edit-group">
+                    <label>Primeiro nome</label>
+                    <input
+                        type="text"
+                        name="primeiro_nome"
+                        value="<?= htmlspecialchars($treinador['primeiro_nome']) ?>"
+                        required
+                    >
+                </div>
+
+                <div class="edit-group">
+                    <label>Último nome</label>
+                    <input
+                        type="text"
+                        name="ultimo_nome"
+                        value="<?= htmlspecialchars($treinador['último_nome']) ?>"
+                        required
+                    >
+                </div>
+
+                <div class="edit-group full">
+                    <label>Email</label>
+                    <input
+                        type="email"
+                        name="email_treinador"
+                        value="<?= htmlspecialchars($treinador['email_utilizador']) ?>"
+                        required
+                    >
+                </div>
+
+                <div class="edit-group full">
+                    <label>Nova password</label>
+                    <input
+                        type="password"
+                        name="nova_password_treinador"
+                        placeholder="Deixa vazio para manter a password atual"
+                    >
+                </div>
+
+                <div class="edit-group full">
+                    <label>Equipa associada</label>
+                    <select name="id_equipa">
+                        <option value="0" <?= empty($treinador['id_equipa_atual']) ? 'selected' : '' ?>>
+                            Sem equipa
+                        </option>
+
+                        <?php foreach ($escaloesClube as $equipa): ?>
+                            <option
+                                value="<?= (int)$equipa['id_equipa'] ?>"
+                                <?= (int)($treinador['id_equipa_atual'] ?? 0) === (int)$equipa['id_equipa'] ? 'selected' : '' ?>
+                            >
+                                <?= htmlspecialchars($equipa['escalão'] . ' ' . $equipa['hierarquia'] . ' - ' . ($equipa['época'] ?? '')) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>')">Cancelar</button>
+                <button class="btn-save" type="submit">Guardar alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endforeach; ?>
+
 <script>
+/* Tabs */
 function switchTab(btn, panelId) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
 
     btn.classList.add('active');
-    document.getElementById(panelId).classList.add('active');
+
+    const panel = document.getElementById(panelId);
+    if (panel) {
+        panel.classList.add('active');
+    }
+
+    const btnEditClube = document.getElementById('btnEditClube');
+
+    if (btnEditClube) {
+        btnEditClube.style.display = panelId === 'tab-info' ? 'flex' : 'none';
+    }
 }
 
-/* Sidebar pin/unpin */
-let sidebarPinned = false;
-function toggleSidebar() {
-    sidebarPinned = !sidebarPinned;
-    const s = document.getElementById('sidebar');
-    s.style.width = sidebarPinned ? '210px' : '';
+/* Menu superior direito */
+function toggleUserMenu(event) {
+    event.stopPropagation();
+
+    const menu = document.getElementById('userDropdown');
+    if (menu) {
+        menu.classList.toggle('active');
+    }
+}
+
+/* Fechar menu superior ao clicar fora */
+document.addEventListener('click', function () {
+    const menu = document.getElementById('userDropdown');
+    if (menu) {
+        menu.classList.remove('active');
+    }
+});
+
+/* Impedir que clicar dentro do menu o feche imediatamente */
+const userDropdown = document.getElementById('userDropdown');
+if (userDropdown) {
+    userDropdown.addEventListener('click', function (event) {
+        event.stopPropagation();
+    });
 }
 
 /* Modais */
 function openModal(id) {
-    document.getElementById(id).classList.add('active');
+    const modal = document.getElementById(id);
+    if (modal) {
+        modal.classList.add('active');
+    }
 }
 
 function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
+    const modal = document.getElementById(id);
+    if (modal) {
+        modal.classList.remove('active');
+    }
 }
 
+/* Fechar modal ao clicar fora */
 document.querySelectorAll('.modal-backdrop').forEach(modal => {
     modal.addEventListener('click', function(e) {
         if (e.target === this) {

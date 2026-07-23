@@ -4,7 +4,7 @@
  */
 
 session_start();
-
+session_unset();
 // Destruir a sessão
 session_destroy();
 
