@@ -941,6 +941,11 @@ body { background: #f0f2f7; }
     box-shadow: 0 8px 22px rgba(23, 42, 88, 0.08);
     overflow: hidden;
     margin-bottom: 28px;
+    display: none;
+}
+
+.notifications-shell.visible {
+    display: block;
 }
 
 .notifications-header {
@@ -1512,15 +1517,15 @@ body { background: #f0f2f7; }
             </button>
 
             <div class="user-dropdown" id="userDropdown">
-                <a href="#">
+                <a href="#" onclick="event.preventDefault(); showDashboard(); toggleUserMenu(event);">
                     <span>Perfil</span>
                 </a>
 
-                <a href="#">
+                <a href="#" onclick="event.preventDefault(); showDashboard(); toggleUserMenu(event);">
                     <span>Clube</span>
                 </a>
 
-                <a href="#">
+                <a href="#" onclick="event.preventDefault(); showNotificationsScreen(); toggleUserMenu(event);">
                     <span>Notificações</span>
                 </a>
 
@@ -1562,9 +1567,9 @@ body { background: #f0f2f7; }
 
 <!-- ══ MAIN ══ -->
 <div class="main">
-    <div class="card">
+    <div class="card" id="dashboardCard">
 
-        <div class="notifications-shell" aria-label="Painel de notificações">
+        <div class="notifications-shell" id="notificationsScreen" aria-label="Painel de notificações">
             <div class="notifications-header">
                 <div class="notifications-brand">Kroos</div>
                 <button class="notifications-menu" type="button" aria-label="Menu">☰</button>
@@ -2239,6 +2244,28 @@ function toggleUserMenu(event) {
     const menu = document.getElementById('userDropdown');
     if (menu) {
         menu.classList.toggle('active');
+    }
+}
+
+function showNotificationsScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    const notifications = document.getElementById('notificationsScreen');
+
+    if (dashboard) dashboard.style.display = 'none';
+    if (notifications) {
+        notifications.style.display = 'block';
+        notifications.classList.add('visible');
+    }
+}
+
+function showDashboard() {
+    const dashboard = document.getElementById('dashboardCard');
+    const notifications = document.getElementById('notificationsScreen');
+
+    if (dashboard) dashboard.style.display = 'block';
+    if (notifications) {
+        notifications.style.display = 'none';
+        notifications.classList.remove('visible');
     }
 }
 
