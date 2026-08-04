@@ -1026,6 +1026,77 @@ ALTER TABLE `utilizador`
   REFERENCES `clube` (`id_clube`)
   ON DELETE SET NULL
   ON UPDATE CASCADE;
+
+-- --------------------------------------------------------
+-- Dados de teste mínimos para validação da aplicação
+-- --------------------------------------------------------
+
+INSERT INTO `clube` (`nome_clube`, `sigla`, `logotipo`, `cor`, `data_fundação`, `sede_morada`, `país_clube`, `cidade_clube`, `telefone_clube`, `email_clube`, `website_clube`, `presidente_clube`, `instagram_clube`, `facebook_clube`, `youtube_clube`, `twitter_clube`, `tiktok_clube`, `código_clube`)
+VALUES (
+  'Clube de Teste',
+  'CTS',
+  0x89504E470D0A1A0A,
+  '#123456',
+  '2020-01-15',
+  'Rua de Teste, 123',
+  'Portugal',
+  'Porto',
+  '+351 912 345 678',
+  'teste@clube.pt',
+  'https://www.clubedeteste.pt',
+  'Presidente Teste',
+  '@clubedeteste',
+  '@clubedeteste',
+  '@clubedeteste',
+  '@clubedeteste',
+  '@clubedeteste',
+  'TEST01'
+) ON DUPLICATE KEY UPDATE `nome_clube` = VALUES(`nome_clube`);
+
+SET @id_clube := (SELECT `id_clube` FROM `clube` WHERE `código_clube` = 'TEST01' LIMIT 1);
+
+INSERT INTO `equipa` (`escalão`, `hierarquia`, `id_época`, `id_clube`)
+VALUES ('S11', 'A', 1, @id_clube)
+ON DUPLICATE KEY UPDATE `hierarquia` = VALUES(`hierarquia`);
+
+SET @id_equipa := (SELECT `id_equipa` FROM `equipa` WHERE `id_clube` = @id_clube AND `escalão` = 'S11' AND `hierarquia` = 'A' LIMIT 1);
+
+INSERT INTO `utilizador` (`nome_utilizador`, `foto_perfil`, `email_utilizador`, `telefone_utilizador`, `primeiro_nome`, `último_nome`, `data_nascimento`, `password`, `tipo_utilizador`, `id_clube`)
+VALUES
+  ('admin_sistema', NULL, 'admin@test.local', '+351 900 000 001', 'Admin', 'Sistema', '1990-05-10', '123456', 'admin', NULL),
+  ('admin_clube_teste', NULL, 'adminclube@test.local', '+351 900 000 002', 'Ana', 'Silva', '1992-03-19', '123456', 'admin_clube', @id_clube),
+  ('treinador_teste', NULL, 'treinador@test.local', '+351 900 000 003', 'Rui', 'Costa', '1988-11-04', '123456', 'treinador', @id_clube),
+  ('jogador_teste', NULL, 'jogador@test.local', '+351 900 000 004', 'João', 'Pereira', '2004-02-22', '123456', 'jogador', @id_clube)
+ON DUPLICATE KEY UPDATE `email_utilizador` = VALUES(`email_utilizador`);
+
+SET @id_admin_clube := (SELECT `id_utilizador` FROM `utilizador` WHERE `email_utilizador` = 'adminclube@test.local' LIMIT 1);
+SET @id_treinador := (SELECT `id_utilizador` FROM `utilizador` WHERE `email_utilizador` = 'treinador@test.local' LIMIT 1);
+
+INSERT INTO `acesso_equipa` (`id_equipa`, `id_utilizador`)
+VALUES (@id_equipa, @id_admin_clube), (@id_equipa, @id_treinador)
+ON DUPLICATE KEY UPDATE `id_utilizador` = VALUES(`id_utilizador`);
+
+INSERT INTO `jogadores` (`foto_jogador`, `nome_completo`, `alcunha_jogador`, `número_favorito`, `posição_principal`, `posição_secundária`, `data_nascimento`, `local_nascimento`, `nacionalidade`, `país_nascimento`, `pé_preferencial`, `altura`, `peso`, `instagram`, `facebook`, `twitter`, `id_equipa`)
+VALUES (
+  0x89504E470D0A1A0A,
+  'João Pereira',
+  'JP',
+  '10',
+  'Médio Ofensivo',
+  'Extremo Direito',
+  '2004-02-22',
+  'Porto',
+  'Portuguesa',
+  'Portugal',
+  'Direito',
+  '178',
+  '70',
+  '@jppereira',
+  '@jppereira',
+  '@jppereira',
+  @id_equipa
+)
+ON DUPLICATE KEY UPDATE `nome_completo` = VALUES(`nome_completo`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

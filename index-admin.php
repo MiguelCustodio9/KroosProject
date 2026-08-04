@@ -927,11 +927,161 @@ body { background: #f0f2f7; }
     position: relative;
 }
 
+.card-header-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+}
+
+/* ── Painel de notificações ── */
+.notifications-shell {
+    background: #fff;
+    border-radius: 18px;
+    border: 1px solid #dfe3ee;
+    box-shadow: 0 8px 22px rgba(23, 42, 88, 0.08);
+    overflow: hidden;
+    margin-bottom: 28px;
+}
+
+.notifications-header {
+    background: var(--club);
+    min-height: 78px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 22px 0 18px;
+    color: #fff;
+}
+
+.notifications-brand {
+    font-size: clamp(1.4rem, 2vw, 2.3rem);
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    line-height: 1;
+}
+
+.notifications-menu {
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(255,255,255,0.38);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font-size: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.notifications-card {
+    background: #f5f7fb;
+    border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+.notifications-tabs {
+    display: flex;
+    gap: 18px;
+    padding: 16px 20px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    background: #fff;
+}
+
+.notification-tab {
+    border: none;
+    background: transparent;
+    padding: 12px 12px 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #6a7280;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+}
+
+.notification-tab.active {
+    color: var(--club);
+    border-bottom-color: var(--club);
+}
+
+.notifications-list {
+    background: #f5f7fb;
+    padding: 0 0 8px;
+}
+
+.notification-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid rgba(16, 24, 40, 0.08);
+    background: transparent;
+}
+
+.notification-row:last-child {
+    border-bottom: none;
+}
+
+.notification-row.unread {
+    background: rgba(255,255,255,0.55);
+}
+
+.notification-row.read {
+    background: rgba(203, 209, 221, 0.35);
+}
+
+.notification-label {
+    font-size: 16px;
+    font-weight: 500;
+    color: #1f2a37;
+}
+
+.notification-row.read .notification-label {
+    color: #7b8596;
+    font-weight: 400;
+}
+
+.notification-check {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid rgba(20, 62, 148, 0.8);
+    background: rgba(255,255,255,0.8);
+    color: var(--club);
+    font-size: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.notification-row.read .notification-check {
+    background: rgba(20, 62, 148, 0.08);
+    border-color: rgba(20, 62, 148, 0.55);
+    color: rgba(20, 62, 148, 0.6);
+}
+
+.notification-row.unread .notification-check {
+    background: #fff;
+    border-color: var(--club);
+    color: var(--club);
+}
+
+@media (max-width: 760px) {
+    .notifications-tabs {
+        gap: 10px;
+        overflow-x: auto;
+    }
+
+    .notification-label {
+        font-size: 14px;
+    }
+}
+
 /* ── Botão de edição do clube ── */
 .btn-edit {
-    position: absolute;
-    top: 24px;
-    right: 28px;
+    position: static;
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -1414,21 +1564,67 @@ body { background: #f0f2f7; }
 <div class="main">
     <div class="card">
 
-        <!-- Botão editar clube: só aparece na aba Info -->
-        <button
-            id="btnEditClube"
-            class="btn-edit"
-            type="button"
-            title="Editar informações do clube"
-            onclick="openModal('modalEditarClube')"
-            style="<?= $activeTab === 'tab-info' ? '' : 'display:none;' ?>"
-        >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-        </button>
+        <div class="notifications-shell" aria-label="Painel de notificações">
+            <div class="notifications-header">
+                <div class="notifications-brand">Kroos</div>
+                <button class="notifications-menu" type="button" aria-label="Menu">☰</button>
+            </div>
+
+            <div class="notifications-card">
+                <div class="notifications-tabs">
+                    <button class="notification-tab active" type="button">Geral</button>
+                    <button class="notification-tab" type="button">Lidas</button>
+                    <button class="notification-tab" type="button">Por ler</button>
+                </div>
+
+                <div class="notifications-list">
+                    <div class="notification-row unread">
+                        <span class="notification-label">Notificação 1</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row unread">
+                        <span class="notification-label">Notificação 2</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row read">
+                        <span class="notification-label">Notificação 3</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row unread">
+                        <span class="notification-label">Notificação 4</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row read">
+                        <span class="notification-label">Notificação 5</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row unread">
+                        <span class="notification-label">Notificação 6</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row read">
+                        <span class="notification-label">Notificação 7</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row unread">
+                        <span class="notification-label">Notificação 8</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row read">
+                        <span class="notification-label">Notificação 9</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row unread">
+                        <span class="notification-label">Notificação 10</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                    <div class="notification-row read">
+                        <span class="notification-label">Notificação 11</span>
+                        <span class="notification-check">✓</span>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <?php if ($erro): ?>
             <div class="alert alert-error"><?= htmlspecialchars($erro) ?></div>
@@ -1437,6 +1633,24 @@ body { background: #f0f2f7; }
         <?php if ($sucesso): ?>
             <div class="alert alert-success"><?= htmlspecialchars($sucesso) ?></div>
         <?php endif; ?>
+
+        <div class="card-header-actions">
+            <!-- Botão editar clube: só aparece na aba Info -->
+            <button
+                id="btnEditClube"
+                class="btn-edit"
+                type="button"
+                title="Editar informações do clube"
+                onclick="openModal('modalEditarClube')"
+                style="<?= $activeTab === 'tab-info' ? '' : 'display:none;' ?>"
+            >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+            </button>
+        </div>
 
         <!-- Tabs -->
         <div class="tabs">
