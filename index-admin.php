@@ -949,34 +949,27 @@ body { background: #f0f2f7; }
 }
 
 .profile-header {
-    background: var(--club);
-    min-height: 78px;
+    background: #f4f6fb;
+    border-bottom: 1px solid #dfe3ee;
+    min-height: 74px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 22px 0 18px;
-    color: #fff;
+    color: #1c2d4f;
 }
 
-.profile-brand {
-    font-size: clamp(1.4rem, 2vw, 2.3rem);
+.profile-title {
+    font-size: clamp(1.2rem, 2vw, 1.8rem);
     font-weight: 800;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.02em;
     line-height: 1;
 }
 
-.profile-menu {
-    width: 38px;
-    height: 38px;
-    border: 1px solid rgba(255,255,255,0.38);
-    border-radius: 10px;
-    background: rgba(255,255,255,0.08);
-    color: #fff;
-    font-size: 26px;
+.profile-header-actions {
     display: flex;
     align-items: center;
-    justify-content: center;
-    cursor: pointer;
+    gap: 10px;
 }
 
 .profile-panel {
@@ -1013,22 +1006,24 @@ body { background: #f0f2f7; }
     letter-spacing: 0.04em;
 }
 
-.profile-field .value-box {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.profile-field .profile-input {
+    width: 100%;
     min-height: 56px;
     padding: 12px 16px;
     border-radius: 16px;
-    background: linear-gradient(135deg, rgba(48, 71, 172, 0.95), rgba(42, 62, 154, 0.95));
-    color: #fff;
+    border: 1px solid #d9e0f0;
+    background: #fff;
+    color: #1f2b3d;
     font-weight: 600;
     font-size: 15px;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    box-shadow: inset 0 1px 2px rgba(16, 24, 40, 0.02);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.profile-field .profile-input:focus {
+    outline: none;
+    border-color: rgba(48, 71, 172, 0.9);
+    box-shadow: 0 0 0 4px rgba(48, 71, 172, 0.12);
 }
 
 .profile-avatar-wrap {
@@ -1071,6 +1066,29 @@ body { background: #f0f2f7; }
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
+}
+
+.profile-save-button {
+    border: none;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(48, 71, 172, 0.95), rgba(42, 62, 154, 0.95));
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px 22px;
+    cursor: pointer;
+    transition: transform .15s ease, opacity .15s ease;
+}
+
+.profile-save-button:hover {
+    opacity: .96;
+    transform: translateY(-1px);
+}
+
+.profile-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 18px;
 }
 
 @media (max-width: 820px) {
@@ -1721,49 +1739,57 @@ body { background: #f0f2f7; }
 
         <div class="profile-shell" id="profileScreen" aria-label="Painel de perfil">
             <div class="profile-header">
-                <div class="profile-brand">Kroos</div>
-                <button class="profile-menu" type="button" aria-label="Menu">☰</button>
+                <div class="profile-title">Perfil</div>
+                <div class="profile-header-actions">
+                    <button class="profile-save-button" type="button" id="saveProfileBtn">Salvar alterações</button>
+                </div>
             </div>
 
             <div class="profile-panel">
-                <div class="profile-content">
-                    <div class="profile-grid">
-                        <div class="profile-field">
-                            <label>Nome Utilizador</label>
-                            <div class="value-box">miguel.custodio</div>
+                <form id="profileForm" onsubmit="return false;">
+                    <div class="profile-content">
+                        <div class="profile-grid">
+                            <div class="profile-field">
+                                <label>Nome Utilizador</label>
+                                <input class="profile-input" type="text" value="miguel.custodio" name="nome_utilizador">
+                            </div>
+
+                            <div class="profile-field">
+                                <label>Email</label>
+                                <input class="profile-input" type="email" value="miguel.custodio@ipcbcampus.pt" name="email">
+                            </div>
+
+                            <div class="profile-field">
+                                <label>Primeiro Nome</label>
+                                <input class="profile-input" type="text" value="Miguel" name="primeiro_nome">
+                            </div>
+
+                            <div class="profile-field">
+                                <label>Nº de Telemóvel</label>
+                                <input class="profile-input" type="tel" value="960000000" name="telemovel">
+                            </div>
+
+                            <div class="profile-field">
+                                <label>Último Nome</label>
+                                <input class="profile-input" type="text" value="Custódio" name="ultimo_nome">
+                            </div>
+
+                            <div class="profile-field">
+                                <label>Data de Nascimento</label>
+                                <input class="profile-input" type="date" value="1990-01-27" name="data_nascimento">
+                            </div>
                         </div>
 
-                        <div class="profile-field">
-                            <label>Email</label>
-                            <div class="value-box">miguel.custodio@ipcbcampus.pt</div>
-                        </div>
-
-                        <div class="profile-field">
-                            <label>Primeiro Nome</label>
-                            <div class="value-box">Miguel</div>
-                        </div>
-
-                        <div class="profile-field">
-                            <label>Nº de Telemóvel</label>
-                            <div class="value-box">960000000</div>
-                        </div>
-
-                        <div class="profile-field">
-                            <label>Último Nome</label>
-                            <div class="value-box">Custódio</div>
-                        </div>
-
-                        <div class="profile-field">
-                            <label>Data de Nascimento</label>
-                            <div class="value-box">27/01/1990</div>
+                        <div class="profile-avatar-wrap">
+                            <div class="profile-avatar">👤</div>
+                            <button class="profile-avatar-button" type="button">Editar Foto de Perfil</button>
                         </div>
                     </div>
 
-                    <div class="profile-avatar-wrap">
-                        <div class="profile-avatar">👤</div>
-                        <button class="profile-avatar-button" type="button">Editar Foto de Perfil</button>
+                    <div class="profile-form-actions">
+                        <button class="profile-save-button" type="submit" id="submitProfileBtn">Salvar alterações</button>
                     </div>
-                </div>
+                </form>
             </div>
         </div>
 
@@ -2513,6 +2539,37 @@ function showDashboard() {
         notifications.style.display = 'none';
         notifications.classList.remove('visible');
     }
+}
+
+function saveProfileChanges() {
+    const form = document.getElementById('profileForm');
+    if (!form) return;
+
+    const submitBtn = document.getElementById('submitProfileBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Guardado';
+    }
+
+    setTimeout(() => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Salvar alterações';
+        }
+    }, 800);
+}
+
+const saveProfileBtn = document.getElementById('saveProfileBtn');
+if (saveProfileBtn) {
+    saveProfileBtn.addEventListener('click', saveProfileChanges);
+}
+
+const profileForm = document.getElementById('profileForm');
+if (profileForm) {
+    profileForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        saveProfileChanges();
+    });
 }
 
 /* Fechar menu superior ao clicar fora */
