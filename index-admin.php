@@ -35,6 +35,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $acao = $_POST['acao'] ?? '';
 
+    if ($acao === 'editar_perfil') {
+        $nomeUtilizador = trim($_POST['nome_utilizador'] ?? '');
+        $emailUtilizador = trim($_POST['email'] ?? '');
+        $primeiroNome = trim($_POST['primeiro_nome'] ?? '');
+        $ultimoNome = trim($_POST['ultimo_nome'] ?? '');
+        $telefoneUtilizador = trim($_POST['telemovel'] ?? '');
+        $dataNascimento = trim($_POST['data_nascimento'] ?? '');
+
+        if ($nomeUtilizador === '' || $emailUtilizador === '' || $primeiroNome === '' || $ultimoNome === '') {
+            $erro = 'Preenche todos os campos obrigatórios do perfil.';
+        } elseif (!filter_var($emailUtilizador, FILTER_VALIDATE_EMAIL)) {
+            $erro = 'O email do perfil não é válido.';
+        } else {
+            $stmtCheckPerfilEmail = $conn->prepare("
+                SELECT id_utilizador
+                FROM utilizador
+                WHERE email_utilizador = ?
+                  AND id_utilizador <> ?
+                LIMIT 1
+            ");
+            $stmtCheckPerfilEmail->bind_param("si", $emailUtilizador, $id_utilizador);
+            $stmtCheckPerfilEmail->execute();
+            $perfilEmailExiste = $stmtCheckPerfilEmail->get_result()->fetch_assoc();
+
+            if ($perfilEmailExiste) {
+                $erro = 'Já existe outro utilizador com este email.';
+            } else {
+                $stmtUpdatePerfil = $conn->prepare("
+                    UPDATE utilizador
+                    SET nome_utilizador = ?,
+                        email_utilizador = ?,
+                        telefone_utilizador = NULLIF(?, ''),
+                        primeiro_nome = ?,
+                        `último_nome` = ?,
+                        data_nascimento = NULLIF(?, '')
+                    WHERE id_utilizador = ?
+                      AND id_clube = ?
+                ");
+
+                $stmtUpdatePerfil->bind_param(
+                    "ssssssii",
+                    $nomeUtilizador,
+                    $emailUtilizador,
+                    $telefoneUtilizador,
+                    $primeiroNome,
+                    $ultimoNome,
+                    $dataNascimento,
+                    $id_utilizador,
+                    $id_clube
+                );
+
+                if (!$stmtUpdatePerfil->execute()) {
+                    $erro = 'Erro ao guardar as alterações do perfil.';
+                } else {
+                    $sucesso = 'Perfil atualizado com sucesso.';
+                }
+            }
+        }
+    }
+
+    if ($acao === 'marcar_notificacao_lida') {
+        $idNotificacao = (int)($_POST['id_notificacao'] ?? 0);
+
+        if ($idNotificacao > 0) {
+            $stmtMarcaLida = $conn->prepare("
+                UPDATE notificacao
+                SET estado = 'Lida',
+                    lida_em = NOW()
+                WHERE id_notificacao = ?
+                  AND id_utilizador = ?
+            ");
+            $stmtMarcaLida->bind_param("ii", $idNotificacao, $id_utilizador);
+            $stmtMarcaLida->execute();
+        }
+
+        exit;
+    }
+
     /* ── Editar informações do clube ── */
     if ($acao === 'editar_clube') {
 
@@ -686,6 +764,38 @@ $resTreinadores = $stmtTreinadores->get_result();
 
 while ($row = $resTreinadores->fetch_assoc()) {
     $treinadoresClube[] = $row;
+}
+
+/* ── Buscar perfil do utilizador atual ── */
+$perfilUtilizador = [];
+$stmtPerfil = $conn->prepare("
+    SELECT nome_utilizador, email_utilizador, telefone_utilizador,
+           primeiro_nome, `último_nome`, data_nascimento
+    FROM utilizador
+    WHERE id_utilizador = ?
+      AND id_clube = ?
+    LIMIT 1
+");
+$stmtPerfil->bind_param("ii", $id_utilizador, $id_clube);
+$stmtPerfil->execute();
+$perfilUtilizador = $stmtPerfil->get_result()->fetch_assoc() ?: [];
+
+/* ── Buscar notificações do utilizador ── */
+$notificacoesUtilizador = [];
+$stmtNotificacoes = $conn->prepare("
+    SELECT id_notificacao, titulo, mensagem, tipo, estado, criada_em, lida_em, link_acao
+    FROM notificacao
+    WHERE id_utilizador = ?
+      AND (id_clube = ? OR id_clube IS NULL)
+    ORDER BY criada_em DESC
+    LIMIT 20
+");
+$stmtNotificacoes->bind_param("ii", $id_utilizador, $id_clube);
+$stmtNotificacoes->execute();
+$resNotificacoes = $stmtNotificacoes->get_result();
+
+while ($row = $resNotificacoes->fetch_assoc()) {
+    $notificacoesUtilizador[] = $row;
 }
 ?>
 <!DOCTYPE html>
@@ -1743,37 +1853,38 @@ body { background: #f0f2f7; }
             </div>
 
             <div class="profile-panel">
-                <form id="profileForm" onsubmit="return false;">
+                <form id="profileForm" method="post" action="">
+                    <input type="hidden" name="acao" value="editar_perfil">
                     <div class="profile-content">
                         <div class="profile-grid">
                             <div class="profile-field">
                                 <label>Nome Utilizador</label>
-                                <input class="profile-input" type="text" value="miguel.custodio" name="nome_utilizador">
+                                <input class="profile-input" type="text" value="<?= htmlspecialchars($perfilUtilizador['nome_utilizador'] ?? '') ?>" name="nome_utilizador">
                             </div>
 
                             <div class="profile-field">
                                 <label>Email</label>
-                                <input class="profile-input" type="email" value="miguel.custodio@ipcbcampus.pt" name="email">
+                                <input class="profile-input" type="email" value="<?= htmlspecialchars($perfilUtilizador['email_utilizador'] ?? '') ?>" name="email">
                             </div>
 
                             <div class="profile-field">
                                 <label>Primeiro Nome</label>
-                                <input class="profile-input" type="text" value="Miguel" name="primeiro_nome">
+                                <input class="profile-input" type="text" value="<?= htmlspecialchars($perfilUtilizador['primeiro_nome'] ?? '') ?>" name="primeiro_nome">
                             </div>
 
                             <div class="profile-field">
                                 <label>Nº de Telemóvel</label>
-                                <input class="profile-input" type="tel" value="960000000" name="telemovel">
+                                <input class="profile-input" type="tel" value="<?= htmlspecialchars($perfilUtilizador['telefone_utilizador'] ?? '') ?>" name="telemovel">
                             </div>
 
                             <div class="profile-field">
                                 <label>Último Nome</label>
-                                <input class="profile-input" type="text" value="Custódio" name="ultimo_nome">
+                                <input class="profile-input" type="text" value="<?= htmlspecialchars($perfilUtilizador['último_nome'] ?? '') ?>" name="ultimo_nome">
                             </div>
 
                             <div class="profile-field">
                                 <label>Data de Nascimento</label>
-                                <input class="profile-input" type="date" value="1990-01-27" name="data_nascimento">
+                                <input class="profile-input" type="date" value="<?= htmlspecialchars($perfilUtilizador['data_nascimento'] ?? '') ?>" name="data_nascimento">
                             </div>
                         </div>
 
@@ -1803,51 +1914,30 @@ body { background: #f0f2f7; }
                     <button class="notification-tab" type="button">Por ler</button>
                 </div>
 
-                <div class="notifications-list">
-                    <div class="notification-row unread">
-                        <span class="notification-label">Notificação 1</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row unread">
-                        <span class="notification-label">Notificação 2</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row read">
-                        <span class="notification-label">Notificação 3</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row unread">
-                        <span class="notification-label">Notificação 4</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row read">
-                        <span class="notification-label">Notificação 5</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row unread">
-                        <span class="notification-label">Notificação 6</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row read">
-                        <span class="notification-label">Notificação 7</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row unread">
-                        <span class="notification-label">Notificação 8</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row read">
-                        <span class="notification-label">Notificação 9</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row unread">
-                        <span class="notification-label">Notificação 10</span>
-                        <span class="notification-check">✓</span>
-                    </div>
-                    <div class="notification-row read">
-                        <span class="notification-label">Notificação 11</span>
-                        <span class="notification-check">✓</span>
-                    </div>
+                <div class="notifications-list" id="notificationsList">
+                    <?php if (empty($notificacoesUtilizador)): ?>
+                        <div class="notification-row read">
+                            <span class="notification-label">Sem notificações</span>
+                            <span class="notification-check">✓</span>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($notificacoesUtilizador as $notificacao): ?>
+                            <?php $estadoNotificacao = $notificacao['estado'] ?? 'Nao Lida'; ?>
+                            <?php $naoLida = ($estadoNotificacao === 'Nao Lida'); ?>
+                            <div class="notification-row <?= $naoLida ? 'unread' : 'read' ?>"
+                                 data-id="<?= (int)($notificacao['id_notificacao'] ?? 0) ?>"
+                                 data-state="<?= htmlspecialchars($estadoNotificacao) ?>"
+                                 tabindex="0"
+                                 role="button"
+                                 aria-label="<?= htmlspecialchars($notificacao['titulo'] ?? 'Notificação') ?>">
+                                <div class="notification-content">
+                                    <span class="notification-label"><?= htmlspecialchars($notificacao['titulo'] ?? 'Notificação') ?></span>
+                                    <small class="notification-message"><?= htmlspecialchars($notificacao['mensagem'] ?? '') ?></small>
+                                </div>
+                                <span class="notification-check">✓</span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -2545,15 +2635,77 @@ function saveProfileChanges() {
     const submitBtn = document.getElementById('submitProfileBtn');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Guardado';
+        submitBtn.textContent = 'A guardar...';
     }
 
-    setTimeout(() => {
+    const formData = new FormData(form);
+
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Erro ao guardar perfil');
+        }
+
+        if (submitBtn) {
+            submitBtn.textContent = 'Guardado';
+        }
+
+        setTimeout(() => {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Salvar alterações';
+            }
+        }, 1200);
+    })
+    .catch(() => {
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Salvar alterações';
+            submitBtn.textContent = 'Tentar novamente';
         }
-    }, 800);
+    });
+}
+
+function filterNotifications(filter = 'all') {
+    const rows = document.querySelectorAll('.notification-row');
+
+    rows.forEach(row => {
+        if (!row) return;
+
+        const state = row.dataset.state || 'Nao Lida';
+        const shouldShow = filter === 'all' ||
+            (filter === 'read' && state === 'Lida') ||
+            (filter === 'unread' && state === 'Nao Lida');
+
+        row.style.display = shouldShow ? '' : 'none';
+    });
+}
+
+function markNotificationAsRead(idNotificacao, row) {
+    if (!idNotificacao || !row) return;
+
+    const state = row.dataset.state || 'Nao Lida';
+    if (state === 'Lida') return;
+
+    const formData = new URLSearchParams();
+    formData.append('acao', 'marcar_notificacao_lida');
+    formData.append('id_notificacao', String(idNotificacao));
+
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        },
+        body: formData.toString()
+    }).then(() => {
+        row.dataset.state = 'Lida';
+        row.classList.remove('unread');
+        row.classList.add('read');
+    }).catch(() => {
+        row.classList.add('read');
+    });
 }
 
 const profileForm = document.getElementById('profileForm');
@@ -2563,6 +2715,42 @@ if (profileForm) {
         saveProfileChanges();
     });
 }
+
+const notificationTabs = document.querySelectorAll('.notification-tab');
+notificationTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+        notificationTabs.forEach(btn => btn.classList.remove('active'));
+        tab.classList.add('active');
+
+        const text = tab.textContent.trim();
+        if (text === 'Lidas') {
+            filterNotifications('read');
+        } else if (text === 'Por ler') {
+            filterNotifications('unread');
+        } else {
+            filterNotifications('all');
+        }
+    });
+});
+
+document.querySelectorAll('.notification-row').forEach(row => {
+    row.addEventListener('click', () => {
+        const id = row.dataset.id;
+        if (id) {
+            markNotificationAsRead(id, row);
+        }
+    });
+
+    row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            const id = row.dataset.id;
+            if (id) {
+                markNotificationAsRead(id, row);
+            }
+        }
+    });
+});
 
 /* Fechar menu superior ao clicar fora */
 document.addEventListener('click', function () {
