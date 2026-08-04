@@ -2445,12 +2445,30 @@ function toggleUserMenu(event) {
     }
 }
 
+function hideDashboardContent() {
+    document.querySelectorAll('.card-header-actions, .tabs, .tab-panel, .alert').forEach(el => {
+        if (el) {
+            el.style.display = 'none';
+        }
+    });
+}
+
+function showDashboardContent() {
+    document.querySelectorAll('.card-header-actions, .tabs, .tab-panel, .alert').forEach(el => {
+        if (el) {
+            el.style.display = '';
+        }
+    });
+}
+
 function showProfileScreen() {
     const dashboard = document.getElementById('dashboardCard');
     const profile = document.getElementById('profileScreen');
     const notifications = document.getElementById('notificationsScreen');
 
-    if (dashboard) dashboard.style.display = 'none';
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+
     if (profile) {
         profile.style.display = 'block';
         profile.classList.add('visible');
@@ -2466,7 +2484,9 @@ function showNotificationsScreen() {
     const profile = document.getElementById('profileScreen');
     const notifications = document.getElementById('notificationsScreen');
 
-    if (dashboard) dashboard.style.display = 'none';
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+
     if (profile) {
         profile.style.display = 'none';
         profile.classList.remove('visible');
@@ -2483,6 +2503,8 @@ function showDashboard() {
     const notifications = document.getElementById('notificationsScreen');
 
     if (dashboard) dashboard.style.display = 'block';
+    showDashboardContent();
+
     if (profile) {
         profile.style.display = 'none';
         profile.classList.remove('visible');
