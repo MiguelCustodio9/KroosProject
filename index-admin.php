@@ -933,6 +933,156 @@ body { background: #f0f2f7; }
     margin-bottom: 12px;
 }
 
+/* ── Painel de perfil ── */
+.profile-shell {
+    background: #fff;
+    border-radius: 18px;
+    border: 1px solid #dfe3ee;
+    box-shadow: 0 8px 22px rgba(23, 42, 88, 0.08);
+    overflow: hidden;
+    margin-bottom: 28px;
+    display: none;
+}
+
+.profile-shell.visible {
+    display: block;
+}
+
+.profile-header {
+    background: var(--club);
+    min-height: 78px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 22px 0 18px;
+    color: #fff;
+}
+
+.profile-brand {
+    font-size: clamp(1.4rem, 2vw, 2.3rem);
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    line-height: 1;
+}
+
+.profile-menu {
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(255,255,255,0.38);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font-size: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.profile-panel {
+    background: #f5f7fb;
+    padding: 24px 22px 18px;
+}
+
+.profile-content {
+    display: grid;
+    grid-template-columns: 1.5fr 0.9fr;
+    gap: 18px 28px;
+    align-items: center;
+}
+
+.profile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 18px;
+    min-width: 0;
+}
+
+.profile-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.profile-field label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #4b5b7c;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.profile-field .value-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 56px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(48, 71, 172, 0.95), rgba(42, 62, 154, 0.95));
+    color: #fff;
+    font-weight: 600;
+    font-size: 15px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-avatar-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 220px;
+    background: rgba(255,255,255,0.12);
+    border: 3px solid rgba(42, 62, 154, 0.9);
+    border-radius: 28px;
+    padding: 18px 10px;
+    box-shadow: inset 0 0 0 1px rgba(42, 62, 154, 0.2);
+}
+
+.profile-avatar {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    border: 4px solid rgba(42, 62, 154, 0.9);
+    background: #eaf0ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(42, 62, 154, 0.95);
+    font-size: 56px;
+    font-weight: 800;
+    margin-bottom: 12px;
+}
+
+.profile-avatar-button {
+    width: 100%;
+    max-width: 220px;
+    border: none;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(48, 71, 172, 0.95), rgba(42, 62, 154, 0.95));
+    color: #fff;
+    padding: 14px 18px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+@media (max-width: 820px) {
+    .profile-content {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ── Painel de notificações ── */
 .notifications-shell {
     background: #fff;
@@ -1517,7 +1667,7 @@ body { background: #f0f2f7; }
             </button>
 
             <div class="user-dropdown" id="userDropdown">
-                <a href="#" onclick="event.preventDefault(); showDashboard(); toggleUserMenu(event);">
+                <a href="#" onclick="event.preventDefault(); showProfileScreen(); toggleUserMenu(event);">
                     <span>Perfil</span>
                 </a>
 
@@ -1568,6 +1718,54 @@ body { background: #f0f2f7; }
 <!-- ══ MAIN ══ -->
 <div class="main">
     <div class="card" id="dashboardCard">
+
+        <div class="profile-shell" id="profileScreen" aria-label="Painel de perfil">
+            <div class="profile-header">
+                <div class="profile-brand">Kroos</div>
+                <button class="profile-menu" type="button" aria-label="Menu">☰</button>
+            </div>
+
+            <div class="profile-panel">
+                <div class="profile-content">
+                    <div class="profile-grid">
+                        <div class="profile-field">
+                            <label>Nome Utilizador</label>
+                            <div class="value-box">miguel.custodio</div>
+                        </div>
+
+                        <div class="profile-field">
+                            <label>Email</label>
+                            <div class="value-box">miguel.custodio@ipcbcampus.pt</div>
+                        </div>
+
+                        <div class="profile-field">
+                            <label>Primeiro Nome</label>
+                            <div class="value-box">Miguel</div>
+                        </div>
+
+                        <div class="profile-field">
+                            <label>Nº de Telemóvel</label>
+                            <div class="value-box">960000000</div>
+                        </div>
+
+                        <div class="profile-field">
+                            <label>Último Nome</label>
+                            <div class="value-box">Custódio</div>
+                        </div>
+
+                        <div class="profile-field">
+                            <label>Data de Nascimento</label>
+                            <div class="value-box">27/01/1990</div>
+                        </div>
+                    </div>
+
+                    <div class="profile-avatar-wrap">
+                        <div class="profile-avatar">👤</div>
+                        <button class="profile-avatar-button" type="button">Editar Foto de Perfil</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="notifications-shell" id="notificationsScreen" aria-label="Painel de notificações">
             <div class="notifications-header">
@@ -2247,11 +2445,32 @@ function toggleUserMenu(event) {
     }
 }
 
-function showNotificationsScreen() {
+function showProfileScreen() {
     const dashboard = document.getElementById('dashboardCard');
+    const profile = document.getElementById('profileScreen');
     const notifications = document.getElementById('notificationsScreen');
 
     if (dashboard) dashboard.style.display = 'none';
+    if (profile) {
+        profile.style.display = 'block';
+        profile.classList.add('visible');
+    }
+    if (notifications) {
+        notifications.style.display = 'none';
+        notifications.classList.remove('visible');
+    }
+}
+
+function showNotificationsScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    const profile = document.getElementById('profileScreen');
+    const notifications = document.getElementById('notificationsScreen');
+
+    if (dashboard) dashboard.style.display = 'none';
+    if (profile) {
+        profile.style.display = 'none';
+        profile.classList.remove('visible');
+    }
     if (notifications) {
         notifications.style.display = 'block';
         notifications.classList.add('visible');
@@ -2260,9 +2479,14 @@ function showNotificationsScreen() {
 
 function showDashboard() {
     const dashboard = document.getElementById('dashboardCard');
+    const profile = document.getElementById('profileScreen');
     const notifications = document.getElementById('notificationsScreen');
 
     if (dashboard) dashboard.style.display = 'block';
+    if (profile) {
+        profile.style.display = 'none';
+        profile.classList.remove('visible');
+    }
     if (notifications) {
         notifications.style.display = 'none';
         notifications.classList.remove('visible');
