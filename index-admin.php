@@ -1740,9 +1740,6 @@ body { background: #f0f2f7; }
         <div class="profile-shell" id="profileScreen" aria-label="Painel de perfil">
             <div class="profile-header">
                 <div class="profile-title">Perfil</div>
-                <div class="profile-header-actions">
-                    <button class="profile-save-button" type="button" id="saveProfileBtn">Salvar alterações</button>
-                </div>
             </div>
 
             <div class="profile-panel">
@@ -2557,11 +2554,6 @@ function saveProfileChanges() {
             submitBtn.textContent = 'Salvar alterações';
         }
     }, 800);
-}
-
-const saveProfileBtn = document.getElementById('saveProfileBtn');
-if (saveProfileBtn) {
-    saveProfileBtn.addEventListener('click', saveProfileChanges);
 }
 
 const profileForm = document.getElementById('profileForm');

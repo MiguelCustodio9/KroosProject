@@ -464,6 +464,25 @@ CREATE TABLE `mensagens` (
 -- --------------------------------------------------------
 
 --
+-- Estrutura da tabela `notificacao`
+--
+
+CREATE TABLE `notificacao` (
+  `id_notificacao` int(11) NOT NULL,
+  `id_utilizador` int(11) NOT NULL,
+  `id_clube` int(11) DEFAULT NULL,
+  `titulo` varchar(150) NOT NULL,
+  `mensagem` text NOT NULL,
+  `tipo` enum('info','sucesso','aviso','erro') NOT NULL DEFAULT 'info',
+  `estado` enum('Nao Lida','Lida') NOT NULL DEFAULT 'Nao Lida',
+  `criada_em` datetime NOT NULL DEFAULT current_timestamp(),
+  `lida_em` datetime DEFAULT NULL,
+  `link_acao` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura da tabela `plano_treino`
 --
 
@@ -751,6 +770,13 @@ ALTER TABLE `lesões`
 ALTER TABLE `mensagens`
   ADD PRIMARY KEY (`id_mensagem`),
   ADD KEY `fk_origem` (`origem`);
+
+ALTER TABLE `notificacao`
+  ADD PRIMARY KEY (`id_notificacao`),
+  ADD KEY `fk_notificacao_utilizador` (`id_utilizador`),
+  ADD KEY `fk_notificacao_clube` (`id_clube`),
+  ADD KEY `idx_notificacao_estado` (`estado`),
+  ADD KEY `idx_notificacao_criada_em` (`criada_em`);
 
 --
 -- Índices para tabela `plano_treino`
