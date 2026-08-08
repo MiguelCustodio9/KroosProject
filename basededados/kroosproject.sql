@@ -951,6 +951,12 @@ ALTER TABLE `mensagens`
   MODIFY `id_mensagem` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT de tabela `notificacao`
+--
+ALTER TABLE `notificacao`
+  MODIFY `id_notificacao` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT de tabela `plano_treino`
 --
 ALTER TABLE `plano_treino`
