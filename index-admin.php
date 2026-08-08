@@ -1226,40 +1226,8 @@ body { background: #f0f2f7; }
     display: block;
 }
 
-.notifications-header {
-    background: var(--club);
-    min-height: 78px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 22px 0 18px;
-    color: #fff;
-}
-
-.notifications-brand {
-    font-size: clamp(1.4rem, 2vw, 2.3rem);
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    line-height: 1;
-}
-
-.notifications-menu {
-    width: 38px;
-    height: 38px;
-    border: 1px solid rgba(255,255,255,0.38);
-    border-radius: 10px;
-    background: rgba(255,255,255,0.08);
-    color: #fff;
-    font-size: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-}
-
 .notifications-card {
     background: #f5f7fb;
-    border-top: 1px solid rgba(0,0,0,0.06);
 }
 
 .notifications-tabs {
@@ -1311,6 +1279,7 @@ body { background: #f0f2f7; }
 
 .notification-row.read {
     background: rgba(203, 209, 221, 0.35);
+    border-left: 3px solid var(--club);
 }
 
 .notification-label {
@@ -1328,8 +1297,8 @@ body { background: #f0f2f7; }
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    border: 2px solid rgba(20, 62, 148, 0.8);
-    background: rgba(255,255,255,0.8);
+    border: 2px solid var(--club);
+    background: #fff;
     color: var(--club);
     font-size: 16px;
     display: inline-flex;
@@ -1340,9 +1309,9 @@ body { background: #f0f2f7; }
 }
 
 .notification-row.read .notification-check {
-    background: rgba(20, 62, 148, 0.08);
-    border-color: rgba(20, 62, 148, 0.55);
-    color: rgba(20, 62, 148, 0.6);
+    background: var(--club);
+    border-color: var(--club);
+    color: #fff;
 }
 
 .notification-row.unread .notification-check {
@@ -1799,10 +1768,6 @@ body { background: #f0f2f7; }
                     <span>Perfil</span>
                 </a>
 
-                <a href="#" onclick="event.preventDefault(); showDashboard(); toggleUserMenu(event);">
-                    <span>Clube</span>
-                </a>
-
                 <a href="#" onclick="event.preventDefault(); showNotificationsScreen(); toggleUserMenu(event);">
                     <span>Notificações</span>
                 </a>
@@ -1902,11 +1867,6 @@ body { background: #f0f2f7; }
         </div>
 
         <div class="notifications-shell" id="notificationsScreen" aria-label="Painel de notificações">
-            <div class="notifications-header">
-                <div class="notifications-brand">Kroos</div>
-                <button class="notifications-menu" type="button" aria-label="Menu">☰</button>
-            </div>
-
             <div class="notifications-card">
                 <div class="notifications-tabs">
                     <button class="notification-tab active" type="button">Geral</button>
@@ -1918,7 +1878,6 @@ body { background: #f0f2f7; }
                     <?php if (empty($notificacoesUtilizador)): ?>
                         <div class="notification-row read">
                             <span class="notification-label">Sem notificações</span>
-                            <span class="notification-check">✓</span>
                         </div>
                     <?php else: ?>
                         <?php foreach ($notificacoesUtilizador as $notificacao): ?>
