@@ -1138,6 +1138,7 @@ body { background: #f0f2f7; }
     display: flex;
     align-items: center;
     gap: 12px;
+    margin-left: calc(-1 * var(--sidebar-w));
 }
 
 .topbar-club-logo {
@@ -1693,12 +1694,13 @@ body { background: #f0f2f7; }
 
 /* ── Botões de editar nas linhas ── */
 .actions-col {
-    width: 80px;
+    width: 140px;
     text-align: right;
 }
 
 .actions-cell {
     text-align: right;
+    white-space: nowrap;
 }
 
 .btn-row-edit {
@@ -1723,18 +1725,38 @@ body { background: #f0f2f7; }
     color: var(--club);
 }
 
+.btn-row-delete {
+    border-color: #f2b4b4;
+    color: #b42318;
+}
+
+.btn-row-delete:hover {
+    background: #fff1f1;
+    border-color: #e78b8b;
+    color: #b42318;
+}
+
 /* ── Alerts ── */
 .alert {
     padding: 12px 16px;
     border-radius: 12px;
     font-size: 14px;
     margin-bottom: 18px;
-    transition: opacity .28s ease, transform .28s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
 }
 
-.alert.fade-out {
-    opacity: 0;
-    transform: translateY(-4px);
+.alert-close {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0 4px;
 }
 
 .alert-error {
@@ -2294,11 +2316,17 @@ body { background: #f0f2f7; }
         </div>
 
         <?php if ($erro): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($erro) ?></div>
+            <div class="alert alert-error" role="alert">
+                <span><?= htmlspecialchars($erro) ?></span>
+                <button class="alert-close" type="button" aria-label="Fechar" onclick="closeAlert(this)">×</button>
+            </div>
         <?php endif; ?>
 
         <?php if ($sucesso): ?>
-            <div class="alert alert-success"><?= htmlspecialchars($sucesso) ?></div>
+            <div class="alert alert-success" role="status">
+                <span><?= htmlspecialchars($sucesso) ?></span>
+                <button class="alert-close" type="button" aria-label="Fechar" onclick="closeAlert(this)">×</button>
+            </div>
         <?php endif; ?>
 
         <?php if ($isAdminClube): ?>
@@ -2446,7 +2474,7 @@ body { background: #f0f2f7; }
                             <th>Hierarquia</th>
                             <th>Época</th>
                             <?php if ($isAdminClube): ?>
-                            <th class="actions-col">Editar</th>
+                            <th class="actions-col">Ações</th>
                             <?php endif; ?>
                         </tr>
                     </thead>
@@ -2469,7 +2497,7 @@ body { background: #f0f2f7; }
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('Tens a certeza que queres remover este escalão?');">
                                         <input type="hidden" name="acao" value="remover_escalao">
                                         <input type="hidden" name="id_equipa" value="<?= (int)$esc['id_equipa'] ?>">
-                                        <button class="btn-row-edit" type="submit" title="Remover escalão" style="margin-left:8px; border-color:#f2b4b4; color:#b42318;">×</button>
+                                        <button class="btn-row-edit btn-row-delete" type="submit" title="Remover escalão" style="margin-left:8px;">×</button>
                                     </form>
                                 </td>
                                 <?php endif; ?>
@@ -2512,7 +2540,7 @@ body { background: #f0f2f7; }
                             <th>Email</th>
                             <th>Equipas associadas</th>
                             <?php if ($isAdminClube): ?>
-                            <th class="actions-col">Editar</th>
+                            <th class="actions-col">Ações</th>
                             <?php endif; ?>
                         </tr>
                     </thead>
@@ -2538,6 +2566,11 @@ body { background: #f0f2f7; }
                                     >
                                         ✎
                                     </button>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Tens a certeza que queres remover este treinador?');">
+                                        <input type="hidden" name="acao" value="remover_treinador">
+                                        <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
+                                        <button class="btn-row-edit btn-row-delete" type="submit" title="Remover treinador" style="margin-left:8px;">×</button>
+                                    </form>
                                 </td>
                                 <?php endif; ?>
                             </tr>
@@ -2950,12 +2983,6 @@ body { background: #f0f2f7; }
                 <button class="btn-save" type="submit">Guardar alterações</button>
             </div>
         </form>
-
-        <form method="POST" onsubmit="return confirm('Tens a certeza que queres remover este treinador?');" style="padding: 0 22px 20px;">
-            <input type="hidden" name="acao" value="remover_treinador">
-            <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
-            <button class="btn-remove" type="submit">Remover treinador</button>
-        </form>
     </div>
 </div>
 <?php endforeach; ?>
@@ -3238,6 +3265,14 @@ function closeModal(id) {
     }
 }
 
+function closeAlert(buttonEl) {
+    if (!buttonEl) return;
+    const alertEl = buttonEl.closest('.alert');
+    if (alertEl) {
+        alertEl.style.display = 'none';
+    }
+}
+
 function showTopbarLogoFallback(imgEl) {
     if (!imgEl || !imgEl.parentElement) return;
 
@@ -3324,15 +3359,6 @@ if (btnEditarFotoPerfil && fotoPerfilInput) {
         reader.readAsDataURL(this.files[0]);
     });
 }
-
-setTimeout(() => {
-    document.querySelectorAll('.alert').forEach((alertEl) => {
-        alertEl.classList.add('fade-out');
-        setTimeout(() => {
-            alertEl.style.display = 'none';
-        }, 320);
-    });
-}, 5000);
 
 /* Fechar modal ao clicar fora */
 document.querySelectorAll('.modal-backdrop').forEach(modal => {
