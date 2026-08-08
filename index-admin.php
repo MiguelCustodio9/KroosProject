@@ -1817,7 +1817,7 @@ body { background: #f0f2f7; }
 
 <!-- ══ SIDEBAR ══ -->
 <div class="sidebar" id="sidebar">
-    <a href="#" class="active">
+    <a href="#" class="active" onclick="event.preventDefault(); showDashboard();">
         <img src="assets/clube.png" alt="">
         <span>Clube</span>
     </a>
