@@ -59,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ultimoNome = trim($_POST['ultimo_nome'] ?? '');
         $telefoneUtilizador = trim($_POST['telemovel'] ?? '');
         $dataNascimento = trim($_POST['data_nascimento'] ?? '');
+        $novaFotoPerfil = null;
 
         $emailObrigatorio = $isAdminClube;
 
@@ -84,31 +85,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$erro) {
-            $stmtUpdatePerfil = $conn->prepare(" 
-                UPDATE utilizador
-                SET nome_utilizador = ?,
-                    email_utilizador = ?,
-                    telefone_utilizador = NULLIF(?, ''),
-                    primeiro_nome = ?,
-                    `último_nome` = ?,
-                    data_nascimento = NULLIF(?, '')
-                WHERE id_utilizador = ?
-                  AND id_clube = ?
-            ");
+            if (!empty($_FILES['foto_perfil']['tmp_name'])) {
+                if (!isset($_FILES['foto_perfil']) || (int)($_FILES['foto_perfil']['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+                    $erro = 'Não foi possível carregar a foto de perfil.';
+                }
 
-            $stmtUpdatePerfil->bind_param(
-                "ssssssii",
-                $nomeUtilizador,
-                $emailUtilizador,
-                $telefoneUtilizador,
-                $primeiroNome,
-                $ultimoNome,
-                $dataNascimento,
-                $id_utilizador,
-                $id_clube
-            );
+                $tmpFotoPerfil = $_FILES['foto_perfil']['tmp_name'];
+                $tamanhoFotoPerfil = (int)($_FILES['foto_perfil']['size'] ?? 0);
 
-            if (!$stmtUpdatePerfil->execute()) {
+                if (!$erro && $tamanhoFotoPerfil > 2 * 1024 * 1024) {
+                    $erro = 'A foto de perfil deve ter no máximo 2MB.';
+                }
+
+                $infoFotoPerfil = !$erro ? @getimagesize($tmpFotoPerfil) : false;
+
+                if (!$erro && $infoFotoPerfil === false) {
+                    $erro = 'O ficheiro da foto de perfil não é uma imagem válida.';
+                }
+
+                $tiposPermitidosFotoPerfil = ['image/jpeg', 'image/png', 'image/webp'];
+                $mimeFotoPerfil = $infoFotoPerfil['mime'] ?? '';
+
+                if (!$erro && !in_array($mimeFotoPerfil, $tiposPermitidosFotoPerfil, true)) {
+                    $erro = 'A foto de perfil deve estar em JPG, PNG ou WEBP.';
+                }
+
+                if (!$erro) {
+                    $novaFotoPerfil = file_get_contents($tmpFotoPerfil);
+                }
+            }
+
+            if (!$erro) {
+                if ($novaFotoPerfil !== null) {
+                    $stmtUpdatePerfil = $conn->prepare(" 
+                        UPDATE utilizador
+                        SET nome_utilizador = ?,
+                            foto_perfil = ?,
+                            email_utilizador = ?,
+                            telefone_utilizador = NULLIF(?, ''),
+                            primeiro_nome = ?,
+                            `último_nome` = ?,
+                            data_nascimento = NULLIF(?, '')
+                        WHERE id_utilizador = ?
+                          AND id_clube = ?
+                    ");
+
+                    $stmtUpdatePerfil->bind_param(
+                        "sssssssii",
+                        $nomeUtilizador,
+                        $novaFotoPerfil,
+                        $emailUtilizador,
+                        $telefoneUtilizador,
+                        $primeiroNome,
+                        $ultimoNome,
+                        $dataNascimento,
+                        $id_utilizador,
+                        $id_clube
+                    );
+                } else {
+                    $stmtUpdatePerfil = $conn->prepare(" 
+                        UPDATE utilizador
+                        SET nome_utilizador = ?,
+                            email_utilizador = ?,
+                            telefone_utilizador = NULLIF(?, ''),
+                            primeiro_nome = ?,
+                            `último_nome` = ?,
+                            data_nascimento = NULLIF(?, '')
+                        WHERE id_utilizador = ?
+                          AND id_clube = ?
+                    ");
+
+                    $stmtUpdatePerfil->bind_param(
+                        "ssssssii",
+                        $nomeUtilizador,
+                        $emailUtilizador,
+                        $telefoneUtilizador,
+                        $primeiroNome,
+                        $ultimoNome,
+                        $dataNascimento,
+                        $id_utilizador,
+                        $id_clube
+                    );
+                }
+            }
+
+            if ($erro) {
+                // Erro de validação da imagem já definido acima.
+            } elseif (!$stmtUpdatePerfil->execute()) {
                 $erro = 'Erro ao guardar as alterações do perfil.';
             } else {
                 $sucesso = 'Perfil atualizado com sucesso.';
@@ -455,6 +518,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $sucesso = 'Escalão atualizado com sucesso.';
                     } else {
                         $erro = 'Erro ao atualizar escalão.';
+                    }
+                }
+            }
+        }
+        }
+    }
+
+    /* ── Remover escalão ── */
+    if ($acao === 'remover_escalao') {
+
+        if (!$isAdminClube) {
+            $erro = 'Não tens permissão para remover escalões.';
+        } else {
+
+        $activeTab = 'tab-escaloes';
+
+        $idEquipa = (int)($_POST['id_equipa'] ?? 0);
+
+        if ($idEquipa <= 0) {
+            $erro = 'Escalão inválido.';
+        } else {
+            $stmtCheckEquipa = $conn->prepare(" 
+                SELECT id_equipa
+                FROM equipa
+                WHERE id_equipa = ?
+                  AND id_clube = ?
+                LIMIT 1
+            ");
+            $stmtCheckEquipa->bind_param("ii", $idEquipa, $id_clube);
+            $stmtCheckEquipa->execute();
+            $equipaAtual = $stmtCheckEquipa->get_result()->fetch_assoc();
+
+            if (!$equipaAtual) {
+                $erro = 'Esse escalão não pertence ao teu clube.';
+            } else {
+                $stmtCountJogadores = $conn->prepare("SELECT COUNT(*) AS total FROM jogadores WHERE id_equipa = ?");
+                $stmtCountJogadores->bind_param("i", $idEquipa);
+                $stmtCountJogadores->execute();
+                $totalJogadores = (int)($stmtCountJogadores->get_result()->fetch_assoc()['total'] ?? 0);
+
+                if ($totalJogadores > 0) {
+                    $erro = 'Não podes remover este escalão porque ainda tem jogadores associados.';
+                } else {
+                    $stmtDeleteAcesso = $conn->prepare("DELETE FROM acesso_equipa WHERE id_equipa = ?");
+                    $stmtDeleteAcesso->bind_param("i", $idEquipa);
+                    $stmtDeleteAcesso->execute();
+
+                    $stmtDeleteEventos = $conn->prepare("DELETE FROM eventos_clube WHERE id_equipa = ?");
+                    $stmtDeleteEventos->bind_param("i", $idEquipa);
+                    $stmtDeleteEventos->execute();
+
+                    $stmtDeleteEquipa = $conn->prepare(" 
+                        DELETE FROM equipa
+                        WHERE id_equipa = ?
+                          AND id_clube = ?
+                    ");
+                    $stmtDeleteEquipa->bind_param("ii", $idEquipa, $id_clube);
+
+                    if ($stmtDeleteEquipa->execute()) {
+                        $sucesso = 'Escalão removido com sucesso.';
+                    } else {
+                        $erro = 'Erro ao remover escalão.';
                     }
                 }
             }
@@ -941,7 +1066,7 @@ while ($row = $resTreinadores->fetch_assoc()) {
 /* ── Buscar perfil do utilizador atual ── */
 $perfilUtilizador = [];
 $stmtPerfil = $conn->prepare("
-    SELECT nome_utilizador, email_utilizador, telefone_utilizador,
+        SELECT nome_utilizador, foto_perfil, email_utilizador, telefone_utilizador,
            primeiro_nome, `último_nome`, data_nascimento
     FROM utilizador
     WHERE id_utilizador = ?
@@ -951,6 +1076,10 @@ $stmtPerfil = $conn->prepare("
 $stmtPerfil->bind_param("ii", $id_utilizador, $id_clube);
 $stmtPerfil->execute();
 $perfilUtilizador = $stmtPerfil->get_result()->fetch_assoc() ?: [];
+
+$fotoPerfilUtilizador = !empty($perfilUtilizador['foto_perfil'])
+    ? 'data:image/png;base64,' . base64_encode($perfilUtilizador['foto_perfil'])
+    : null;
 
 /* ── Buscar notificações do utilizador ── */
 $notificacoesUtilizador = [];
@@ -1006,6 +1135,38 @@ body { background: #f0f2f7; }
 }
 
 .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-club-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.topbar-club-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 4px;
+}
+
+.topbar-club-logo--placeholder {
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.topbar-club-text {
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -1335,6 +1496,14 @@ body { background: #f0f2f7; }
     font-size: 56px;
     font-weight: 800;
     margin-bottom: 12px;
+    overflow: hidden;
+}
+
+.profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
 }
 
 .profile-avatar-button {
@@ -1560,6 +1729,12 @@ body { background: #f0f2f7; }
     border-radius: 12px;
     font-size: 14px;
     margin-bottom: 18px;
+    transition: opacity .28s ease, transform .28s ease;
+}
+
+.alert.fade-out {
+    opacity: 0;
+    transform: translateY(-4px);
 }
 
 .alert-error {
@@ -1665,6 +1840,19 @@ body { background: #f0f2f7; }
     height: 100%;
     object-fit: contain;
     padding: 12px;
+}
+
+.club-logo-status {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 14px;
+    color: #666;
+    font-size: 13px;
+    line-height: 1.3;
 }
 
 .club-logo-placeholder {
@@ -1932,10 +2120,21 @@ body { background: #f0f2f7; }
 <!-- ══ TOP BAR ══ -->
 <div class="topbar">
     <div class="topbar-left">
-        <span class="topbar-name"><?= htmlspecialchars($nomeClube) ?></span>
-        <?php if ($siglaClube): ?>
-            <span class="topbar-sigla"><?= htmlspecialchars($siglaClube) ?></span>
-        <?php endif; ?>
+        <div class="topbar-club-logo">
+            <?php if ($logoClube): ?>
+                <img src="<?= $logoClube ?>" alt="Logótipo do clube"
+                     onerror="showTopbarLogoFallback(this);">
+            <?php else: ?>
+                <span class="topbar-club-logo--placeholder"><?= htmlspecialchars($siglaClube) ?></span>
+            <?php endif; ?>
+        </div>
+
+        <div class="topbar-club-text">
+            <span class="topbar-name"><?= htmlspecialchars($nomeClube) ?></span>
+            <?php if ($siglaClube): ?>
+                <span class="topbar-sigla"><?= htmlspecialchars($siglaClube) ?></span>
+            <?php endif; ?>
+        </div>
     </div>
 
     <div class="topbar-right">
@@ -2001,7 +2200,7 @@ body { background: #f0f2f7; }
             </div>
 
             <div class="profile-panel">
-                <form id="profileForm" method="post" action="">
+                <form id="profileForm" method="post" action="" enctype="multipart/form-data">
                     <input type="hidden" name="acao" value="editar_perfil">
                     <div class="profile-content">
                         <div class="profile-grid">
@@ -2037,8 +2236,18 @@ body { background: #f0f2f7; }
                         </div>
 
                         <div class="profile-avatar-wrap">
-                            <div class="profile-avatar">👤</div>
-                            <button class="profile-avatar-button" type="button">Editar Foto de Perfil</button>
+                            <div class="profile-avatar">
+                                <?php if ($fotoPerfilUtilizador): ?>
+                                    <img id="profileAvatarPreview" src="<?= $fotoPerfilUtilizador ?>" alt="Foto de perfil">
+                                <?php else: ?>
+                                    <span id="profileAvatarInitial"><?= htmlspecialchars(strtoupper(substr($perfilUtilizador['nome_utilizador'] ?? 'U', 0, 1))) ?></span>
+                                    <img id="profileAvatarPreview" src="" alt="Foto de perfil" style="display:none;">
+                                <?php endif; ?>
+                            </div>
+                            <input id="fotoPerfilInput" type="file" name="foto_perfil" accept="image/jpeg,image/png,image/webp" style="display:none;">
+                            <button class="profile-avatar-button" id="btnEditarFotoPerfil" type="button">Editar Foto de Perfil</button>
+                            <small id="fotoPerfilHint" style="margin-top:8px; color:#6b7280; font-size:12px; text-align:center;">JPG, PNG ou WEBP (máx. 2MB)</small>
+                            <small id="fotoPerfilErro" style="margin-top:6px; color:#b42318; font-size:12px; text-align:center; display:none;"></small>
                         </div>
                     </div>
 
@@ -2198,9 +2407,10 @@ body { background: #f0f2f7; }
                 <!-- Logo -->
                 <div class="club-logo-wrap">
                     <?php if ($logoClube): ?>
-                        <img src="<?= $logoClube ?>" alt="Logótipo de <?= htmlspecialchars($nomeClube) ?>">
+                        <img id="clubLogoImage" src="<?= $logoClube ?>" alt="Logótipo de <?= htmlspecialchars($nomeClube) ?>" onerror="showClubLogoStatus('Não foi possível carregar o logótipo');">
+                        <div id="clubLogoStatus" class="club-logo-status" style="display:none;"></div>
                     <?php else: ?>
-                        <span class="club-logo-placeholder"><?= htmlspecialchars($siglaClube) ?></span>
+                        <div class="club-logo-status">Logótipo não existe</div>
                     <?php endif; ?>
                 </div>
 
@@ -2256,6 +2466,11 @@ body { background: #f0f2f7; }
                                     >
                                         ✎
                                     </button>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Tens a certeza que queres remover este escalão?');">
+                                        <input type="hidden" name="acao" value="remover_escalao">
+                                        <input type="hidden" name="id_equipa" value="<?= (int)$esc['id_equipa'] ?>">
+                                        <button class="btn-row-edit" type="submit" title="Remover escalão" style="margin-left:8px; border-color:#f2b4b4; color:#b42318;">×</button>
+                                    </form>
                                 </td>
                                 <?php endif; ?>
                             </tr>
@@ -2731,14 +2946,15 @@ body { background: #f0f2f7; }
             </div>
 
             <div class="modal-actions">
-                <form method="POST" style="margin-right:auto;" onsubmit="return confirm('Tens a certeza que queres remover este treinador?');">
-                    <input type="hidden" name="acao" value="remover_treinador">
-                    <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
-                    <button class="btn-remove" type="submit">Remover treinador</button>
-                </form>
                 <button class="btn-cancel" type="button" onclick="closeModal('modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>')">Cancelar</button>
                 <button class="btn-save" type="submit">Guardar alterações</button>
             </div>
+        </form>
+
+        <form method="POST" onsubmit="return confirm('Tens a certeza que queres remover este treinador?');" style="padding: 0 22px 20px;">
+            <input type="hidden" name="acao" value="remover_treinador">
+            <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
+            <button class="btn-remove" type="submit">Remover treinador</button>
         </form>
     </div>
 </div>
@@ -3021,6 +3237,102 @@ function closeModal(id) {
         modal.classList.remove('active');
     }
 }
+
+function showTopbarLogoFallback(imgEl) {
+    if (!imgEl || !imgEl.parentElement) return;
+
+    imgEl.style.display = 'none';
+
+    if (!imgEl.parentElement.querySelector('.topbar-club-logo--placeholder')) {
+        const fallback = document.createElement('span');
+        fallback.className = 'topbar-club-logo--placeholder';
+        fallback.textContent = '<?= htmlspecialchars($siglaClube) ?>';
+        imgEl.parentElement.appendChild(fallback);
+    }
+}
+
+function showClubLogoStatus(message) {
+    const logo = document.getElementById('clubLogoImage');
+    const status = document.getElementById('clubLogoStatus');
+
+    if (logo) {
+        logo.style.display = 'none';
+    }
+    if (status) {
+        status.textContent = message;
+        status.style.display = 'flex';
+    }
+}
+
+const btnEditarFotoPerfil = document.getElementById('btnEditarFotoPerfil');
+const fotoPerfilInput = document.getElementById('fotoPerfilInput');
+const fotoPerfilErro = document.getElementById('fotoPerfilErro');
+
+function setFotoPerfilErro(msg) {
+    if (!fotoPerfilErro) return;
+
+    if (!msg) {
+        fotoPerfilErro.style.display = 'none';
+        fotoPerfilErro.textContent = '';
+        return;
+    }
+
+    fotoPerfilErro.textContent = msg;
+    fotoPerfilErro.style.display = 'block';
+}
+
+if (btnEditarFotoPerfil && fotoPerfilInput) {
+    btnEditarFotoPerfil.addEventListener('click', () => {
+        fotoPerfilInput.click();
+    });
+
+    fotoPerfilInput.addEventListener('change', function () {
+        if (!this.files || !this.files[0]) return;
+
+        setFotoPerfilErro('');
+
+        const file = this.files[0];
+        const tiposPermitidos = ['image/jpeg', 'image/png', 'image/webp'];
+
+        if (!tiposPermitidos.includes(file.type)) {
+            this.value = '';
+            setFotoPerfilErro('Formato inválido. Usa JPG, PNG ou WEBP.');
+            return;
+        }
+
+        if (file.size > 2 * 1024 * 1024) {
+            this.value = '';
+            setFotoPerfilErro('Imagem demasiado grande. Máximo: 2MB.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const preview = document.getElementById('profileAvatarPreview');
+            const initial = document.getElementById('profileAvatarInitial');
+
+            if (preview) {
+                preview.src = event.target.result;
+                preview.style.display = 'block';
+            }
+
+            if (initial) {
+                initial.style.display = 'none';
+            }
+        };
+
+        reader.readAsDataURL(this.files[0]);
+    });
+}
+
+setTimeout(() => {
+    document.querySelectorAll('.alert').forEach((alertEl) => {
+        alertEl.classList.add('fade-out');
+        setTimeout(() => {
+            alertEl.style.display = 'none';
+        }, 320);
+    });
+}, 5000);
 
 /* Fechar modal ao clicar fora */
 document.querySelectorAll('.modal-backdrop').forEach(modal => {
