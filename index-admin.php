@@ -59,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ultimoNome = trim($_POST['ultimo_nome'] ?? '');
         $telefoneUtilizador = trim($_POST['telemovel'] ?? '');
         $dataNascimento = trim($_POST['data_nascimento'] ?? '');
+        $fotoPerfilAjustada = trim($_POST['foto_perfil_ajustada'] ?? '');
         $novaFotoPerfil = null;
 
         $emailObrigatorio = $isAdminClube;
@@ -85,8 +86,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$erro) {
+            if ($fotoPerfilAjustada !== '') {
+                if (!preg_match('/^data:(image\/(jpeg|png|webp));base64,([A-Za-z0-9+\/=]+)$/', $fotoPerfilAjustada, $matchesFotoAjustada)) {
+                    $erro = 'Formato da foto ajustada inválido.';
+                } else {
+                    $binarioFotoAjustada = base64_decode($matchesFotoAjustada[3], true);
+
+                    if ($binarioFotoAjustada === false) {
+                        $erro = 'Não foi possível processar a foto ajustada.';
+                    } elseif (strlen($binarioFotoAjustada) > 2 * 1024 * 1024) {
+                        $erro = 'A foto de perfil ajustada deve ter no máximo 2MB.';
+                    } else {
+                        $infoFotoAjustada = @getimagesizefromstring($binarioFotoAjustada);
+                        if ($infoFotoAjustada === false) {
+                            $erro = 'A foto ajustada não é uma imagem válida.';
+                        } else {
+                            $novaFotoPerfil = $binarioFotoAjustada;
+                        }
+                    }
+                }
+            }
+
             if (!empty($_FILES['foto_perfil']['tmp_name'])) {
-                if (!isset($_FILES['foto_perfil']) || (int)($_FILES['foto_perfil']['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+                if ($novaFotoPerfil !== null) {
+                    // Já temos uma versão ajustada pronta para guardar.
+                } elseif (!isset($_FILES['foto_perfil']) || (int)($_FILES['foto_perfil']['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
                     $erro = 'Não foi possível carregar a foto de perfil.';
                 }
 
@@ -1374,7 +1398,14 @@ body { background: #f0f2f7; }
 .card-header-actions {
     display: flex;
     justify-content: flex-end;
-    margin-bottom: 12px;
+}
+
+.tabs-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 14px;
+    margin-bottom: 28px;
 }
 
 /* ── Painel de perfil ── */
@@ -1518,6 +1549,28 @@ body { background: #f0f2f7; }
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
+}
+
+.profile-adjust-tools {
+    width: 100%;
+    max-width: 220px;
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+.profile-adjust-tools label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.profile-adjust-tools input[type="range"] {
+    width: 100%;
+    accent-color: var(--club);
 }
 
 .profile-save-button {
@@ -1695,12 +1748,19 @@ body { background: #f0f2f7; }
 /* ── Botões de editar nas linhas ── */
 .actions-col {
     width: 140px;
-    text-align: right;
+    text-align: center;
 }
 
 .actions-cell {
-    text-align: right;
+    text-align: center;
     white-space: nowrap;
+}
+
+.actions-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 .btn-row-edit {
@@ -1775,7 +1835,7 @@ body { background: #f0f2f7; }
 .tabs {
     display: flex;
     gap: 8px;
-    margin-bottom: 28px;
+    margin-bottom: 0;
     border-bottom: 1.5px solid #ebebeb;
     padding-bottom: 0;
 }
@@ -2134,6 +2194,15 @@ body { background: #f0f2f7; }
     .info-layout {
         flex-direction: column-reverse;
     }
+
+    .tabs-row {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .card-header-actions {
+        justify-content: flex-start;
+    }
 }
 </style>
 </head>
@@ -2267,7 +2336,18 @@ body { background: #f0f2f7; }
                                 <?php endif; ?>
                             </div>
                             <input id="fotoPerfilInput" type="file" name="foto_perfil" accept="image/jpeg,image/png,image/webp" style="display:none;">
+                            <input id="fotoPerfilAjustadaInput" type="hidden" name="foto_perfil_ajustada" value="">
                             <button class="profile-avatar-button" id="btnEditarFotoPerfil" type="button">Editar Foto de Perfil</button>
+                            <div class="profile-adjust-tools" id="profileAdjustTools" style="display:none;">
+                                <label for="fotoPerfilZoom">Zoom</label>
+                                <input id="fotoPerfilZoom" type="range" min="1" max="3" step="0.01" value="1">
+
+                                <label for="fotoPerfilPosX">Horizontal</label>
+                                <input id="fotoPerfilPosX" type="range" min="0" max="100" step="1" value="50">
+
+                                <label for="fotoPerfilPosY">Vertical</label>
+                                <input id="fotoPerfilPosY" type="range" min="0" max="100" step="1" value="50">
+                            </div>
                             <small id="fotoPerfilHint" style="margin-top:8px; color:#6b7280; font-size:12px; text-align:center;">JPG, PNG ou WEBP (máx. 2MB)</small>
                             <small id="fotoPerfilErro" style="margin-top:6px; color:#b42318; font-size:12px; text-align:center; display:none;"></small>
                         </div>
@@ -2329,31 +2409,33 @@ body { background: #f0f2f7; }
             </div>
         <?php endif; ?>
 
-        <?php if ($isAdminClube): ?>
-        <div class="card-header-actions">
-            <!-- Botão editar clube: só aparece na aba Info -->
-            <button
-                id="btnEditClube"
-                class="btn-edit"
-                type="button"
-                title="Editar informações do clube"
-                onclick="openModal('modalEditarClube')"
-                style="<?= $activeTab === 'tab-info' ? '' : 'display:none;' ?>"
-            >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-            </button>
-        </div>
-        <?php endif; ?>
+        <div class="tabs-row">
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab <?= $activeTab === 'tab-info' ? 'active' : '' ?>" onclick="switchTab(this,'tab-info')">Info</button>
+                <button class="tab <?= $activeTab === 'tab-escaloes' ? 'active' : '' ?>" onclick="switchTab(this,'tab-escaloes')">Escalões</button>
+                <button class="tab <?= $activeTab === 'tab-treinadores' ? 'active' : '' ?>" onclick="switchTab(this,'tab-treinadores')">Treinadores</button>
+            </div>
 
-        <!-- Tabs -->
-        <div class="tabs">
-            <button class="tab <?= $activeTab === 'tab-info' ? 'active' : '' ?>" onclick="switchTab(this,'tab-info')">Info</button>
-            <button class="tab <?= $activeTab === 'tab-escaloes' ? 'active' : '' ?>" onclick="switchTab(this,'tab-escaloes')">Escalões</button>
-            <button class="tab <?= $activeTab === 'tab-treinadores' ? 'active' : '' ?>" onclick="switchTab(this,'tab-treinadores')">Treinadores</button>
+            <?php if ($isAdminClube): ?>
+            <div class="card-header-actions">
+                <!-- Botão editar clube: só aparece na aba Info -->
+                <button
+                    id="btnEditClube"
+                    class="btn-edit"
+                    type="button"
+                    title="Editar informações do clube"
+                    onclick="openModal('modalEditarClube')"
+                    style="<?= $activeTab === 'tab-info' ? '' : 'display:none;' ?>"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                </button>
+            </div>
+            <?php endif; ?>
         </div>
 
         <!-- ── Painel Info ── -->
@@ -2486,19 +2568,21 @@ body { background: #f0f2f7; }
                                 <td><?= htmlspecialchars($esc['época'] ?? 'Não definida') ?></td>
                                 <?php if ($isAdminClube): ?>
                                 <td class="actions-cell">
-                                    <button
-                                        class="btn-row-edit"
-                                        type="button"
-                                        title="Editar escalão"
-                                        onclick="openModal('modalEditarEscalao<?= (int)$esc['id_equipa'] ?>')"
-                                    >
-                                        ✎
-                                    </button>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Tens a certeza que queres remover este escalão?');">
-                                        <input type="hidden" name="acao" value="remover_escalao">
-                                        <input type="hidden" name="id_equipa" value="<?= (int)$esc['id_equipa'] ?>">
-                                        <button class="btn-row-edit btn-row-delete" type="submit" title="Remover escalão" style="margin-left:8px;">×</button>
-                                    </form>
+                                    <div class="actions-wrap">
+                                        <button
+                                            class="btn-row-edit"
+                                            type="button"
+                                            title="Editar escalão"
+                                            onclick="openModal('modalEditarEscalao<?= (int)$esc['id_equipa'] ?>')"
+                                        >
+                                            ✎
+                                        </button>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Tens a certeza que queres remover este escalão?');">
+                                            <input type="hidden" name="acao" value="remover_escalao">
+                                            <input type="hidden" name="id_equipa" value="<?= (int)$esc['id_equipa'] ?>">
+                                            <button class="btn-row-edit btn-row-delete" type="submit" title="Remover escalão">×</button>
+                                        </form>
+                                    </div>
                                 </td>
                                 <?php endif; ?>
                             </tr>
@@ -2558,19 +2642,21 @@ body { background: #f0f2f7; }
                                 </td>
                                 <?php if ($isAdminClube): ?>
                                 <td class="actions-cell">
-                                    <button
-                                        class="btn-row-edit"
-                                        type="button"
-                                        title="Editar treinador"
-                                        onclick="openModal('modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>')"
-                                    >
-                                        ✎
-                                    </button>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Tens a certeza que queres remover este treinador?');">
-                                        <input type="hidden" name="acao" value="remover_treinador">
-                                        <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
-                                        <button class="btn-row-edit btn-row-delete" type="submit" title="Remover treinador" style="margin-left:8px;">×</button>
-                                    </form>
+                                    <div class="actions-wrap">
+                                        <button
+                                            class="btn-row-edit"
+                                            type="button"
+                                            title="Editar treinador"
+                                            onclick="openModal('modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>')"
+                                        >
+                                            ✎
+                                        </button>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Tens a certeza que queres remover este treinador?');">
+                                            <input type="hidden" name="acao" value="remover_treinador">
+                                            <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
+                                            <button class="btn-row-edit btn-row-delete" type="submit" title="Remover treinador">×</button>
+                                        </form>
+                                    </div>
                                 </td>
                                 <?php endif; ?>
                             </tr>
@@ -3021,6 +3107,9 @@ function toggleUserMenu(event) {
 function hideDashboardContent() {
     document.querySelectorAll('.card-header-actions, .tabs, .tab-panel, .alert').forEach(el => {
         if (el) {
+            if (el.classList.contains('alert') && el.dataset.dismissed === '1') {
+                return;
+            }
             el.style.display = 'none';
         }
     });
@@ -3029,6 +3118,10 @@ function hideDashboardContent() {
 function showDashboardContent() {
     document.querySelectorAll('.card-header-actions, .tabs, .tab-panel, .alert').forEach(el => {
         if (el) {
+            if (el.classList.contains('alert') && el.dataset.dismissed === '1') {
+                el.style.display = 'none';
+                return;
+            }
             el.style.display = '';
         }
     });
@@ -3194,6 +3287,7 @@ const profileForm = document.getElementById('profileForm');
 if (profileForm) {
     profileForm.addEventListener('submit', function (event) {
         event.preventDefault();
+        exportAdjustedProfileImage();
         saveProfileChanges();
     });
 }
@@ -3269,6 +3363,7 @@ function closeAlert(buttonEl) {
     if (!buttonEl) return;
     const alertEl = buttonEl.closest('.alert');
     if (alertEl) {
+        alertEl.dataset.dismissed = '1';
         alertEl.style.display = 'none';
     }
 }
@@ -3302,6 +3397,13 @@ function showClubLogoStatus(message) {
 const btnEditarFotoPerfil = document.getElementById('btnEditarFotoPerfil');
 const fotoPerfilInput = document.getElementById('fotoPerfilInput');
 const fotoPerfilErro = document.getElementById('fotoPerfilErro');
+const fotoPerfilAjustadaInput = document.getElementById('fotoPerfilAjustadaInput');
+const fotoPerfilZoom = document.getElementById('fotoPerfilZoom');
+const fotoPerfilPosX = document.getElementById('fotoPerfilPosX');
+const fotoPerfilPosY = document.getElementById('fotoPerfilPosY');
+const profileAdjustTools = document.getElementById('profileAdjustTools');
+
+let imagemOriginalParaAjuste = null;
 
 function setFotoPerfilErro(msg) {
     if (!fotoPerfilErro) return;
@@ -3314,6 +3416,67 @@ function setFotoPerfilErro(msg) {
 
     fotoPerfilErro.textContent = msg;
     fotoPerfilErro.style.display = 'block';
+}
+
+function applyPreviewTransform() {
+    const preview = document.getElementById('profileAvatarPreview');
+    if (!preview || !imagemOriginalParaAjuste) return;
+
+    const zoom = Number(fotoPerfilZoom ? fotoPerfilZoom.value : 1);
+    const x = Number(fotoPerfilPosX ? fotoPerfilPosX.value : 50);
+    const y = Number(fotoPerfilPosY ? fotoPerfilPosY.value : 50);
+
+    preview.style.objectFit = 'cover';
+    preview.style.objectPosition = x + '% ' + y + '%';
+    preview.style.transform = 'scale(' + zoom + ')';
+    preview.style.transformOrigin = 'center center';
+}
+
+function exportAdjustedProfileImage() {
+    if (!imagemOriginalParaAjuste || !fotoPerfilAjustadaInput) {
+        if (fotoPerfilAjustadaInput) fotoPerfilAjustadaInput.value = '';
+        return;
+    }
+
+    const zoom = Number(fotoPerfilZoom ? fotoPerfilZoom.value : 1);
+    const x = Number(fotoPerfilPosX ? fotoPerfilPosX.value : 50) / 100;
+    const y = Number(fotoPerfilPosY ? fotoPerfilPosY.value : 50) / 100;
+
+    const canvasSize = 600;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        fotoPerfilAjustadaInput.value = '';
+        return;
+    }
+
+    const iw = imagemOriginalParaAjuste.naturalWidth || imagemOriginalParaAjuste.width;
+    const ih = imagemOriginalParaAjuste.naturalHeight || imagemOriginalParaAjuste.height;
+
+    if (!iw || !ih) {
+        fotoPerfilAjustadaInput.value = '';
+        return;
+    }
+
+    const baseScale = Math.max(canvasSize / iw, canvasSize / ih);
+    const finalScale = baseScale * zoom;
+
+    const drawW = iw * finalScale;
+    const drawH = ih * finalScale;
+
+    const extraX = Math.max(0, drawW - canvasSize);
+    const extraY = Math.max(0, drawH - canvasSize);
+
+    const offsetX = -extraX * x;
+    const offsetY = -extraY * y;
+
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
+    ctx.drawImage(imagemOriginalParaAjuste, offsetX, offsetY, drawW, drawH);
+
+    fotoPerfilAjustadaInput.value = canvas.toDataURL('image/png', 0.92);
 }
 
 if (btnEditarFotoPerfil && fotoPerfilInput) {
@@ -3346,6 +3509,23 @@ if (btnEditarFotoPerfil && fotoPerfilInput) {
             const preview = document.getElementById('profileAvatarPreview');
             const initial = document.getElementById('profileAvatarInitial');
 
+            const tempImage = new Image();
+            tempImage.onload = () => {
+                imagemOriginalParaAjuste = tempImage;
+
+                if (profileAdjustTools) {
+                    profileAdjustTools.style.display = 'grid';
+                }
+
+                if (fotoPerfilZoom) fotoPerfilZoom.value = '1';
+                if (fotoPerfilPosX) fotoPerfilPosX.value = '50';
+                if (fotoPerfilPosY) fotoPerfilPosY.value = '50';
+
+                applyPreviewTransform();
+                exportAdjustedProfileImage();
+            };
+            tempImage.src = event.target.result;
+
             if (preview) {
                 preview.src = event.target.result;
                 preview.style.display = 'block';
@@ -3359,6 +3539,15 @@ if (btnEditarFotoPerfil && fotoPerfilInput) {
         reader.readAsDataURL(this.files[0]);
     });
 }
+
+[fotoPerfilZoom, fotoPerfilPosX, fotoPerfilPosY].forEach((inputEl) => {
+    if (!inputEl) return;
+
+    inputEl.addEventListener('input', () => {
+        applyPreviewTransform();
+        exportAdjustedProfileImage();
+    });
+});
 
 /* Fechar modal ao clicar fora */
 document.querySelectorAll('.modal-backdrop').forEach(modal => {
