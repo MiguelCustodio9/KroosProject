@@ -6,25 +6,22 @@ $erro = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $email = trim($_POST['email'] ?? '');
+    $login = trim($_POST['login'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
-    if (!$email || !$password) {
+    if (!$login || !$password) {
         $erro = 'Preenche todos os campos.';
     } else {
-
-        $password_md5 = $password;
 
         $stmt = $conn->prepare("
             SELECT id_utilizador, tipo_utilizador, id_clube
             FROM utilizador
-            WHERE email_utilizador = ?
-            AND password = MD5(?)
+            WHERE (email_utilizador = ? OR nome_utilizador = ?)
+              AND password = MD5(?)
             LIMIT 1
     ");
 
-
-        $stmt->bind_param("ss", $email, $password);
+        $stmt->bind_param("sss", $login, $login, $password);
         $stmt->execute();
         $res = $stmt->get_result();
 
@@ -37,10 +34,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['tipo_utilizador'] = $user['tipo_utilizador'];
             $_SESSION['id_clube'] = $user['id_clube']; 
 
-            header('Location: index-admin.php');
-            exit;
+            if (in_array($user['tipo_utilizador'], ['admin_clube', 'treinador'], true)) {
+                header('Location: index-admin.php');
+                exit;
+            }
+
+            $erro = 'Este tipo de utilizador ainda não tem área de acesso disponível.';
+            $_SESSION = [];
         } else {
-            $erro = 'Email ou password inválidos.';
+            $erro = 'Credenciais inválidas.';
         }
     }
 }
@@ -235,7 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <form method="post">
 
         <div class="field">
-            <input type="email" name="email" placeholder="Email" required>
+            <input type="text" name="login" placeholder="Email ou nome de utilizador" required>
         </div>
 
         <div class="field">
@@ -261,7 +263,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Ainda não tem conta?
         </div>
 
-        <a href="criar-utilizador.php" class="btn btn-secondary btn-link">
+        <a href="criar-utilizador.php" class="btn btn-secondary btn-link" id="goRegister">
             Criar Conta
         </a>
     </form>

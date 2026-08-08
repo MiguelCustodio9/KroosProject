@@ -534,6 +534,7 @@ CREATE TABLE `utilizador` (
   `data_nascimento` date DEFAULT NULL,
   `password` varchar(255) NOT NULL,
   `tipo_utilizador` enum('admin','treinador','jogador','admin_clube') NOT NULL,
+  `tipo_treinador` enum('Treinador Principal','Treinador Adjunto','Treinador Estagiário','Treinador de Guarda Redes','Preparador Físico','Cientista Desportivo','Analista') DEFAULT NULL,
   `id_clube` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -1097,6 +1098,7 @@ ON DUPLICATE KEY UPDATE `email_utilizador` = VALUES(`email_utilizador`);
 
 SET @id_admin_clube := (SELECT `id_utilizador` FROM `utilizador` WHERE `email_utilizador` = 'adminclube@test.local' LIMIT 1);
 SET @id_treinador := (SELECT `id_utilizador` FROM `utilizador` WHERE `email_utilizador` = 'treinador@test.local' LIMIT 1);
+SET @id_jogador_utilizador := (SELECT `id_utilizador` FROM `utilizador` WHERE `email_utilizador` = 'jogador@test.local' LIMIT 1);
 
 INSERT INTO `acesso_equipa` (`id_equipa`, `id_utilizador`)
 VALUES (@id_equipa, @id_admin_clube), (@id_equipa, @id_treinador)
@@ -1123,6 +1125,23 @@ VALUES (
   @id_equipa
 )
 ON DUPLICATE KEY UPDATE `nome_completo` = VALUES(`nome_completo`);
+
+-- --------------------------------------------------------
+-- Notificações de teste
+-- --------------------------------------------------------
+
+DELETE FROM `notificacao`
+WHERE `titulo` LIKE '[TESTE] %'
+  AND `id_utilizador` IN (@id_admin_clube, @id_treinador, @id_jogador_utilizador);
+
+INSERT INTO `notificacao` (`id_utilizador`, `id_clube`, `titulo`, `mensagem`, `tipo`, `estado`, `criada_em`, `lida_em`, `link_acao`)
+VALUES
+  (@id_admin_clube, @id_clube, '[TESTE] Bem-vindo ao clube', 'O clube foi criado com sucesso e esta notificação serve para validar a interface.', 'sucesso', 'Lida', NOW() - INTERVAL 2 DAY, NOW() - INTERVAL 2 DAY, NULL),
+  (@id_admin_clube, @id_clube, '[TESTE] Treino agendado', 'Foi agendado treino para terça-feira às 19:00.', 'info', 'Nao Lida', NOW() - INTERVAL 1 DAY, NULL, NULL),
+  (@id_admin_clube, @id_clube, '[TESTE] Documento em falta', 'Confirma os dados do estádio para completar o perfil do clube.', 'aviso', 'Nao Lida', NOW() - INTERVAL 6 HOUR, NULL, NULL),
+  (@id_treinador, @id_clube, '[TESTE] Convocatória disponível', 'Já podes consultar a convocatória para o próximo jogo.', 'info', 'Nao Lida', NOW() - INTERVAL 5 HOUR, NULL, NULL),
+  (@id_treinador, @id_clube, '[TESTE] Assiduidade atualizada', 'A assiduidade do último treino foi registada.', 'sucesso', 'Lida', NOW() - INTERVAL 3 HOUR, NOW() - INTERVAL 2 HOUR, NULL),
+  (@id_jogador_utilizador, @id_clube, '[TESTE] Observação técnica', 'O treinador deixou uma observação no teu plano individual.', 'info', 'Nao Lida', NOW() - INTERVAL 90 MINUTE, NULL, NULL);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

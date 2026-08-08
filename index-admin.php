@@ -6,7 +6,7 @@ require_once __DIR__ . '/basedados.h';
 if (
     !isset($_SESSION['id_utilizador']) ||
     !isset($_SESSION['tipo_utilizador']) ||
-    $_SESSION['tipo_utilizador'] !== 'admin_clube' ||
+    !in_array($_SESSION['tipo_utilizador'], ['admin_clube', 'treinador'], true) ||
     !isset($_SESSION['id_clube'])
 ) {
     header('Location: login.php');
@@ -15,6 +15,8 @@ if (
 
 $id_utilizador = $_SESSION['id_utilizador'];
 $id_clube      = $_SESSION['id_clube'];
+$tipo_utilizador_sessao = $_SESSION['tipo_utilizador'];
+$isAdminClube = ($tipo_utilizador_sessao === 'admin_clube');
 
 $erro = '';
 $sucesso = '';
@@ -26,6 +28,21 @@ $listaEscaloesDisponiveis = [
 ];
 
 $listaHierarquiasDisponiveis = range('A', 'Z');
+
+$tiposTreinadorDisponiveis = [
+    'Treinador Principal',
+    'Treinador Adjunto',
+    'Treinador Estagiário',
+    'Treinador de Guarda Redes',
+    'Preparador Físico',
+    'Cientista Desportivo',
+    'Analista'
+];
+
+$checkTipoTreinador = $conn->query("SHOW COLUMNS FROM utilizador LIKE 'tipo_treinador'");
+if ($checkTipoTreinador && $checkTipoTreinador->num_rows === 0) {
+    $conn->query("ALTER TABLE utilizador ADD COLUMN tipo_treinador ENUM('Treinador Principal','Treinador Adjunto','Treinador Estagiário','Treinador de Guarda Redes','Preparador Físico','Cientista Desportivo','Analista') DEFAULT NULL AFTER tipo_utilizador");
+}
 
 /* ══════════════════════════════════
    AÇÕES POST
@@ -43,11 +60,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $telefoneUtilizador = trim($_POST['telemovel'] ?? '');
         $dataNascimento = trim($_POST['data_nascimento'] ?? '');
 
-        if ($nomeUtilizador === '' || $emailUtilizador === '' || $primeiroNome === '' || $ultimoNome === '') {
+        $emailObrigatorio = $isAdminClube;
+
+        if ($nomeUtilizador === '' || $primeiroNome === '' || $ultimoNome === '' || ($emailObrigatorio && $emailUtilizador === '')) {
             $erro = 'Preenche todos os campos obrigatórios do perfil.';
-        } elseif (!filter_var($emailUtilizador, FILTER_VALIDATE_EMAIL)) {
+        } elseif ($emailUtilizador !== '' && !filter_var($emailUtilizador, FILTER_VALIDATE_EMAIL)) {
             $erro = 'O email do perfil não é válido.';
-        } else {
+        } elseif ($emailUtilizador !== '') {
             $stmtCheckPerfilEmail = $conn->prepare("
                 SELECT id_utilizador
                 FROM utilizador
@@ -61,52 +80,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($perfilEmailExiste) {
                 $erro = 'Já existe outro utilizador com este email.';
+            }
+        }
+
+        if (!$erro) {
+            $stmtUpdatePerfil = $conn->prepare(" 
+                UPDATE utilizador
+                SET nome_utilizador = ?,
+                    email_utilizador = ?,
+                    telefone_utilizador = NULLIF(?, ''),
+                    primeiro_nome = ?,
+                    `último_nome` = ?,
+                    data_nascimento = NULLIF(?, '')
+                WHERE id_utilizador = ?
+                  AND id_clube = ?
+            ");
+
+            $stmtUpdatePerfil->bind_param(
+                "ssssssii",
+                $nomeUtilizador,
+                $emailUtilizador,
+                $telefoneUtilizador,
+                $primeiroNome,
+                $ultimoNome,
+                $dataNascimento,
+                $id_utilizador,
+                $id_clube
+            );
+
+            if (!$stmtUpdatePerfil->execute()) {
+                $erro = 'Erro ao guardar as alterações do perfil.';
             } else {
-                $stmtUpdatePerfil = $conn->prepare("
-                    UPDATE utilizador
-                    SET nome_utilizador = ?,
-                        email_utilizador = ?,
-                        telefone_utilizador = NULLIF(?, ''),
-                        primeiro_nome = ?,
-                        `último_nome` = ?,
-                        data_nascimento = NULLIF(?, '')
-                    WHERE id_utilizador = ?
-                      AND id_clube = ?
-                ");
-
-                $stmtUpdatePerfil->bind_param(
-                    "ssssssii",
-                    $nomeUtilizador,
-                    $emailUtilizador,
-                    $telefoneUtilizador,
-                    $primeiroNome,
-                    $ultimoNome,
-                    $dataNascimento,
-                    $id_utilizador,
-                    $id_clube
-                );
-
-                if (!$stmtUpdatePerfil->execute()) {
-                    $erro = 'Erro ao guardar as alterações do perfil.';
-                } else {
-                    $sucesso = 'Perfil atualizado com sucesso.';
-                }
+                $sucesso = 'Perfil atualizado com sucesso.';
             }
         }
     }
 
-    if ($acao === 'marcar_notificacao_lida') {
+    if ($acao === 'alterar_estado_notificacao' || $acao === 'marcar_notificacao_lida') {
         $idNotificacao = (int)($_POST['id_notificacao'] ?? 0);
+        $estadoNotificacao = $_POST['estado'] ?? 'Lida';
+
+        if ($acao === 'marcar_notificacao_lida') {
+            $estadoNotificacao = 'Lida';
+        }
+
+        if (!in_array($estadoNotificacao, ['Lida', 'Nao Lida'], true)) {
+            $estadoNotificacao = 'Lida';
+        }
 
         if ($idNotificacao > 0) {
             $stmtMarcaLida = $conn->prepare("
                 UPDATE notificacao
-                SET estado = 'Lida',
-                    lida_em = NOW()
+                SET estado = ?,
+                    lida_em = CASE WHEN ? = 'Lida' THEN NOW() ELSE NULL END
                 WHERE id_notificacao = ?
                   AND id_utilizador = ?
             ");
-            $stmtMarcaLida->bind_param("ii", $idNotificacao, $id_utilizador);
+            $stmtMarcaLida->bind_param("ssii", $estadoNotificacao, $estadoNotificacao, $idNotificacao, $id_utilizador);
             $stmtMarcaLida->execute();
         }
 
@@ -115,6 +145,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     /* ── Editar informações do clube ── */
     if ($acao === 'editar_clube') {
+
+        if (!$isAdminClube) {
+            $erro = 'Não tens permissão para editar o clube.';
+        } else {
 
         $activeTab = 'tab-info';
 
@@ -278,10 +312,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sucesso = 'Informações do clube atualizadas com sucesso.';
             }
         }
+        }
     }
 
     /* ── Criar escalão ── */
     if ($acao === 'criar_escalao') {
+
+        if (!$isAdminClube) {
+            $erro = 'Não tens permissão para criar escalões.';
+        } else {
 
         $activeTab = 'tab-escaloes';
 
@@ -334,10 +373,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+        }
     }
 
     /* ── Editar escalão ── */
     if ($acao === 'editar_escalao') {
+
+        if (!$isAdminClube) {
+            $erro = 'Não tens permissão para editar escalões.';
+        } else {
 
         $activeTab = 'tab-escaloes';
 
@@ -415,64 +459,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+        }
     }
 
     /* ── Criar treinador ── */
     if ($acao === 'criar_treinador') {
 
+        if (!$isAdminClube) {
+            $erro = 'Não tens permissão para criar treinadores.';
+        } else {
+
         $activeTab = 'tab-treinadores';
 
+        $nomeUtilizadorTreinador = trim($_POST['nome_utilizador_treinador'] ?? '');
         $primeiroNome       = trim($_POST['primeiro_nome'] ?? '');
         $ultimoNome         = trim($_POST['ultimo_nome'] ?? '');
         $emailTreinador     = trim($_POST['email_treinador'] ?? '');
         $passwordTreinador  = $_POST['password_treinador'] ?? '';
+        $tipoTreinador      = trim($_POST['tipo_treinador'] ?? '');
         $idEquipaTreinador  = (int)($_POST['id_equipa'] ?? 0);
 
-        if ($primeiroNome === '' || $ultimoNome === '' || $emailTreinador === '' || $passwordTreinador === '') {
+        if ($nomeUtilizadorTreinador === '' || $primeiroNome === '' || $ultimoNome === '' || $passwordTreinador === '' || $tipoTreinador === '') {
             $erro = 'Preenche todos os campos obrigatórios do treinador.';
-        } elseif (!filter_var($emailTreinador, FILTER_VALIDATE_EMAIL)) {
+        } elseif (!in_array($tipoTreinador, $tiposTreinadorDisponiveis, true)) {
+            $erro = 'Seleciona um tipo de treinador válido.';
+        } elseif (!preg_match('/^[A-Za-z0-9._-]{3,30}$/', $nomeUtilizadorTreinador)) {
+            $erro = 'O nome de utilizador deve ter 3 a 30 caracteres (letras, números, ., _ ou -).';
+        } elseif ($emailTreinador !== '' && !filter_var($emailTreinador, FILTER_VALIDATE_EMAIL)) {
             $erro = 'Email do treinador inválido.';
         } else {
 
-            $stmtCheckEmail = $conn->prepare("
+            $stmtCheckUsername = $conn->prepare(" 
                 SELECT id_utilizador
                 FROM utilizador
-                WHERE email_utilizador = ?
+                WHERE nome_utilizador = ?
                 LIMIT 1
             ");
-            $stmtCheckEmail->bind_param("s", $emailTreinador);
-            $stmtCheckEmail->execute();
-            $emailExiste = $stmtCheckEmail->get_result()->fetch_assoc();
+            $stmtCheckUsername->bind_param("s", $nomeUtilizadorTreinador);
+            $stmtCheckUsername->execute();
+            $usernameExiste = $stmtCheckUsername->get_result()->fetch_assoc();
 
-            if ($emailExiste) {
-                $erro = 'Já existe um utilizador com esse email.';
-            } else {
+            if ($usernameExiste) {
+                $erro = 'Já existe um utilizador com esse nome de utilizador.';
+            }
 
-                $nomeUtilizadorTreinador = strtolower(
-                    preg_replace('/\s+/', '_', $primeiroNome . '_' . $ultimoNome . '_' . substr(md5($emailTreinador), 0, 6))
-                );
+            if (!$erro && $emailTreinador !== '') {
+                $stmtCheckEmail = $conn->prepare(" 
+                    SELECT id_utilizador
+                    FROM utilizador
+                    WHERE email_utilizador = ?
+                    LIMIT 1
+                ");
+                $stmtCheckEmail->bind_param("s", $emailTreinador);
+                $stmtCheckEmail->execute();
+                $emailExiste = $stmtCheckEmail->get_result()->fetch_assoc();
 
-                /*
-                    A password vai em texto normal.
-                    O trigger da tabela utilizador faz MD5 automaticamente.
-                */
+                if ($emailExiste) {
+                    $erro = 'Já existe um utilizador com esse email.';
+                }
+            }
+
+            if (!$erro) {
                 $stmtCreateTreinador = $conn->prepare("
                     INSERT INTO utilizador
                     (nome_utilizador, email_utilizador, primeiro_nome, `último_nome`,
-                     password, tipo_utilizador, id_clube)
-                    VALUES (?, ?, ?, ?, ?, 'treinador', ?)
+                     password, tipo_utilizador, tipo_treinador, id_clube)
+                    VALUES (?, ?, ?, ?, ?, 'treinador', ?, ?)
                 ");
 
                 if (!$stmtCreateTreinador) {
                     $erro = 'Erro na preparação da criação do treinador.';
                 } else {
+
+                    $emailTreinadorInsert = $emailTreinador;
+
                     $stmtCreateTreinador->bind_param(
-                        "sssssi",
+                        "ssssssi",
                         $nomeUtilizadorTreinador,
-                        $emailTreinador,
+                        $emailTreinadorInsert,
                         $primeiroNome,
                         $ultimoNome,
                         $passwordTreinador,
+                        $tipoTreinador,
                         $id_clube
                     );
 
@@ -510,25 +578,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+        }
     }
 
     /* ── Editar treinador ── */
     if ($acao === 'editar_treinador') {
 
+        if (!$isAdminClube) {
+            $erro = 'Não tens permissão para editar treinadores.';
+        } else {
+
         $activeTab = 'tab-treinadores';
 
         $idTreinador       = (int)($_POST['id_treinador'] ?? 0);
+        $nomeUtilizadorTreinador = trim($_POST['nome_utilizador_treinador'] ?? '');
         $primeiroNome      = trim($_POST['primeiro_nome'] ?? '');
         $ultimoNome        = trim($_POST['ultimo_nome'] ?? '');
         $emailTreinador    = trim($_POST['email_treinador'] ?? '');
         $novaPassword      = $_POST['nova_password_treinador'] ?? '';
+        $tipoTreinador     = trim($_POST['tipo_treinador'] ?? '');
         $idEquipaTreinador = (int)($_POST['id_equipa'] ?? 0);
 
         if ($idTreinador <= 0) {
             $erro = 'Treinador inválido.';
-        } elseif ($primeiroNome === '' || $ultimoNome === '' || $emailTreinador === '') {
+        } elseif ($nomeUtilizadorTreinador === '' || $primeiroNome === '' || $ultimoNome === '' || $tipoTreinador === '') {
             $erro = 'Preenche os dados obrigatórios do treinador.';
-        } elseif (!filter_var($emailTreinador, FILTER_VALIDATE_EMAIL)) {
+        } elseif (!in_array($tipoTreinador, $tiposTreinadorDisponiveis, true)) {
+            $erro = 'Seleciona um tipo de treinador válido.';
+        } elseif (!preg_match('/^[A-Za-z0-9._-]{3,30}$/', $nomeUtilizadorTreinador)) {
+            $erro = 'O nome de utilizador deve ter 3 a 30 caracteres (letras, números, ., _ ou -).';
+        } elseif ($emailTreinador !== '' && !filter_var($emailTreinador, FILTER_VALIDATE_EMAIL)) {
             $erro = 'Email do treinador inválido.';
         } else {
 
@@ -548,20 +627,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $erro = 'Esse treinador não pertence ao teu clube.';
             } else {
 
-                $stmtCheckEmail = $conn->prepare("
+                $stmtCheckUsername = $conn->prepare(" 
                     SELECT id_utilizador
                     FROM utilizador
-                    WHERE email_utilizador = ?
+                    WHERE nome_utilizador = ?
                       AND id_utilizador <> ?
                     LIMIT 1
                 ");
-                $stmtCheckEmail->bind_param("si", $emailTreinador, $idTreinador);
-                $stmtCheckEmail->execute();
-                $emailExiste = $stmtCheckEmail->get_result()->fetch_assoc();
+                $stmtCheckUsername->bind_param("si", $nomeUtilizadorTreinador, $idTreinador);
+                $stmtCheckUsername->execute();
+                $usernameExiste = $stmtCheckUsername->get_result()->fetch_assoc();
 
-                if ($emailExiste) {
-                    $erro = 'Já existe outro utilizador com esse email.';
-                } else {
+                if ($usernameExiste) {
+                    $erro = 'Já existe outro utilizador com esse nome de utilizador.';
+                }
+
+                if (!$erro && $emailTreinador !== '') {
+                    $stmtCheckEmail = $conn->prepare(" 
+                        SELECT id_utilizador
+                        FROM utilizador
+                        WHERE email_utilizador = ?
+                          AND id_utilizador <> ?
+                        LIMIT 1
+                    ");
+                    $stmtCheckEmail->bind_param("si", $emailTreinador, $idTreinador);
+                    $stmtCheckEmail->execute();
+                    $emailExiste = $stmtCheckEmail->get_result()->fetch_assoc();
+
+                    if ($emailExiste) {
+                        $erro = 'Já existe outro utilizador com esse email.';
+                    }
+                }
+
+                if (!$erro) {
 
                     if ($idEquipaTreinador > 0) {
                         $stmtCheckEquipa = $conn->prepare("
@@ -585,9 +683,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($novaPassword !== '') {
                             $stmtUpdateTreinador = $conn->prepare("
                                 UPDATE utilizador
-                                SET primeiro_nome = ?,
+                                SET nome_utilizador = ?,
+                                    primeiro_nome = ?,
                                     `último_nome` = ?,
                                     email_utilizador = ?,
+                                    tipo_treinador = ?,
                                     password = ?
                                 WHERE id_utilizador = ?
                                   AND id_clube = ?
@@ -595,10 +695,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ");
 
                             $stmtUpdateTreinador->bind_param(
-                                "ssssii",
+                                "ssssssii",
+                                $nomeUtilizadorTreinador,
                                 $primeiroNome,
                                 $ultimoNome,
                                 $emailTreinador,
+                                $tipoTreinador,
                                 $novaPassword,
                                 $idTreinador,
                                 $id_clube
@@ -606,19 +708,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } else {
                             $stmtUpdateTreinador = $conn->prepare("
                                 UPDATE utilizador
-                                SET primeiro_nome = ?,
+                                SET nome_utilizador = ?,
+                                    primeiro_nome = ?,
                                     `último_nome` = ?,
-                                    email_utilizador = ?
+                                    email_utilizador = ?,
+                                    tipo_treinador = ?
                                 WHERE id_utilizador = ?
                                   AND id_clube = ?
                                   AND tipo_utilizador = 'treinador'
                             ");
 
                             $stmtUpdateTreinador->bind_param(
-                                "sssii",
+                                "sssssii",
+                                $nomeUtilizadorTreinador,
                                 $primeiroNome,
                                 $ultimoNome,
                                 $emailTreinador,
+                                $tipoTreinador,
                                 $idTreinador,
                                 $id_clube
                             );
@@ -653,6 +759,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
             }
+        }
+        }
+    }
+
+    /* ── Remover treinador ── */
+    if ($acao === 'remover_treinador') {
+
+        if (!$isAdminClube) {
+            $erro = 'Não tens permissão para remover treinadores.';
+        } else {
+
+        $activeTab = 'tab-treinadores';
+        $idTreinador = (int)($_POST['id_treinador'] ?? 0);
+
+        if ($idTreinador <= 0) {
+            $erro = 'Treinador inválido.';
+        } else {
+            $stmtCheckTreinador = $conn->prepare(" 
+                SELECT id_utilizador
+                FROM utilizador
+                WHERE id_utilizador = ?
+                  AND id_clube = ?
+                  AND tipo_utilizador = 'treinador'
+                LIMIT 1
+            ");
+            $stmtCheckTreinador->bind_param("ii", $idTreinador, $id_clube);
+            $stmtCheckTreinador->execute();
+            $treinadorAtual = $stmtCheckTreinador->get_result()->fetch_assoc();
+
+            if (!$treinadorAtual) {
+                $erro = 'Esse treinador não pertence ao teu clube.';
+            } else {
+                $conn->begin_transaction();
+
+                try {
+                    $stmtDeleteAcesso = $conn->prepare("DELETE FROM acesso_equipa WHERE id_utilizador = ?");
+                    $stmtDeleteAcesso->bind_param("i", $idTreinador);
+                    $stmtDeleteAcesso->execute();
+
+                    $stmtDeleteMensagens = $conn->prepare("DELETE FROM mensagens WHERE origem = ? OR destino = ?");
+                    $stmtDeleteMensagens->bind_param("ii", $idTreinador, $idTreinador);
+                    $stmtDeleteMensagens->execute();
+
+                    $stmtDeleteNotificacoes = $conn->prepare("DELETE FROM notificacao WHERE id_utilizador = ?");
+                    $stmtDeleteNotificacoes->bind_param("i", $idTreinador);
+                    $stmtDeleteNotificacoes->execute();
+
+                    $stmtDeleteTreinador = $conn->prepare(" 
+                        DELETE FROM utilizador
+                        WHERE id_utilizador = ?
+                          AND id_clube = ?
+                          AND tipo_utilizador = 'treinador'
+                    ");
+                    $stmtDeleteTreinador->bind_param("ii", $idTreinador, $id_clube);
+                    $stmtDeleteTreinador->execute();
+
+                    $conn->commit();
+                    $sucesso = 'Treinador removido com sucesso.';
+                } catch (Throwable $e) {
+                    $conn->rollback();
+                    $erro = 'Erro ao remover treinador.';
+                }
+            }
+        }
         }
     }
 }
@@ -742,9 +912,11 @@ $treinadoresClube = [];
 $stmtTreinadores = $conn->prepare("
     SELECT 
         u.id_utilizador,
+        u.nome_utilizador,
         u.primeiro_nome,
         u.`último_nome`,
         u.email_utilizador,
+        u.tipo_treinador,
         MIN(eq.id_equipa) AS id_equipa_atual,
         COALESCE(
             GROUP_CONCAT(DISTINCT CONCAT(eq.`escalão`, ' ', eq.hierarquia) ORDER BY eq.`escalão`, eq.hierarquia SEPARATOR ', '),
@@ -755,7 +927,7 @@ $stmtTreinadores = $conn->prepare("
     LEFT JOIN equipa eq ON eq.id_equipa = ae.id_equipa
     WHERE u.id_clube = ?
       AND u.tipo_utilizador = 'treinador'
-    GROUP BY u.id_utilizador, u.primeiro_nome, u.`último_nome`, u.email_utilizador
+        GROUP BY u.id_utilizador, u.nome_utilizador, u.primeiro_nome, u.`último_nome`, u.email_utilizador, u.tipo_treinador
     ORDER BY u.primeiro_nome, u.`último_nome`
 ");
 $stmtTreinadores->bind_param("i", $id_clube);
@@ -1059,14 +1231,14 @@ body { background: #f0f2f7; }
 }
 
 .profile-header {
-    background: #f4f6fb;
-    border-bottom: 1px solid #dfe3ee;
+    background: var(--club);
+    border-bottom: 1px solid rgba(0,0,0,.12);
     min-height: 74px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 22px 0 18px;
-    color: #1c2d4f;
+    color: #fff;
 }
 
 .profile-title {
@@ -1111,7 +1283,7 @@ body { background: #f0f2f7; }
 .profile-field label {
     font-size: 12px;
     font-weight: 700;
-    color: #4b5b7c;
+    color: var(--club);
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
@@ -1132,8 +1304,8 @@ body { background: #f0f2f7; }
 
 .profile-field .profile-input:focus {
     outline: none;
-    border-color: rgba(48, 71, 172, 0.9);
-    box-shadow: 0 0 0 4px rgba(48, 71, 172, 0.12);
+    border-color: var(--club);
+    box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.08);
 }
 
 .profile-avatar-wrap {
@@ -1144,22 +1316,22 @@ body { background: #f0f2f7; }
     width: 100%;
     min-height: 220px;
     background: rgba(255,255,255,0.12);
-    border: 3px solid rgba(42, 62, 154, 0.9);
+    border: 3px solid var(--club);
     border-radius: 28px;
     padding: 18px 10px;
-    box-shadow: inset 0 0 0 1px rgba(42, 62, 154, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 .profile-avatar {
     width: 140px;
     height: 140px;
     border-radius: 50%;
-    border: 4px solid rgba(42, 62, 154, 0.9);
-    background: #eaf0ff;
+    border: 4px solid var(--club);
+    background: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(42, 62, 154, 0.95);
+    color: var(--club);
     font-size: 56px;
     font-weight: 800;
     margin-bottom: 12px;
@@ -1170,7 +1342,7 @@ body { background: #f0f2f7; }
     max-width: 220px;
     border: none;
     border-radius: 18px;
-    background: linear-gradient(135deg, rgba(48, 71, 172, 0.95), rgba(42, 62, 154, 0.95));
+    background: var(--club);
     color: #fff;
     padding: 14px 18px;
     font-size: 15px;
@@ -1181,7 +1353,7 @@ body { background: #f0f2f7; }
 .profile-save-button {
     border: none;
     border-radius: 16px;
-    background: linear-gradient(135deg, rgba(48, 71, 172, 0.95), rgba(42, 62, 154, 0.95));
+    background: var(--club);
     color: #fff;
     font-size: 15px;
     font-weight: 700;
@@ -1728,6 +1900,17 @@ body { background: #f0f2f7; }
     color: #fff;
 }
 
+.btn-remove {
+    border: none;
+    border-radius: 999px;
+    padding: 13px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    background: #c62828;
+    color: #fff;
+}
+
 @media (max-width: 760px) {
     .edit-grid {
         grid-template-columns: 1fr;
@@ -1909,6 +2092,7 @@ body { background: #f0f2f7; }
             <div class="alert alert-success"><?= htmlspecialchars($sucesso) ?></div>
         <?php endif; ?>
 
+        <?php if ($isAdminClube): ?>
         <div class="card-header-actions">
             <!-- Botão editar clube: só aparece na aba Info -->
             <button
@@ -1926,6 +2110,7 @@ body { background: #f0f2f7; }
                 </svg>
             </button>
         </div>
+        <?php endif; ?>
 
         <!-- Tabs -->
         <div class="tabs">
@@ -2027,9 +2212,11 @@ body { background: #f0f2f7; }
 
             <div class="tab-action-row">
                 <h3>Escalões</h3>
+                <?php if ($isAdminClube): ?>
                 <button class="btn-create" type="button" onclick="openModal('modalCriarEscalao')">
                     + Criar Escalão
                 </button>
+                <?php endif; ?>
             </div>
 
             <?php if (empty($escaloesClube)): ?>
@@ -2048,7 +2235,9 @@ body { background: #f0f2f7; }
                             <th>Escalão</th>
                             <th>Hierarquia</th>
                             <th>Época</th>
+                            <?php if ($isAdminClube): ?>
                             <th class="actions-col">Editar</th>
+                            <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
@@ -2057,6 +2246,7 @@ body { background: #f0f2f7; }
                                 <td><?= htmlspecialchars($esc['escalão']) ?></td>
                                 <td><?= htmlspecialchars($esc['hierarquia']) ?></td>
                                 <td><?= htmlspecialchars($esc['época'] ?? 'Não definida') ?></td>
+                                <?php if ($isAdminClube): ?>
                                 <td class="actions-cell">
                                     <button
                                         class="btn-row-edit"
@@ -2067,6 +2257,7 @@ body { background: #f0f2f7; }
                                         ✎
                                     </button>
                                 </td>
+                                <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -2080,9 +2271,11 @@ body { background: #f0f2f7; }
 
             <div class="tab-action-row">
                 <h3>Treinadores</h3>
+                <?php if ($isAdminClube): ?>
                 <button class="btn-create" type="button" onclick="openModal('modalCriarTreinador')">
                     + Criar Treinador
                 </button>
+                <?php endif; ?>
             </div>
 
             <?php if (empty($treinadoresClube)): ?>
@@ -2099,21 +2292,28 @@ body { background: #f0f2f7; }
                     <thead>
                         <tr>
                             <th>Nome</th>
+                            <th>Utilizador</th>
+                            <th>Tipo</th>
                             <th>Email</th>
                             <th>Equipas associadas</th>
+                            <?php if ($isAdminClube): ?>
                             <th class="actions-col">Editar</th>
+                            <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($treinadoresClube as $treinador): ?>
                             <tr>
                                 <td><?= htmlspecialchars($treinador['primeiro_nome'] . ' ' . $treinador['último_nome']) ?></td>
-                                <td><?= htmlspecialchars($treinador['email_utilizador']) ?></td>
+                                <td><?= htmlspecialchars($treinador['nome_utilizador']) ?></td>
+                                <td><?= htmlspecialchars($treinador['tipo_treinador'] ?: 'Não definido') ?></td>
+                                <td><?= htmlspecialchars($treinador['email_utilizador'] ?: 'Sem email') ?></td>
                                 <td>
                                     <?= $treinador['equipas']
                                         ? htmlspecialchars($treinador['equipas'])
                                         : '<span class="muted">Sem equipa</span>' ?>
                                 </td>
+                                <?php if ($isAdminClube): ?>
                                 <td class="actions-cell">
                                     <button
                                         class="btn-row-edit"
@@ -2124,6 +2324,7 @@ body { background: #f0f2f7; }
                                         ✎
                                     </button>
                                 </td>
+                                <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -2136,6 +2337,7 @@ body { background: #f0f2f7; }
 </div>
 
 <!-- ══ MODAL EDITAR CLUBE ══ -->
+<?php if ($isAdminClube): ?>
 <div class="modal-backdrop" id="modalEditarClube">
     <div class="modal large">
         <div class="modal-header">
@@ -2225,8 +2427,10 @@ body { background: #f0f2f7; }
         </form>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ══ MODAL CRIAR ESCALÃO ══ -->
+<?php if ($isAdminClube): ?>
 <div class="modal-backdrop" id="modalCriarEscalao">
     <div class="modal">
         <div class="modal-header">
@@ -2280,8 +2484,10 @@ body { background: #f0f2f7; }
         </form>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ══ MODAL CRIAR TREINADOR ══ -->
+<?php if ($isAdminClube): ?>
 <div class="modal-backdrop" id="modalCriarTreinador">
     <div class="modal">
         <div class="modal-header">
@@ -2305,13 +2511,28 @@ body { background: #f0f2f7; }
                 </div>
 
                 <div class="edit-group">
-                    <label>Email</label>
-                    <input type="email" name="email_treinador" required>
+                    <label>Nome de utilizador</label>
+                    <input type="text" name="nome_utilizador_treinador" minlength="3" maxlength="30" required>
                 </div>
 
                 <div class="edit-group">
                     <label>Password inicial</label>
                     <input type="password" name="password_treinador" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Tipo de treinador</label>
+                    <select name="tipo_treinador" required>
+                        <option value="">Selecionar tipo</option>
+                        <?php foreach ($tiposTreinadorDisponiveis as $tipoTreinador): ?>
+                            <option value="<?= htmlspecialchars($tipoTreinador) ?>"><?= htmlspecialchars($tipoTreinador) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group">
+                    <label>Email (opcional)</label>
+                    <input type="email" name="email_treinador" placeholder="Pode preencher mais tarde">
                 </div>
 
                 <div class="edit-group full">
@@ -2335,8 +2556,10 @@ body { background: #f0f2f7; }
         </form>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- ══ MODAIS EDITAR ESCALÕES ══ -->
+<?php if ($isAdminClube): ?>
 <?php foreach ($escaloesClube as $esc): ?>
 <div class="modal-backdrop" id="modalEditarEscalao<?= (int)$esc['id_equipa'] ?>">
     <div class="modal">
@@ -2403,8 +2626,10 @@ body { background: #f0f2f7; }
     </div>
 </div>
 <?php endforeach; ?>
+<?php endif; ?>
 
 <!-- ══ MODAIS EDITAR TREINADORES ══ -->
+<?php if ($isAdminClube): ?>
 <?php foreach ($treinadoresClube as $treinador): ?>
 <div class="modal-backdrop" id="modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>">
     <div class="modal">
@@ -2440,12 +2665,39 @@ body { background: #f0f2f7; }
                 </div>
 
                 <div class="edit-group full">
-                    <label>Email</label>
+                    <label>Nome de utilizador</label>
+                    <input
+                        type="text"
+                        name="nome_utilizador_treinador"
+                        value="<?= htmlspecialchars($treinador['nome_utilizador']) ?>"
+                        minlength="3"
+                        maxlength="30"
+                        required
+                    >
+                </div>
+
+                <div class="edit-group full">
+                    <label>Tipo de treinador</label>
+                    <select name="tipo_treinador" required>
+                        <option value="">Selecionar tipo</option>
+                        <?php foreach ($tiposTreinadorDisponiveis as $tipoTreinador): ?>
+                            <option
+                                value="<?= htmlspecialchars($tipoTreinador) ?>"
+                                <?= ($treinador['tipo_treinador'] ?? '') === $tipoTreinador ? 'selected' : '' ?>
+                            >
+                                <?= htmlspecialchars($tipoTreinador) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Email (opcional)</label>
                     <input
                         type="email"
                         name="email_treinador"
                         value="<?= htmlspecialchars($treinador['email_utilizador']) ?>"
-                        required
+                        placeholder="Pode ficar vazio"
                     >
                 </div>
 
@@ -2479,6 +2731,11 @@ body { background: #f0f2f7; }
             </div>
 
             <div class="modal-actions">
+                <form method="POST" style="margin-right:auto;" onsubmit="return confirm('Tens a certeza que queres remover este treinador?');">
+                    <input type="hidden" name="acao" value="remover_treinador">
+                    <input type="hidden" name="id_treinador" value="<?= (int)$treinador['id_utilizador'] ?>">
+                    <button class="btn-remove" type="submit">Remover treinador</button>
+                </form>
                 <button class="btn-cancel" type="button" onclick="closeModal('modalEditarTreinador<?= (int)$treinador['id_utilizador'] ?>')">Cancelar</button>
                 <button class="btn-save" type="submit">Guardar alterações</button>
             </div>
@@ -2486,6 +2743,7 @@ body { background: #f0f2f7; }
     </div>
 </div>
 <?php endforeach; ?>
+<?php endif; ?>
 
 <script>
 /* Tabs */
@@ -2642,15 +2900,37 @@ function filterNotifications(filter = 'all') {
     });
 }
 
-function markNotificationAsRead(idNotificacao, row) {
+function applyNotificationState(row, state) {
+    if (!row) return;
+
+    row.dataset.state = state;
+    row.classList.remove('read', 'unread');
+    row.classList.add(state === 'Lida' ? 'read' : 'unread');
+}
+
+function applyCurrentNotificationFilter() {
+    const activeTab = document.querySelector('.notification-tab.active');
+    const text = activeTab ? activeTab.textContent.trim() : 'Geral';
+
+    if (text === 'Lidas') {
+        filterNotifications('read');
+    } else if (text === 'Por ler') {
+        filterNotifications('unread');
+    } else {
+        filterNotifications('all');
+    }
+}
+
+function toggleNotificationState(idNotificacao, row) {
     if (!idNotificacao || !row) return;
 
-    const state = row.dataset.state || 'Nao Lida';
-    if (state === 'Lida') return;
+    const currentState = row.dataset.state || 'Nao Lida';
+    const nextState = currentState === 'Lida' ? 'Nao Lida' : 'Lida';
 
     const formData = new URLSearchParams();
-    formData.append('acao', 'marcar_notificacao_lida');
+    formData.append('acao', 'alterar_estado_notificacao');
     formData.append('id_notificacao', String(idNotificacao));
+    formData.append('estado', nextState);
 
     fetch(window.location.href, {
         method: 'POST',
@@ -2659,11 +2939,11 @@ function markNotificationAsRead(idNotificacao, row) {
         },
         body: formData.toString()
     }).then(() => {
-        row.dataset.state = 'Lida';
-        row.classList.remove('unread');
-        row.classList.add('read');
+        applyNotificationState(row, nextState);
+        applyCurrentNotificationFilter();
     }).catch(() => {
-        row.classList.add('read');
+        applyNotificationState(row, nextState);
+        applyCurrentNotificationFilter();
     });
 }
 
@@ -2696,7 +2976,7 @@ document.querySelectorAll('.notification-row').forEach(row => {
     row.addEventListener('click', () => {
         const id = row.dataset.id;
         if (id) {
-            markNotificationAsRead(id, row);
+            toggleNotificationState(id, row);
         }
     });
 
@@ -2705,7 +2985,7 @@ document.querySelectorAll('.notification-row').forEach(row => {
             event.preventDefault();
             const id = row.dataset.id;
             if (id) {
-                markNotificationAsRead(id, row);
+                toggleNotificationState(id, row);
             }
         }
     });
