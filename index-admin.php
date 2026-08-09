@@ -21,6 +21,9 @@ $isAdminClube = ($tipo_utilizador_sessao === 'admin_clube');
 $erro = '';
 $sucesso = '';
 $activeTab = 'tab-info';
+$viewMode = $_GET['view'] ?? 'dashboard';
+$mostrarMensagens = ($viewMode === 'mensagens');
+$chatSelecionadoId = (int)($_GET['chat'] ?? 0);
 
 $listaEscaloesDisponiveis = [
     'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
@@ -51,6 +54,47 @@ if ($checkTipoTreinador && $checkTipoTreinador->num_rows === 0) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $acao = $_POST['acao'] ?? '';
+
+    if ($acao === 'enviar_mensagem') {
+        $destinoMensagem = (int)($_POST['destino_mensagem'] ?? 0);
+        $conteudoMensagem = trim($_POST['conteudo_mensagem'] ?? '');
+
+        $mostrarMensagens = true;
+        $viewMode = 'mensagens';
+        $chatSelecionadoId = $destinoMensagem;
+
+        if ($destinoMensagem <= 0 || $conteudoMensagem === '') {
+            $erro = 'Seleciona um destinatário e escreve uma mensagem.';
+        } else {
+            $stmtCheckDestinoMensagem = $conn->prepare(" 
+                SELECT id_utilizador
+                FROM utilizador
+                WHERE id_utilizador = ?
+                  AND id_clube = ?
+                  AND id_utilizador <> ?
+                LIMIT 1
+            ");
+            $stmtCheckDestinoMensagem->bind_param("iii", $destinoMensagem, $id_clube, $id_utilizador);
+            $stmtCheckDestinoMensagem->execute();
+            $destinoExiste = $stmtCheckDestinoMensagem->get_result()->fetch_assoc();
+
+            if (!$destinoExiste) {
+                $erro = 'Esse utilizador não está disponível para mensagens.';
+            } else {
+                $stmtInserirMensagem = $conn->prepare(" 
+                    INSERT INTO mensagens (origem, destino, `conteúdo`, estado)
+                    VALUES (?, ?, ?, 'Não Lida')
+                ");
+                $stmtInserirMensagem->bind_param("iis", $id_utilizador, $destinoMensagem, $conteudoMensagem);
+
+                if ($stmtInserirMensagem->execute()) {
+                    $sucesso = 'Mensagem enviada com sucesso.';
+                } else {
+                    $erro = 'Erro ao enviar mensagem.';
+                }
+            }
+        }
+    }
 
     if ($acao === 'editar_perfil') {
         $nomeUtilizador = trim($_POST['nome_utilizador'] ?? '');
@@ -1087,6 +1131,93 @@ while ($row = $resTreinadores->fetch_assoc()) {
     $treinadoresClube[] = $row;
 }
 
+/* ── Buscar utilizadores e conversa para mensagens ── */
+$utilizadoresMensagem = [];
+$mensagensConversa = [];
+
+$stmtUtilizadoresMensagem = $conn->prepare(" 
+    SELECT
+        u.id_utilizador,
+        u.nome_utilizador,
+        u.primeiro_nome,
+        u.`último_nome`,
+        u.foto_perfil,
+        u.tipo_utilizador,
+        MAX(m.id_mensagem) AS ultima_mensagem_id,
+        COALESCE(SUM(CASE
+            WHEN m.origem = u.id_utilizador
+             AND m.destino = ?
+             AND m.estado = 'Não Lida'
+            THEN 1 ELSE 0 END), 0) AS nao_lidas
+    FROM utilizador u
+    LEFT JOIN mensagens m
+      ON (
+           (m.origem = u.id_utilizador AND m.destino = ?)
+        OR (m.origem = ? AND m.destino = u.id_utilizador)
+      )
+    WHERE u.id_clube = ?
+      AND u.id_utilizador <> ?
+      AND u.tipo_utilizador IN ('admin_clube', 'treinador', 'jogador')
+    GROUP BY
+        u.id_utilizador,
+        u.nome_utilizador,
+        u.primeiro_nome,
+        u.`último_nome`,
+        u.foto_perfil,
+        u.tipo_utilizador
+    ORDER BY ultima_mensagem_id DESC, u.primeiro_nome, u.`último_nome`
+");
+$stmtUtilizadoresMensagem->bind_param("iiiii", $id_utilizador, $id_utilizador, $id_utilizador, $id_clube, $id_utilizador);
+$stmtUtilizadoresMensagem->execute();
+$resUtilizadoresMensagem = $stmtUtilizadoresMensagem->get_result();
+
+while ($row = $resUtilizadoresMensagem->fetch_assoc()) {
+    $row['foto_base64'] = !empty($row['foto_perfil'])
+        ? 'data:image/png;base64,' . base64_encode($row['foto_perfil'])
+        : null;
+    $utilizadoresMensagem[] = $row;
+}
+
+if ($chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
+    $chatSelecionadoId = (int)$utilizadoresMensagem[0]['id_utilizador'];
+}
+
+$chatSelecionado = null;
+foreach ($utilizadoresMensagem as $utilizadorMsg) {
+    if ((int)$utilizadorMsg['id_utilizador'] === $chatSelecionadoId) {
+        $chatSelecionado = $utilizadorMsg;
+        break;
+    }
+}
+
+if ($chatSelecionado) {
+    $stmtMarcarLidas = $conn->prepare(" 
+        UPDATE mensagens
+        SET estado = 'Lida'
+        WHERE origem = ?
+          AND destino = ?
+          AND estado = 'Não Lida'
+    ");
+    $stmtMarcarLidas->bind_param("ii", $chatSelecionadoId, $id_utilizador);
+    $stmtMarcarLidas->execute();
+
+    $stmtConversa = $conn->prepare(" 
+        SELECT id_mensagem, origem, destino, `conteúdo`, estado
+        FROM mensagens
+        WHERE (origem = ? AND destino = ?)
+           OR (origem = ? AND destino = ?)
+        ORDER BY id_mensagem ASC
+        LIMIT 300
+    ");
+    $stmtConversa->bind_param("iiii", $id_utilizador, $chatSelecionadoId, $chatSelecionadoId, $id_utilizador);
+    $stmtConversa->execute();
+    $resConversa = $stmtConversa->get_result();
+
+    while ($row = $resConversa->fetch_assoc()) {
+        $mensagensConversa[] = $row;
+    }
+}
+
 /* ── Buscar perfil do utilizador atual ── */
 $perfilUtilizador = [];
 $stmtPerfil = $conn->prepare("
@@ -1748,19 +1879,224 @@ body { background: #f0f2f7; }
 /* ── Botões de editar nas linhas ── */
 .actions-col {
     width: 140px;
-    text-align: center;
+    text-align: left;
 }
 
 .actions-cell {
-    text-align: center;
+    text-align: left;
     white-space: nowrap;
 }
 
 .actions-wrap {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 8px;
+}
+
+/* ── Mensagens (estilo DM) ── */
+.messages-shell {
+    display: none;
+    background: #fff;
+    border: 1px solid #dfe3ee;
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(23, 42, 88, 0.08);
+    overflow: hidden;
+    min-height: 640px;
+}
+
+.messages-shell.visible {
+    display: grid;
+    grid-template-columns: 310px 1fr;
+}
+
+.messages-sidebar {
+    border-right: 1px solid #e6eaf2;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+}
+
+.messages-sidebar-header {
+    padding: 18px 16px;
+    border-bottom: 1px solid #eef2f7;
+    font-weight: 700;
+    color: #1f2b3d;
+}
+
+.messages-list {
+    overflow-y: auto;
+    max-height: 560px;
+}
+
+.message-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    text-decoration: none;
+    color: #1f2b3d;
+    border-bottom: 1px solid #f2f4f9;
+}
+
+.message-user:hover {
+    background: #f6f8fc;
+}
+
+.message-user.active {
+    background: #eff4ff;
+}
+
+.message-user-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #eaf0fb;
+    border: 1px solid #d9e0f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--club);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.message-user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.message-user-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.message-user-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-user-type {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.message-user-unread {
+    margin-left: auto;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--club);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+}
+
+.messages-chat {
+    display: flex;
+    flex-direction: column;
+    background: #f9fbff;
+}
+
+.messages-chat-header {
+    min-height: 64px;
+    border-bottom: 1px solid #e5ebf5;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    font-weight: 700;
+    color: #1f2b3d;
+}
+
+.messages-thread {
+    flex: 1;
+    padding: 18px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dm-bubble {
+    max-width: min(72%, 520px);
+    border-radius: 18px;
+    padding: 10px 13px;
+    font-size: 14px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.dm-bubble.out {
+    align-self: flex-end;
+    background: var(--club);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+}
+
+.dm-bubble.in {
+    align-self: flex-start;
+    background: #fff;
+    color: #1f2b3d;
+    border: 1px solid #e2e8f4;
+    border-bottom-left-radius: 6px;
+}
+
+.messages-compose {
+    border-top: 1px solid #e5ebf5;
+    background: #fff;
+    padding: 12px;
+}
+
+.messages-compose form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.messages-compose textarea {
+    flex: 1;
+    min-height: 44px;
+    max-height: 120px;
+    resize: vertical;
+    border: 1px solid #d9e0f0;
+    border-radius: 14px;
+    padding: 11px 12px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.messages-compose button {
+    border: none;
+    border-radius: 14px;
+    background: var(--club);
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 11px 14px;
+    cursor: pointer;
+}
+
+.messages-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #7b8596;
+    padding: 16px;
 }
 
 .btn-row-edit {
@@ -2203,6 +2539,19 @@ body { background: #f0f2f7; }
     .card-header-actions {
         justify-content: flex-start;
     }
+
+    .messages-shell.visible {
+        grid-template-columns: 1fr;
+    }
+
+    .messages-sidebar {
+        border-right: none;
+        border-bottom: 1px solid #e6eaf2;
+    }
+
+    .messages-list {
+        max-height: 240px;
+    }
 }
 </style>
 </head>
@@ -2271,7 +2620,7 @@ body { background: #f0f2f7; }
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
-    <a href="#">
+    <a href="#" onclick="event.preventDefault(); showMessagesScreen();">
         <img src="assets/mensagens.png" alt="">
         <span>Mensagens</span>
     </a>
@@ -2393,6 +2742,80 @@ body { background: #f0f2f7; }
                     <?php endif; ?>
                 </div>
             </div>
+        </div>
+
+        <div class="messages-shell <?= $mostrarMensagens ? 'visible' : '' ?>" id="messagesScreen" aria-label="Painel de mensagens">
+            <aside class="messages-sidebar">
+                <div class="messages-sidebar-header">Mensagens</div>
+                <div class="messages-list">
+                    <?php if (empty($utilizadoresMensagem)): ?>
+                        <div class="messages-empty" style="min-height:120px;">Sem utilizadores disponíveis para conversar.</div>
+                    <?php else: ?>
+                        <?php foreach ($utilizadoresMensagem as $uMsg): ?>
+                            <?php
+                                $uId = (int)$uMsg['id_utilizador'];
+                                $nomeU = trim(($uMsg['primeiro_nome'] ?? '') . ' ' . ($uMsg['último_nome'] ?? ''));
+                                if ($nomeU === '') {
+                                    $nomeU = $uMsg['nome_utilizador'];
+                                }
+                                $initialU = strtoupper(substr($nomeU, 0, 1));
+                                $isAtivoChat = ($chatSelecionadoId === $uId);
+                                $badgeNaoLidas = (int)($uMsg['nao_lidas'] ?? 0);
+                            ?>
+                            <a class="message-user <?= $isAtivoChat ? 'active' : '' ?>" href="index-admin.php?view=mensagens&chat=<?= $uId ?>">
+                                <div class="message-user-avatar">
+                                    <?php if (!empty($uMsg['foto_base64'])): ?>
+                                        <img src="<?= $uMsg['foto_base64'] ?>" alt="<?= htmlspecialchars($nomeU) ?>">
+                                    <?php else: ?>
+                                        <span><?= htmlspecialchars($initialU ?: 'U') ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="message-user-main">
+                                    <span class="message-user-name"><?= htmlspecialchars($nomeU) ?></span>
+                                    <span class="message-user-type"><?= htmlspecialchars($uMsg['tipo_utilizador']) ?></span>
+                                </div>
+                                <?php if ($badgeNaoLidas > 0): ?>
+                                    <span class="message-user-unread"><?= $badgeNaoLidas ?></span>
+                                <?php endif; ?>
+                            </a>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </aside>
+
+            <section class="messages-chat">
+                <?php if ($chatSelecionado): ?>
+                    <?php
+                        $chatNome = trim(($chatSelecionado['primeiro_nome'] ?? '') . ' ' . ($chatSelecionado['último_nome'] ?? ''));
+                        if ($chatNome === '') {
+                            $chatNome = $chatSelecionado['nome_utilizador'];
+                        }
+                    ?>
+                    <div class="messages-chat-header"><?= htmlspecialchars($chatNome) ?></div>
+
+                    <div class="messages-thread" id="messagesThread">
+                        <?php if (empty($mensagensConversa)): ?>
+                            <div class="messages-empty">Sem mensagens ainda. Envia a primeira mensagem.</div>
+                        <?php else: ?>
+                            <?php foreach ($mensagensConversa as $msg): ?>
+                                <?php $isOut = ((int)$msg['origem'] === (int)$id_utilizador); ?>
+                                <div class="dm-bubble <?= $isOut ? 'out' : 'in' ?>"><?= nl2br(htmlspecialchars($msg['conteúdo'])) ?></div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="messages-compose">
+                        <form method="POST" action="index-admin.php?view=mensagens&chat=<?= (int)$chatSelecionadoId ?>">
+                            <input type="hidden" name="acao" value="enviar_mensagem">
+                            <input type="hidden" name="destino_mensagem" value="<?= (int)$chatSelecionadoId ?>">
+                            <textarea name="conteudo_mensagem" placeholder="Escreve uma mensagem..." required></textarea>
+                            <button type="submit">Enviar</button>
+                        </form>
+                    </div>
+                <?php else: ?>
+                    <div class="messages-empty">Seleciona uma conversa para começar.</div>
+                <?php endif; ?>
+            </section>
         </div>
 
         <?php if ($erro): ?>
