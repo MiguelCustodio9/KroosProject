@@ -57,6 +57,22 @@ if ($checkLocalEvento && $checkLocalEvento->num_rows === 0) {
     $conn->query("ALTER TABLE eventos_clube ADD COLUMN local_evento VARCHAR(200) DEFAULT NULL AFTER hora_evento");
 }
 
+/* ── Coluna de timestamp em mensagens ── */
+$checkEnviadaEm = $conn->query("SHOW COLUMNS FROM mensagens LIKE 'enviada_em'");
+if ($checkEnviadaEm && $checkEnviadaEm->num_rows === 0) {
+    $conn->query("ALTER TABLE mensagens ADD COLUMN enviada_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER estado");
+}
+
+/* ── Flash messages via sessão (após redirect de eventos) ── */
+if (isset($_SESSION['flash_sucesso'])) {
+    $sucesso = $_SESSION['flash_sucesso'];
+    unset($_SESSION['flash_sucesso']);
+}
+if (isset($_SESSION['flash_erro'])) {
+    $erro = $_SESSION['flash_erro'];
+    unset($_SESSION['flash_erro']);
+}
+
 /* ══════════════════════════════════
    AÇÕES POST
 ══════════════════════════════════ */
@@ -92,8 +108,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $erro = 'Esse utilizador não está disponível para mensagens.';
             } else {
                 $stmtInserirMensagem = $conn->prepare(" 
-                    INSERT INTO mensagens (origem, destino, `conteúdo`, estado)
-                    VALUES (?, ?, ?, 'Não Lida')
+                    INSERT INTO mensagens (origem, destino, `conteúdo`, estado, enviada_em)
+                    VALUES (?, ?, ?, 'Não Lida', NOW())
                 ");
                 $stmtInserirMensagem->bind_param("iis", $id_utilizador, $destinoMensagem, $conteudoMensagem);
 
@@ -1038,9 +1054,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dataEvento      = trim($_POST['data_evento'] ?? '');
         $horaEvento      = trim($_POST['hora_evento'] ?? '') ?: null;
         $localEvento     = trim($_POST['local_evento'] ?? '') ?: null;
+        $calMonth        = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
+        $calYear         = (int)($_POST['cal_year'] ?? (int)date('Y'));
 
         $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
         $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
+        $estadosComDataFutura = ['Por realizar'];
 
         if ($idEquipaEvento <= 0 || $tipoEvento === '' || $dataEvento === '') {
             $erro = 'Preenche os campos obrigatórios do evento.';
@@ -1048,6 +1067,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $erro = 'Tipo de evento inválido.';
         } elseif (!in_array($estadoEvento, $estadosEventoValidos, true)) {
             $erro = 'Estado do evento inválido.';
+        } elseif (in_array($estadoEvento, $estadosComDataFutura, true) && $dataEvento < date('Y-m-d')) {
+            $erro = 'Eventos "Por realizar" devem ter data atual ou futura.';
         } else {
             $stmtCkEqEv = $conn->prepare("SELECT id_equipa FROM equipa WHERE id_equipa = ? AND id_clube = ? LIMIT 1");
             $stmtCkEqEv->bind_param("ii", $idEquipaEvento, $id_clube);
@@ -1061,7 +1082,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmtCriarEv->bind_param("issssss", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento);
                 if ($stmtCriarEv->execute()) {
-                    $sucesso = 'Evento criado com sucesso.';
+                    $_SESSION['flash_sucesso'] = 'Evento criado com sucesso.';
+                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear");
+                    exit;
                 } else {
                     $erro = 'Erro ao criar evento.';
                 }
@@ -1079,6 +1102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dataEvento      = trim($_POST['data_evento'] ?? '');
         $horaEvento      = trim($_POST['hora_evento'] ?? '') ?: null;
         $localEvento     = trim($_POST['local_evento'] ?? '') ?: null;
+        $calMonth        = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
+        $calYear         = (int)($_POST['cal_year'] ?? (int)date('Y'));
 
         $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
         $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
@@ -1089,6 +1114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $erro = 'Tipo de evento inválido.';
         } elseif (!in_array($estadoEvento, $estadosEventoValidos, true)) {
             $erro = 'Estado do evento inválido.';
+        } elseif ($estadoEvento === 'Por realizar' && $dataEvento < date('Y-m-d')) {
+            $erro = 'Eventos "Por realizar" devem ter data atual ou futura.';
         } else {
             $stmtCkEqEv = $conn->prepare("SELECT id_equipa FROM equipa WHERE id_equipa = ? AND id_clube = ? LIMIT 1");
             $stmtCkEqEv->bind_param("ii", $idEquipaEvento, $id_clube);
@@ -1104,7 +1131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmtEditEv->bind_param("issssssii", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento, $idEvento, $id_clube);
                 if ($stmtEditEv->execute()) {
-                    $sucesso = 'Evento atualizado com sucesso.';
+                    $_SESSION['flash_sucesso'] = 'Evento atualizado com sucesso.';
+                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear");
+                    exit;
                 } else {
                     $erro = 'Erro ao atualizar evento.';
                 }
@@ -1114,7 +1143,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     /* ── Remover evento ── */
     if ($acao === 'remover_evento') {
-        $idEvento = (int)($_POST['id_evento'] ?? 0);
+        $idEvento  = (int)($_POST['id_evento'] ?? 0);
+        $calMonth  = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
+        $calYear   = (int)($_POST['cal_year'] ?? (int)date('Y'));
         if ($idEvento <= 0) {
             $erro = 'Evento inválido.';
         } else {
@@ -1125,7 +1156,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmtDelEv->bind_param("ii", $idEvento, $id_clube);
             if ($stmtDelEv->execute()) {
-                $sucesso = 'Evento removido com sucesso.';
+                $_SESSION['flash_sucesso'] = 'Evento removido com sucesso.';
+                header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear");
+                exit;
             } else {
                 $erro = 'Erro ao remover evento.';
             }
@@ -1315,7 +1348,7 @@ if ($chatSelecionado) {
     $stmtMarcarLidas->execute();
 
     $stmtConversa = $conn->prepare(" 
-        SELECT id_mensagem, origem, destino, `conteúdo`, estado
+        SELECT id_mensagem, origem, destino, `conteúdo`, estado, enviada_em
         FROM mensagens
         WHERE (origem = ? AND destino = ?)
            OR (origem = ? AND destino = ?)
@@ -2393,10 +2426,18 @@ body { background: #f0f2f7; }
 .dm-bubble {
     max-width: min(72%, 520px);
     border-radius: 18px;
-    padding: 10px 13px;
+    padding: 10px 13px 6px;
     font-size: 14px;
     line-height: 1.4;
     word-break: break-word;
+}
+
+.dm-time {
+    display: block;
+    font-size: 10px;
+    margin-top: 4px;
+    opacity: .65;
+    text-align: right;
 }
 
 .dm-bubble.out {
@@ -3158,8 +3199,23 @@ body { background: #f0f2f7; }
                             <div class="messages-empty">Sem mensagens ainda. Envia a primeira mensagem.</div>
                         <?php else: ?>
                             <?php foreach ($mensagensConversa as $msg): ?>
-                                <?php $isOut = ((int)$msg['origem'] === (int)$id_utilizador); ?>
-                                <div class="dm-bubble <?= $isOut ? 'out' : 'in' ?>"><?= nl2br(htmlspecialchars($msg['conteúdo'])) ?></div>
+                                <?php
+                                    $isOut = ((int)$msg['origem'] === (int)$id_utilizador);
+                                    $enviadaEm = '';
+                                    if (!empty($msg['enviada_em'])) {
+                                        $ts = strtotime($msg['enviada_em']);
+                                        $hoje = date('Y-m-d');
+                                        $enviadaEm = (date('Y-m-d', $ts) === $hoje)
+                                            ? date('H:i', $ts)
+                                            : date('d/m/Y H:i', $ts);
+                                    }
+                                ?>
+                                <div class="dm-bubble <?= $isOut ? 'out' : 'in' ?>">
+                                    <?= nl2br(htmlspecialchars($msg['conteúdo'])) ?>
+                                    <?php if ($enviadaEm): ?>
+                                        <span class="dm-time"><?= $enviadaEm ?></span>
+                                    <?php endif; ?>
+                                </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
                     </div>
@@ -3187,7 +3243,7 @@ body { background: #f0f2f7; }
                     <span class="calendar-month-label" id="calendarMonthLabel"></span>
                     <button class="calendar-nav-btn" type="button" onclick="calendarNext()">&#8250;</button>
                     <?php if ($isAdminClube): ?>
-                    <button class="btn-create" type="button" onclick="openModal('modalCriarEvento')" style="margin-left:10px;padding:8px 14px;font-size:13px;">+ Evento</button>
+                    <button class="btn-create" type="button" onclick="syncCalMonthFields(); openModal('modalCriarEvento')" style="margin-left:10px;padding:8px 14px;font-size:13px;">+ Evento</button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -3898,8 +3954,10 @@ body { background: #f0f2f7; }
             <div class="modal-title">Criar evento</div>
             <button class="modal-close" type="button" onclick="closeModal('modalCriarEvento')">×</button>
         </div>
-        <form method="POST" action="index-admin.php?view=calendario">
+        <form method="POST" action="index-admin.php?view=calendario" id="formCriarEvento" onsubmit="return validarFormEvento(this)">
             <input type="hidden" name="acao" value="criar_evento">
+            <input type="hidden" name="cal_month" class="cal-month-field">
+            <input type="hidden" name="cal_year" class="cal-year-field">
             <div class="edit-grid">
                 <div class="edit-group full">
                     <label>Escalão / Equipa</label>
@@ -3963,9 +4021,11 @@ body { background: #f0f2f7; }
             <div class="modal-title">Editar evento</div>
             <button class="modal-close" type="button" onclick="closeModal('modalEditarEvento')">×</button>
         </div>
-        <form method="POST" action="index-admin.php?view=calendario" id="formEditarEvento">
+        <form method="POST" action="index-admin.php?view=calendario" id="formEditarEvento" onsubmit="return validarFormEvento(this)">
             <input type="hidden" name="acao" value="editar_evento">
             <input type="hidden" name="id_evento" id="editEventoId">
+            <input type="hidden" name="cal_month" class="cal-month-field">
+            <input type="hidden" name="cal_year" class="cal-year-field">
             <div class="edit-grid">
                 <div class="edit-group full">
                     <label>Escalão / Equipa</label>
@@ -4673,6 +4733,8 @@ function renderDayEvents(dateStr) {
                       onsubmit="return confirm('Remover este evento?');">
                     <input type="hidden" name="acao" value="remover_evento">
                     <input type="hidden" name="id_evento" value="${ev.id_evento}">
+                    <input type="hidden" name="cal_month" value="${calendarMonth + 1}">
+                    <input type="hidden" name="cal_year" value="${calendarYear}">
                     <button class="btn-row-edit btn-row-delete" type="submit" title="Remover">×</button>
                 </form>
             </div>` : '';
@@ -4710,28 +4772,73 @@ function calendarNext() {
     if (selectedCalDate) renderDayEvents(selectedCalDate);
 }
 
+function syncCalMonthFields() {
+    document.querySelectorAll('.cal-month-field').forEach(f => f.value = calendarMonth + 1);
+    document.querySelectorAll('.cal-year-field').forEach(f  => f.value = calendarYear);
+}
+
 function openEditEventoModal(idEvento) {
     const ev = eventosData.find(e => e.id_evento == idEvento);
     if (!ev) return;
-    document.getElementById('editEventoId').value    = ev.id_evento;
-    document.getElementById('editEventoEquipa').value = ev.id_equipa;
-    document.getElementById('editEventoTipo').value   = ev.tipo_evento;
-    document.getElementById('editEventoEstado').value = ev.estado_evento;
-    document.getElementById('editEventoData').value   = ev.data_evento;
-    document.getElementById('editEventoHora').value   = ev.hora_evento ? ev.hora_evento.substring(0, 5) : '';
-    document.getElementById('editEventoLocal').value  = ev.local_evento || '';
-    document.getElementById('editEventoDesc').value   = ev.descricao_evento || '';
+    document.getElementById('editEventoId').value     = ev.id_evento;
+    document.getElementById('editEventoEquipa').value  = ev.id_equipa;
+    document.getElementById('editEventoTipo').value    = ev.tipo_evento;
+    document.getElementById('editEventoEstado').value  = ev.estado_evento;
+    document.getElementById('editEventoData').value    = ev.data_evento;
+    document.getElementById('editEventoHora').value    = ev.hora_evento ? ev.hora_evento.substring(0, 5) : '';
+    document.getElementById('editEventoLocal').value   = ev.local_evento || '';
+    document.getElementById('editEventoDesc').value    = ev.descricao_evento || '';
+    syncCalMonthFields();
     openModal('modalEditarEvento');
+}
+
+function validarFormEvento(form) {
+    const estado = form.querySelector('[name="estado_evento"]')?.value;
+    const data   = form.querySelector('[name="data_evento"]')?.value;
+    if (estado === 'Por realizar' && data) {
+        const hoje = new Date().toISOString().slice(0, 10);
+        if (data < hoje) {
+            alert('Eventos "Por realizar" devem ter data atual ou futura.');
+            return false;
+        }
+    }
+    syncCalMonthFields();
+    return true;
 }
 
 /* Inicializar calendário e tratar estado inicial */
 document.addEventListener('DOMContentLoaded', function () {
+    /* Restaurar mês/ano a partir dos parâmetros GET (após redirect de evento) */
+    const urlParams = new URLSearchParams(window.location.search);
+    const pMonth = parseInt(urlParams.get('cal_month'));
+    const pYear  = parseInt(urlParams.get('cal_year'));
+    if (pMonth >= 1 && pMonth <= 12) calendarMonth = pMonth - 1;
+    if (pYear  >= 2000)              calendarYear  = pYear;
+
     renderCalendar();
+
     const today = new Date();
     const todayStr = today.getFullYear() + '-' +
                      String(today.getMonth() + 1).padStart(2, '0') + '-' +
                      String(today.getDate()).padStart(2, '0');
-    selectCalendarDay(todayStr);
+    /* Auto-selecionar o dia correspondente ao mês atual ou hoje */
+    if (pMonth >= 1 && pMonth <= 12) {
+        /* Selecionar o primeiro dia visível do mês restaurado */
+        const firstDay = calendarYear + '-' + String(calendarMonth + 1).padStart(2, '0') + '-01';
+        selectCalendarDay(firstDay);
+    } else {
+        selectCalendarDay(todayStr);
+    }
+
+    /* Inicializar campos ocultos de mês/ano nos formulários */
+    syncCalMonthFields();
+
+    /* Abrir modal de criar evento já com a data de hoje por omissão */
+    const formCriar = document.getElementById('formCriarEvento');
+    if (formCriar) {
+        const dataInput = formCriar.querySelector('[name="data_evento"]');
+        if (dataInput && !dataInput.value) dataInput.value = todayStr;
+    }
 
     <?php if ($mostrarMensagens): ?>
     hideDashboardContent();
