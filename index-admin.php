@@ -47,6 +47,16 @@ if ($checkTipoTreinador && $checkTipoTreinador->num_rows === 0) {
     $conn->query("ALTER TABLE utilizador ADD COLUMN tipo_treinador ENUM('Treinador Principal','Treinador Adjunto','Treinador Estagiário','Treinador de Guarda Redes','Preparador Físico','Cientista Desportivo','Analista') DEFAULT NULL AFTER tipo_utilizador");
 }
 
+/* ── Colunas adicionais em eventos_clube ── */
+$checkHoraEvento = $conn->query("SHOW COLUMNS FROM eventos_clube LIKE 'hora_evento'");
+if ($checkHoraEvento && $checkHoraEvento->num_rows === 0) {
+    $conn->query("ALTER TABLE eventos_clube ADD COLUMN hora_evento TIME DEFAULT NULL AFTER data_evento");
+}
+$checkLocalEvento = $conn->query("SHOW COLUMNS FROM eventos_clube LIKE 'local_evento'");
+if ($checkLocalEvento && $checkLocalEvento->num_rows === 0) {
+    $conn->query("ALTER TABLE eventos_clube ADD COLUMN local_evento VARCHAR(200) DEFAULT NULL AFTER hora_evento");
+}
+
 /* ══════════════════════════════════
    AÇÕES POST
 ══════════════════════════════════ */
@@ -1018,6 +1028,109 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         }
     }
+
+    /* ── Criar evento ── */
+    if ($acao === 'criar_evento') {
+        $idEquipaEvento  = (int)($_POST['id_equipa_evento'] ?? 0);
+        $tipoEvento      = trim($_POST['tipo_evento'] ?? '');
+        $descricaoEvento = trim($_POST['descricao_evento'] ?? '');
+        $estadoEvento    = trim($_POST['estado_evento'] ?? 'Por realizar');
+        $dataEvento      = trim($_POST['data_evento'] ?? '');
+        $horaEvento      = trim($_POST['hora_evento'] ?? '') ?: null;
+        $localEvento     = trim($_POST['local_evento'] ?? '') ?: null;
+
+        $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
+        $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
+
+        if ($idEquipaEvento <= 0 || $tipoEvento === '' || $dataEvento === '') {
+            $erro = 'Preenche os campos obrigatórios do evento.';
+        } elseif (!in_array($tipoEvento, $tiposEventoValidos, true)) {
+            $erro = 'Tipo de evento inválido.';
+        } elseif (!in_array($estadoEvento, $estadosEventoValidos, true)) {
+            $erro = 'Estado do evento inválido.';
+        } else {
+            $stmtCkEqEv = $conn->prepare("SELECT id_equipa FROM equipa WHERE id_equipa = ? AND id_clube = ? LIMIT 1");
+            $stmtCkEqEv->bind_param("ii", $idEquipaEvento, $id_clube);
+            $stmtCkEqEv->execute();
+            if (!$stmtCkEqEv->get_result()->fetch_assoc()) {
+                $erro = 'Equipa inválida.';
+            } else {
+                $stmtCriarEv = $conn->prepare("
+                    INSERT INTO eventos_clube (id_equipa, tipo_evento, `descrição_evento`, estado_evento, data_evento, hora_evento, local_evento)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmtCriarEv->bind_param("issssss", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento);
+                if ($stmtCriarEv->execute()) {
+                    $sucesso = 'Evento criado com sucesso.';
+                } else {
+                    $erro = 'Erro ao criar evento.';
+                }
+            }
+        }
+    }
+
+    /* ── Editar evento ── */
+    if ($acao === 'editar_evento') {
+        $idEvento        = (int)($_POST['id_evento'] ?? 0);
+        $idEquipaEvento  = (int)($_POST['id_equipa_evento'] ?? 0);
+        $tipoEvento      = trim($_POST['tipo_evento'] ?? '');
+        $descricaoEvento = trim($_POST['descricao_evento'] ?? '');
+        $estadoEvento    = trim($_POST['estado_evento'] ?? 'Por realizar');
+        $dataEvento      = trim($_POST['data_evento'] ?? '');
+        $horaEvento      = trim($_POST['hora_evento'] ?? '') ?: null;
+        $localEvento     = trim($_POST['local_evento'] ?? '') ?: null;
+
+        $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
+        $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
+
+        if ($idEvento <= 0 || $idEquipaEvento <= 0 || $tipoEvento === '' || $dataEvento === '') {
+            $erro = 'Preenche os campos obrigatórios do evento.';
+        } elseif (!in_array($tipoEvento, $tiposEventoValidos, true)) {
+            $erro = 'Tipo de evento inválido.';
+        } elseif (!in_array($estadoEvento, $estadosEventoValidos, true)) {
+            $erro = 'Estado do evento inválido.';
+        } else {
+            $stmtCkEqEv = $conn->prepare("SELECT id_equipa FROM equipa WHERE id_equipa = ? AND id_clube = ? LIMIT 1");
+            $stmtCkEqEv->bind_param("ii", $idEquipaEvento, $id_clube);
+            $stmtCkEqEv->execute();
+            if (!$stmtCkEqEv->get_result()->fetch_assoc()) {
+                $erro = 'Equipa inválida.';
+            } else {
+                $stmtEditEv = $conn->prepare("
+                    UPDATE eventos_clube ec
+                    JOIN equipa eq ON eq.id_equipa = ec.id_equipa
+                    SET ec.id_equipa = ?, ec.tipo_evento = ?, ec.`descrição_evento` = ?, ec.estado_evento = ?, ec.data_evento = ?, ec.hora_evento = ?, ec.local_evento = ?
+                    WHERE ec.id_evento = ? AND eq.id_clube = ?
+                ");
+                $stmtEditEv->bind_param("issssssii", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento, $idEvento, $id_clube);
+                if ($stmtEditEv->execute()) {
+                    $sucesso = 'Evento atualizado com sucesso.';
+                } else {
+                    $erro = 'Erro ao atualizar evento.';
+                }
+            }
+        }
+    }
+
+    /* ── Remover evento ── */
+    if ($acao === 'remover_evento') {
+        $idEvento = (int)($_POST['id_evento'] ?? 0);
+        if ($idEvento <= 0) {
+            $erro = 'Evento inválido.';
+        } else {
+            $stmtDelEv = $conn->prepare("
+                DELETE ec FROM eventos_clube ec
+                JOIN equipa eq ON eq.id_equipa = ec.id_equipa
+                WHERE ec.id_evento = ? AND eq.id_clube = ?
+            ");
+            $stmtDelEv->bind_param("ii", $idEvento, $id_clube);
+            if ($stmtDelEv->execute()) {
+                $sucesso = 'Evento removido com sucesso.';
+            } else {
+                $erro = 'Erro ao remover evento.';
+            }
+        }
+    }
 }
 
 /* ══════════════════════════════════
@@ -1252,6 +1365,24 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
+}
+
+/* ── Buscar eventos do calendário (todos os escalões do clube) ── */
+$eventosCalendario = [];
+$stmtEventosCalendario = $conn->prepare("
+    SELECT ec.id_evento, ec.tipo_evento, ec.`descrição_evento` AS descricao_evento,
+           ec.estado_evento, ec.data_evento, ec.hora_evento, ec.local_evento,
+           eq.id_equipa, eq.`escalão`, eq.hierarquia
+    FROM eventos_clube ec
+    JOIN equipa eq ON eq.id_equipa = ec.id_equipa
+    WHERE eq.id_clube = ?
+    ORDER BY ec.data_evento ASC, ec.hora_evento ASC
+");
+$stmtEventosCalendario->bind_param("i", $id_clube);
+$stmtEventosCalendario->execute();
+$resEventosCalendario = $stmtEventosCalendario->get_result();
+while ($row = $resEventosCalendario->fetch_assoc()) {
+    $eventosCalendario[] = $row;
 }
 ?>
 <!DOCTYPE html>
@@ -1758,26 +1889,29 @@ body { background: #f0f2f7; }
 
 .notifications-tabs {
     display: flex;
-    gap: 18px;
-    padding: 16px 20px 0;
-    border-bottom: 1px solid rgba(0,0,0,0.08);
-    background: #fff;
+    gap: 0;
+    padding: 0;
+    border-bottom: 1px solid rgba(0,0,0,.12);
+    background: var(--club);
 }
 
 .notification-tab {
     border: none;
+    border-left: 3px solid transparent;
     background: transparent;
-    padding: 12px 12px 10px;
+    padding: 14px 22px;
     font-size: 14px;
     font-weight: 600;
-    color: #6a7280;
-    border-bottom: 2px solid transparent;
+    color: rgba(255,255,255,.75);
     cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
 }
 
+.notification-tab:hover,
 .notification-tab.active {
-    color: var(--club);
-    border-bottom-color: var(--club);
+    background: rgba(255,255,255,.13);
+    color: #fff;
+    border-left-color: #fff;
 }
 
 .notifications-list {
@@ -1848,12 +1982,238 @@ body { background: #f0f2f7; }
 
 @media (max-width: 760px) {
     .notifications-tabs {
-        gap: 10px;
+        gap: 0;
         overflow-x: auto;
     }
 
     .notification-label {
         font-size: 14px;
+    }
+}
+
+/* ── Calendário ── */
+.calendar-shell {
+    background: #fff;
+    border-radius: 18px;
+    border: 1px solid #dfe3ee;
+    box-shadow: 0 8px 22px rgba(23,42,88,.08);
+    overflow: hidden;
+    margin-bottom: 28px;
+    display: none;
+}
+
+.calendar-shell.visible {
+    display: block;
+}
+
+.calendar-header {
+    background: var(--club);
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 22px;
+    color: #fff;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.calendar-header-title {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.calendar-nav-btn {
+    border: none;
+    background: rgba(255,255,255,.18);
+    color: #fff;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .15s;
+    line-height: 1;
+}
+
+.calendar-nav-btn:hover {
+    background: rgba(255,255,255,.32);
+}
+
+.calendar-month-label {
+    font-size: 15px;
+    font-weight: 700;
+    min-width: 170px;
+    text-align: center;
+}
+
+.calendar-body {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+}
+
+.calendar-grid-wrap {
+    padding: 18px 16px;
+    border-right: 1px solid #e8edf5;
+}
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    margin-bottom: 4px;
+}
+
+.calendar-weekday {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #9aa0ae;
+    padding: 6px 0;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.calendar-day {
+    min-height: 68px;
+    border-radius: 10px;
+    padding: 6px 4px 4px;
+    cursor: pointer;
+    transition: background .12s;
+    position: relative;
+}
+
+.calendar-day:hover { background: #f0f4ff; }
+
+.calendar-day.today { background: #eef2ff; }
+
+.calendar-day.selected {
+    background: var(--club);
+}
+
+.calendar-day.other-month { opacity: .38; }
+
+.calendar-day-num {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    display: block;
+    text-align: right;
+    padding-right: 4px;
+    color: #1f2b3d;
+}
+
+.calendar-day.today .calendar-day-num { color: var(--club); font-weight: 800; }
+
+.calendar-day.selected .calendar-day-num { color: #fff; }
+
+.calendar-day.selected:hover { background: var(--club); opacity: .9; }
+
+.calendar-event-dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-top: 4px;
+    padding: 0 2px;
+}
+
+.calendar-event-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.calendar-events-panel {
+    padding: 16px 14px;
+    background: #f8faff;
+    overflow-y: auto;
+    max-height: 560px;
+}
+
+.calendar-events-panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1f2b3d;
+    margin-bottom: 10px;
+}
+
+.calendar-event-item {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e8edf5;
+    padding: 11px 13px;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.calendar-event-type {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 3px;
+}
+
+.calendar-event-team {
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 3px;
+}
+
+.calendar-event-desc {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 4px;
+}
+
+.calendar-event-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 5px;
+    font-size: 11px;
+    color: #9aa0ae;
+}
+
+.calendar-event-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 7px;
+}
+
+.calendar-empty-day {
+    text-align: center;
+    color: #9aa0ae;
+    font-size: 13px;
+    padding: 24px 0;
+}
+
+@media (max-width: 860px) {
+    .calendar-body {
+        grid-template-columns: 1fr;
+    }
+    .calendar-grid-wrap {
+        border-right: none;
+        border-bottom: 1px solid #e8edf5;
+    }
+    .calendar-events-panel {
+        max-height: 260px;
     }
 }
 
@@ -2616,7 +2976,7 @@ body { background: #f0f2f7; }
         <img src="assets/eventos.png" alt="">
         <span>Eventos</span>
     </a>
-    <a href="#">
+    <a href="#" onclick="event.preventDefault(); showCalendarScreen();">
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
@@ -2816,6 +3176,39 @@ body { background: #f0f2f7; }
                     <div class="messages-empty">Seleciona uma conversa para começar.</div>
                 <?php endif; ?>
             </section>
+        </div>
+
+        <!-- ══ CALENDÁRIO ══ -->
+        <div class="calendar-shell" id="calendarScreen" aria-label="Calendário">
+            <div class="calendar-header">
+                <div class="calendar-header-title">Calendário</div>
+                <div class="calendar-nav">
+                    <button class="calendar-nav-btn" type="button" onclick="calendarPrev()">&#8249;</button>
+                    <span class="calendar-month-label" id="calendarMonthLabel"></span>
+                    <button class="calendar-nav-btn" type="button" onclick="calendarNext()">&#8250;</button>
+                    <?php if ($isAdminClube): ?>
+                    <button class="btn-create" type="button" onclick="openModal('modalCriarEvento')" style="margin-left:10px;padding:8px 14px;font-size:13px;">+ Evento</button>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <div class="calendar-body">
+                <div class="calendar-grid-wrap">
+                    <div class="calendar-weekdays">
+                        <div class="calendar-weekday">Dom</div>
+                        <div class="calendar-weekday">Seg</div>
+                        <div class="calendar-weekday">Ter</div>
+                        <div class="calendar-weekday">Qua</div>
+                        <div class="calendar-weekday">Qui</div>
+                        <div class="calendar-weekday">Sex</div>
+                        <div class="calendar-weekday">Sáb</div>
+                    </div>
+                    <div class="calendar-days" id="calendarDays"></div>
+                </div>
+                <div class="calendar-events-panel" id="calendarEventsPanel">
+                    <div class="calendar-events-panel-title" id="calendarPanelTitle">Seleciona um dia</div>
+                    <div id="calendarDayEvents"></div>
+                </div>
+            </div>
         </div>
 
         <?php if ($erro): ?>
@@ -3497,6 +3890,137 @@ body { background: #f0f2f7; }
 <?php endforeach; ?>
 <?php endif; ?>
 
+<!-- ══ MODAL CRIAR EVENTO ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalCriarEvento">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Criar evento</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalCriarEvento')">×</button>
+        </div>
+        <form method="POST" action="index-admin.php?view=calendario">
+            <input type="hidden" name="acao" value="criar_evento">
+            <div class="edit-grid">
+                <div class="edit-group full">
+                    <label>Escalão / Equipa</label>
+                    <select name="id_equipa_evento" required>
+                        <option value="">Selecionar equipa</option>
+                        <?php foreach ($escaloesClube as $eq): ?>
+                            <option value="<?= (int)$eq['id_equipa'] ?>">
+                                <?= htmlspecialchars($eq['escalão'] . ' ' . $eq['hierarquia'] . ' — ' . ($eq['época'] ?? '')) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="edit-group">
+                    <label>Tipo de evento</label>
+                    <select name="tipo_evento" required>
+                        <option value="">Selecionar</option>
+                        <?php foreach (['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'] as $te): ?>
+                            <option value="<?= $te ?>"><?= $te ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="edit-group">
+                    <label>Estado</label>
+                    <select name="estado_evento" required>
+                        <?php foreach (['Por realizar','Realizado','Cancelado','Adiado'] as $se): ?>
+                            <option value="<?= $se ?>"><?= $se ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="edit-group">
+                    <label>Data</label>
+                    <input type="date" name="data_evento" required>
+                </div>
+                <div class="edit-group">
+                    <label>Hora (opcional)</label>
+                    <input type="time" name="hora_evento">
+                </div>
+                <div class="edit-group full">
+                    <label>Local (opcional)</label>
+                    <input type="text" name="local_evento" placeholder="Ex: Estádio Municipal">
+                </div>
+                <div class="edit-group full">
+                    <label>Descrição (opcional)</label>
+                    <input type="text" name="descricao_evento" placeholder="Breve descrição do evento">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalCriarEvento')">Cancelar</button>
+                <button class="btn-save" type="submit">Criar evento</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ══ MODAL EDITAR EVENTO ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalEditarEvento">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Editar evento</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalEditarEvento')">×</button>
+        </div>
+        <form method="POST" action="index-admin.php?view=calendario" id="formEditarEvento">
+            <input type="hidden" name="acao" value="editar_evento">
+            <input type="hidden" name="id_evento" id="editEventoId">
+            <div class="edit-grid">
+                <div class="edit-group full">
+                    <label>Escalão / Equipa</label>
+                    <select name="id_equipa_evento" id="editEventoEquipa" required>
+                        <option value="">Selecionar equipa</option>
+                        <?php foreach ($escaloesClube as $eq): ?>
+                            <option value="<?= (int)$eq['id_equipa'] ?>">
+                                <?= htmlspecialchars($eq['escalão'] . ' ' . $eq['hierarquia'] . ' — ' . ($eq['época'] ?? '')) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="edit-group">
+                    <label>Tipo de evento</label>
+                    <select name="tipo_evento" id="editEventoTipo" required>
+                        <option value="">Selecionar</option>
+                        <?php foreach (['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'] as $te): ?>
+                            <option value="<?= $te ?>"><?= $te ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="edit-group">
+                    <label>Estado</label>
+                    <select name="estado_evento" id="editEventoEstado" required>
+                        <?php foreach (['Por realizar','Realizado','Cancelado','Adiado'] as $se): ?>
+                            <option value="<?= $se ?>"><?= $se ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="edit-group">
+                    <label>Data</label>
+                    <input type="date" name="data_evento" id="editEventoData" required>
+                </div>
+                <div class="edit-group">
+                    <label>Hora (opcional)</label>
+                    <input type="time" name="hora_evento" id="editEventoHora">
+                </div>
+                <div class="edit-group full">
+                    <label>Local (opcional)</label>
+                    <input type="text" name="local_evento" id="editEventoLocal">
+                </div>
+                <div class="edit-group full">
+                    <label>Descrição (opcional)</label>
+                    <input type="text" name="descricao_evento" id="editEventoDesc">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalEditarEvento')">Cancelar</button>
+                <button class="btn-save" type="submit">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
 <script>
 /* Tabs */
 function switchTab(btn, panelId) {
@@ -3554,54 +4078,80 @@ function showProfileScreen() {
     const dashboard = document.getElementById('dashboardCard');
     const profile = document.getElementById('profileScreen');
     const notifications = document.getElementById('notificationsScreen');
+    const messages = document.getElementById('messagesScreen');
+    const calendar = document.getElementById('calendarScreen');
 
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
 
-    if (profile) {
-        profile.style.display = 'block';
-        profile.classList.add('visible');
-    }
-    if (notifications) {
-        notifications.style.display = 'none';
-        notifications.classList.remove('visible');
-    }
+    if (profile) { profile.style.display = 'block'; profile.classList.add('visible'); }
+    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
+    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
+    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
 }
 
 function showNotificationsScreen() {
     const dashboard = document.getElementById('dashboardCard');
     const profile = document.getElementById('profileScreen');
     const notifications = document.getElementById('notificationsScreen');
+    const messages = document.getElementById('messagesScreen');
+    const calendar = document.getElementById('calendarScreen');
 
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
 
-    if (profile) {
-        profile.style.display = 'none';
-        profile.classList.remove('visible');
-    }
-    if (notifications) {
-        notifications.style.display = 'block';
-        notifications.classList.add('visible');
-    }
+    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
+    if (notifications) { notifications.style.display = 'block'; notifications.classList.add('visible'); }
+    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
+    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
 }
 
 function showDashboard() {
     const dashboard = document.getElementById('dashboardCard');
     const profile = document.getElementById('profileScreen');
     const notifications = document.getElementById('notificationsScreen');
+    const messages = document.getElementById('messagesScreen');
+    const calendar = document.getElementById('calendarScreen');
 
     if (dashboard) dashboard.style.display = 'block';
     showDashboardContent();
 
-    if (profile) {
-        profile.style.display = 'none';
-        profile.classList.remove('visible');
-    }
-    if (notifications) {
-        notifications.style.display = 'none';
-        notifications.classList.remove('visible');
-    }
+    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
+    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
+    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
+    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
+}
+
+function showMessagesScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    const profile = document.getElementById('profileScreen');
+    const notifications = document.getElementById('notificationsScreen');
+    const messages = document.getElementById('messagesScreen');
+    const calendar = document.getElementById('calendarScreen');
+
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+
+    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
+    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
+    if (messages) { messages.style.display = ''; messages.classList.add('visible'); }
+    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
+}
+
+function showCalendarScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    const profile = document.getElementById('profileScreen');
+    const notifications = document.getElementById('notificationsScreen');
+    const messages = document.getElementById('messagesScreen');
+    const calendar = document.getElementById('calendarScreen');
+
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+
+    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
+    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
+    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
+    if (calendar) { calendar.style.display = 'block'; calendar.classList.add('visible'); }
 }
 
 function saveProfileChanges() {
@@ -3996,6 +4546,201 @@ if (editColorPicker && editColorHex) {
         }
     });
 }
+
+/* ══════════════════════════════════
+   CALENDÁRIO
+══════════════════════════════════ */
+const eventosData = <?= json_encode($eventosCalendario, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+
+const eventosPorData = {};
+eventosData.forEach(ev => {
+    if (!eventosPorData[ev.data_evento]) eventosPorData[ev.data_evento] = [];
+    eventosPorData[ev.data_evento].push(ev);
+});
+
+const EVENT_COLORS = {
+    'Treino': '#2563eb',
+    'Jogo': '#16a34a',
+    'Reunião Técnico-Tática': '#9333ea',
+    'Sessão de Recuperação': '#ea580c',
+    'Convívio de Equipa': '#db2777',
+    'Outro': '#6b7280'
+};
+
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+let calendarYear = new Date().getFullYear();
+let calendarMonth = new Date().getMonth();
+let selectedCalDate = null;
+const isAdminClube = <?= $isAdminClube ? 'true' : 'false' ?>;
+
+function renderCalendar() {
+    const label = document.getElementById('calendarMonthLabel');
+    if (label) label.textContent = MESES_PT[calendarMonth] + ' ' + calendarYear;
+
+    const daysContainer = document.getElementById('calendarDays');
+    if (!daysContainer) return;
+    daysContainer.innerHTML = '';
+
+    const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+    const daysInPrevMonth = new Date(calendarYear, calendarMonth, 0).getDate();
+
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' +
+                     String(today.getMonth() + 1).padStart(2, '0') + '-' +
+                     String(today.getDate()).padStart(2, '0');
+
+    for (let i = firstDay - 1; i >= 0; i--) {
+        daysContainer.appendChild(createDayCell(calendarYear, calendarMonth - 1, daysInPrevMonth - i, true, todayStr));
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+        daysContainer.appendChild(createDayCell(calendarYear, calendarMonth, d, false, todayStr));
+    }
+    const total = firstDay + daysInMonth;
+    const remaining = total % 7 === 0 ? 0 : 7 - (total % 7);
+    for (let d = 1; d <= remaining; d++) {
+        daysContainer.appendChild(createDayCell(calendarYear, calendarMonth + 1, d, true, todayStr));
+    }
+}
+
+function createDayCell(year, month, day, otherMonth, todayStr) {
+    let m = month, y = year;
+    if (m < 0)  { m += 12; y--; }
+    if (m > 11) { m -= 12; y++; }
+    const dateStr = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+
+    const cell = document.createElement('div');
+    cell.className = 'calendar-day' + (otherMonth ? ' other-month' : '');
+    if (dateStr === todayStr) cell.classList.add('today');
+    if (dateStr === selectedCalDate) cell.classList.add('selected');
+
+    const num = document.createElement('span');
+    num.className = 'calendar-day-num';
+    num.textContent = day;
+    cell.appendChild(num);
+
+    const events = eventosPorData[dateStr] || [];
+    if (events.length > 0) {
+        const dots = document.createElement('div');
+        dots.className = 'calendar-event-dots';
+        events.slice(0, 5).forEach(ev => {
+            const dot = document.createElement('span');
+            dot.className = 'calendar-event-dot';
+            dot.style.background = EVENT_COLORS[ev.tipo_evento] || '#6b7280';
+            dots.appendChild(dot);
+        });
+        cell.appendChild(dots);
+    }
+
+    cell.addEventListener('click', () => selectCalendarDay(dateStr));
+    return cell;
+}
+
+function selectCalendarDay(dateStr) {
+    selectedCalDate = dateStr;
+    renderCalendar();
+    renderDayEvents(dateStr);
+}
+
+function renderDayEvents(dateStr) {
+    const panel = document.getElementById('calendarDayEvents');
+    const title = document.getElementById('calendarPanelTitle');
+    if (!panel || !title) return;
+
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const dayNames = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+    title.textContent = dayNames[dateObj.getDay()] + ', ' + d + ' de ' + MESES_PT[m - 1] + ' de ' + y;
+
+    const events = eventosPorData[dateStr] || [];
+    if (events.length === 0) {
+        panel.innerHTML = '<div class="calendar-empty-day">Sem eventos neste dia.</div>';
+        return;
+    }
+
+    panel.innerHTML = events.map(ev => {
+        const color = EVENT_COLORS[ev.tipo_evento] || '#6b7280';
+        const hora  = ev.hora_evento ? ev.hora_evento.substring(0, 5) : '';
+        const local = ev.local_evento || '';
+        const desc  = ev.descricao_evento || '';
+
+        const adminActions = isAdminClube ? `
+            <div class="calendar-event-actions">
+                <button class="btn-row-edit" type="button" title="Editar" onclick="openEditEventoModal(${ev.id_evento})">✎</button>
+                <form method="POST" action="index-admin.php?view=calendario" style="display:inline;"
+                      onsubmit="return confirm('Remover este evento?');">
+                    <input type="hidden" name="acao" value="remover_evento">
+                    <input type="hidden" name="id_evento" value="${ev.id_evento}">
+                    <button class="btn-row-edit btn-row-delete" type="submit" title="Remover">×</button>
+                </form>
+            </div>` : '';
+
+        return `<div class="calendar-event-item">
+            <div class="calendar-event-type" style="color:${color}">${escCal(ev.tipo_evento)}</div>
+            <div class="calendar-event-team">${escCal(ev.escalão + ' ' + ev.hierarquia)}</div>
+            ${desc ? `<div class="calendar-event-desc">${escCal(desc)}</div>` : ''}
+            <div class="calendar-event-meta">
+                ${hora  ? `<span>🕐 ${hora}</span>` : ''}
+                ${local ? `<span>📍 ${escCal(local)}</span>` : ''}
+                <span style="margin-left:auto;font-weight:600;">${escCal(ev.estado_evento)}</span>
+            </div>
+            ${adminActions}
+        </div>`;
+    }).join('');
+}
+
+function escCal(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function calendarPrev() {
+    calendarMonth--;
+    if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+    renderCalendar();
+    if (selectedCalDate) renderDayEvents(selectedCalDate);
+}
+
+function calendarNext() {
+    calendarMonth++;
+    if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+    renderCalendar();
+    if (selectedCalDate) renderDayEvents(selectedCalDate);
+}
+
+function openEditEventoModal(idEvento) {
+    const ev = eventosData.find(e => e.id_evento == idEvento);
+    if (!ev) return;
+    document.getElementById('editEventoId').value    = ev.id_evento;
+    document.getElementById('editEventoEquipa').value = ev.id_equipa;
+    document.getElementById('editEventoTipo').value   = ev.tipo_evento;
+    document.getElementById('editEventoEstado').value = ev.estado_evento;
+    document.getElementById('editEventoData').value   = ev.data_evento;
+    document.getElementById('editEventoHora').value   = ev.hora_evento ? ev.hora_evento.substring(0, 5) : '';
+    document.getElementById('editEventoLocal').value  = ev.local_evento || '';
+    document.getElementById('editEventoDesc').value   = ev.descricao_evento || '';
+    openModal('modalEditarEvento');
+}
+
+/* Inicializar calendário e tratar estado inicial */
+document.addEventListener('DOMContentLoaded', function () {
+    renderCalendar();
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' +
+                     String(today.getMonth() + 1).padStart(2, '0') + '-' +
+                     String(today.getDate()).padStart(2, '0');
+    selectCalendarDay(todayStr);
+
+    <?php if ($mostrarMensagens): ?>
+    hideDashboardContent();
+    <?php endif; ?>
+
+    <?php if (($_GET['view'] ?? '') === 'calendario'): ?>
+    showCalendarScreen();
+    <?php endif; ?>
+});
 </script>
 
 </body>
