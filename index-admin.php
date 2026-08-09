@@ -1054,8 +1054,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dataEvento      = trim($_POST['data_evento'] ?? '');
         $horaEvento      = trim($_POST['hora_evento'] ?? '') ?: null;
         $localEvento     = trim($_POST['local_evento'] ?? '') ?: null;
-        $calMonth        = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
-        $calYear         = (int)($_POST['cal_year'] ?? (int)date('Y'));
+        $calMonth = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
+        $calYear  = (int)($_POST['cal_year'] ?? (int)date('Y'));
+        $calDay   = trim($_POST['cal_day'] ?? '');
+        $calDayParam = $calDay ? '&cal_day=' . urlencode($calDay) : '';
 
         $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
         $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
@@ -1083,7 +1085,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtCriarEv->bind_param("issssss", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento);
                 if ($stmtCriarEv->execute()) {
                     $_SESSION['flash_sucesso'] = 'Evento criado com sucesso.';
-                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear");
+                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                     exit;
                 } else {
                     $erro = 'Erro ao criar evento.';
@@ -1104,6 +1106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $localEvento     = trim($_POST['local_evento'] ?? '') ?: null;
         $calMonth        = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
         $calYear         = (int)($_POST['cal_year'] ?? (int)date('Y'));
+        $calDay          = trim($_POST['cal_day'] ?? '');
+        $calDayParam     = $calDay ? '&cal_day=' . urlencode($calDay) : '';
 
         $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
         $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
@@ -1132,7 +1136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtEditEv->bind_param("issssssii", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento, $idEvento, $id_clube);
                 if ($stmtEditEv->execute()) {
                     $_SESSION['flash_sucesso'] = 'Evento atualizado com sucesso.';
-                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear");
+                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                     exit;
                 } else {
                     $erro = 'Erro ao atualizar evento.';
@@ -1146,6 +1150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $idEvento  = (int)($_POST['id_evento'] ?? 0);
         $calMonth  = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
         $calYear   = (int)($_POST['cal_year'] ?? (int)date('Y'));
+        $calDay    = trim($_POST['cal_day'] ?? '');
+        $calDayParam = $calDay ? '&cal_day=' . urlencode($calDay) : '';
         if ($idEvento <= 0) {
             $erro = 'Evento inválido.';
         } else {
@@ -1157,7 +1163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtDelEv->bind_param("ii", $idEvento, $id_clube);
             if ($stmtDelEv->execute()) {
                 $_SESSION['flash_sucesso'] = 'Evento removido com sucesso.';
-                header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear");
+                header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                 exit;
             } else {
                 $erro = 'Erro ao remover evento.';
@@ -2089,16 +2095,6 @@ body { background: #f0f2f7; }
     text-align: center;
 }
 
-.calendar-body {
-    display: grid;
-    grid-template-columns: 1fr 300px;
-}
-
-.calendar-grid-wrap {
-    padding: 18px 16px;
-    border-right: 1px solid #e8edf5;
-}
-
 .calendar-weekdays {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -2171,13 +2167,6 @@ body { background: #f0f2f7; }
     flex-shrink: 0;
 }
 
-.calendar-events-panel {
-    padding: 16px 14px;
-    background: #f8faff;
-    overflow-y: auto;
-    max-height: 560px;
-}
-
 .calendar-events-panel-title {
     font-size: 13px;
     font-weight: 700;
@@ -2237,19 +2226,6 @@ body { background: #f0f2f7; }
     padding: 24px 0;
 }
 
-@media (max-width: 860px) {
-    .calendar-body {
-        grid-template-columns: 1fr;
-    }
-    .calendar-grid-wrap {
-        border-right: none;
-        border-bottom: 1px solid #e8edf5;
-    }
-    .calendar-events-panel {
-        max-height: 260px;
-    }
-}
-
 /* ── Botão de edição do clube ── */
 .btn-edit {
     position: static;
@@ -2295,12 +2271,12 @@ body { background: #f0f2f7; }
     border-radius: 18px;
     box-shadow: 0 8px 22px rgba(23, 42, 88, 0.08);
     overflow: hidden;
-    min-height: 640px;
 }
 
 .messages-shell.visible {
     display: grid;
     grid-template-columns: 310px 1fr;
+    height: calc(100vh - var(--topbar-h));
 }
 
 .messages-sidebar {
@@ -2308,6 +2284,8 @@ body { background: #f0f2f7; }
     background: #fff;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    height: 100%;
 }
 
 .messages-sidebar-header {
@@ -2315,11 +2293,12 @@ body { background: #f0f2f7; }
     border-bottom: 1px solid #eef2f7;
     font-weight: 700;
     color: #1f2b3d;
+    flex-shrink: 0;
 }
 
 .messages-list {
     overflow-y: auto;
-    max-height: 560px;
+    flex: 1;
 }
 
 .message-user {
@@ -2400,6 +2379,8 @@ body { background: #f0f2f7; }
     display: flex;
     flex-direction: column;
     background: #f9fbff;
+    overflow: hidden;
+    height: 100%;
 }
 
 .messages-chat-header {
@@ -2412,6 +2393,7 @@ body { background: #f0f2f7; }
     padding: 0 16px;
     font-weight: 700;
     color: #1f2b3d;
+    flex-shrink: 0;
 }
 
 .messages-thread {
@@ -2421,6 +2403,7 @@ body { background: #f0f2f7; }
     display: flex;
     flex-direction: column;
     gap: 10px;
+    min-height: 0;
 }
 
 .dm-bubble {
@@ -2943,15 +2926,74 @@ body { background: #f0f2f7; }
 
     .messages-shell.visible {
         grid-template-columns: 1fr;
+        height: calc(100vh - var(--topbar-h));
     }
 
     .messages-sidebar {
         border-right: none;
         border-bottom: 1px solid #e6eaf2;
+        max-height: 260px;
     }
 
     .messages-list {
-        max-height: 240px;
+        flex: 1;
+    }
+}
+
+/* ── Modo ecrã completo para mensagens e calendário ── */
+.main.screen-active {
+    padding: 0;
+}
+.main.screen-active #dashboardCard {
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    min-height: 0;
+}
+
+/* ── Calendário ecrã completo ── */
+.calendar-shell.visible {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--topbar-h));
+}
+
+.calendar-header {
+    flex-shrink: 0;
+}
+
+.calendar-body {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.calendar-grid-wrap {
+    padding: 18px 16px;
+    border-right: 1px solid #e8edf5;
+    overflow-y: auto;
+}
+
+.calendar-events-panel {
+    padding: 16px 14px;
+    background: #f8faff;
+    overflow-y: auto;
+}
+
+@media (max-width: 860px) {
+    .calendar-body {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+    }
+    .calendar-grid-wrap {
+        border-right: none;
+        border-bottom: 1px solid #e8edf5;
+        overflow-y: visible;
+    }
+    .calendar-events-panel {
+        max-height: 260px;
     }
 }
 </style>
@@ -3005,27 +3047,27 @@ body { background: #f0f2f7; }
 
 <!-- ══ SIDEBAR ══ -->
 <div class="sidebar" id="sidebar">
-    <a href="#" class="active" onclick="event.preventDefault(); showDashboard();">
+    <a href="#" data-view="clube" onclick="event.preventDefault(); showDashboard();">
         <img src="assets/clube.png" alt="">
         <span>Clube</span>
     </a>
-    <a href="#">
+    <a href="#" data-view="escaloes">
         <img src="assets/escaloes.png" alt="">
         <span>Escalões</span>
     </a>
-    <a href="#">
+    <a href="#" data-view="eventos">
         <img src="assets/eventos.png" alt="">
         <span>Eventos</span>
     </a>
-    <a href="#" onclick="event.preventDefault(); showCalendarScreen();">
+    <a href="#" data-view="calendario" onclick="event.preventDefault(); showCalendarScreen();">
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
-    <a href="#" onclick="event.preventDefault(); showMessagesScreen();">
+    <a href="#" data-view="mensagens" onclick="event.preventDefault(); showMessagesScreen();">
         <img src="assets/mensagens.png" alt="">
         <span>Mensagens</span>
     </a>
-    <a href="#">
+    <a href="#" data-view="home">
         <img src="assets/home.png" alt="">
         <span>Página Principal</span>
     </a>
@@ -3958,6 +4000,7 @@ body { background: #f0f2f7; }
             <input type="hidden" name="acao" value="criar_evento">
             <input type="hidden" name="cal_month" class="cal-month-field">
             <input type="hidden" name="cal_year" class="cal-year-field">
+            <input type="hidden" name="cal_day" class="cal-day-field"></div>
             <div class="edit-grid">
                 <div class="edit-group full">
                     <label>Escalão / Equipa</label>
@@ -4026,6 +4069,7 @@ body { background: #f0f2f7; }
             <input type="hidden" name="id_evento" id="editEventoId">
             <input type="hidden" name="cal_month" class="cal-month-field">
             <input type="hidden" name="cal_year" class="cal-year-field">
+            <input type="hidden" name="cal_day" class="cal-day-field"></div>
             <div class="edit-grid">
                 <div class="edit-group full">
                     <label>Escalão / Equipa</label>
@@ -4134,6 +4178,17 @@ function showDashboardContent() {
     });
 }
 
+function setActiveSidebar(view) {
+    document.querySelectorAll('#sidebar a[data-view]').forEach(a => {
+        a.classList.toggle('active', a.dataset.view === view);
+    });
+}
+
+function setScreenActive(active) {
+    const main = document.querySelector('.main');
+    if (main) main.classList.toggle('screen-active', active);
+}
+
 function showProfileScreen() {
     const dashboard = document.getElementById('dashboardCard');
     const profile = document.getElementById('profileScreen');
@@ -4143,6 +4198,7 @@ function showProfileScreen() {
 
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
+    setScreenActive(false);
 
     if (profile) { profile.style.display = 'block'; profile.classList.add('visible'); }
     if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
@@ -4159,6 +4215,7 @@ function showNotificationsScreen() {
 
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
+    setScreenActive(false);
 
     if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
     if (notifications) { notifications.style.display = 'block'; notifications.classList.add('visible'); }
@@ -4175,6 +4232,8 @@ function showDashboard() {
 
     if (dashboard) dashboard.style.display = 'block';
     showDashboardContent();
+    setScreenActive(false);
+    setActiveSidebar('clube');
 
     if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
     if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
@@ -4191,11 +4250,17 @@ function showMessagesScreen() {
 
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
+    setScreenActive(true);
+    setActiveSidebar('mensagens');
 
     if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
     if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
     if (messages) { messages.style.display = ''; messages.classList.add('visible'); }
     if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
+
+    /* Scroll thread para o fundo */
+    const thread = document.getElementById('messagesThread');
+    if (thread) thread.scrollTop = thread.scrollHeight;
 }
 
 function showCalendarScreen() {
@@ -4207,11 +4272,13 @@ function showCalendarScreen() {
 
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
+    setScreenActive(true);
+    setActiveSidebar('calendario');
 
     if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
     if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
     if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
-    if (calendar) { calendar.style.display = 'block'; calendar.classList.add('visible'); }
+    if (calendar) { calendar.style.display = 'flex'; calendar.classList.add('visible'); }
 }
 
 function saveProfileChanges() {
@@ -4702,6 +4769,7 @@ function selectCalendarDay(dateStr) {
     selectedCalDate = dateStr;
     renderCalendar();
     renderDayEvents(dateStr);
+    syncCalMonthFields();
 }
 
 function renderDayEvents(dateStr) {
@@ -4735,6 +4803,7 @@ function renderDayEvents(dateStr) {
                     <input type="hidden" name="id_evento" value="${ev.id_evento}">
                     <input type="hidden" name="cal_month" value="${calendarMonth + 1}">
                     <input type="hidden" name="cal_year" value="${calendarYear}">
+                    <input type="hidden" name="cal_day" value="${selectedCalDate || ''}">
                     <button class="btn-row-edit btn-row-delete" type="submit" title="Remover">×</button>
                 </form>
             </div>` : '';
@@ -4775,6 +4844,7 @@ function calendarNext() {
 function syncCalMonthFields() {
     document.querySelectorAll('.cal-month-field').forEach(f => f.value = calendarMonth + 1);
     document.querySelectorAll('.cal-year-field').forEach(f  => f.value = calendarYear);
+    document.querySelectorAll('.cal-day-field').forEach(f   => f.value = selectedCalDate || '');
 }
 
 function openEditEventoModal(idEvento) {
@@ -4808,10 +4878,12 @@ function validarFormEvento(form) {
 
 /* Inicializar calendário e tratar estado inicial */
 document.addEventListener('DOMContentLoaded', function () {
-    /* Restaurar mês/ano a partir dos parâmetros GET (após redirect de evento) */
-    const urlParams = new URLSearchParams(window.location.search);
+    /* Restaurar mês/ano/dia a partir dos parâmetros GET (após redirect PRG de evento) */
+    const urlParams  = new URLSearchParams(window.location.search);
     const pMonth = parseInt(urlParams.get('cal_month'));
     const pYear  = parseInt(urlParams.get('cal_year'));
+    const pDay   = urlParams.get('cal_day') || '';
+
     if (pMonth >= 1 && pMonth <= 12) calendarMonth = pMonth - 1;
     if (pYear  >= 2000)              calendarYear  = pYear;
 
@@ -4821,31 +4893,35 @@ document.addEventListener('DOMContentLoaded', function () {
     const todayStr = today.getFullYear() + '-' +
                      String(today.getMonth() + 1).padStart(2, '0') + '-' +
                      String(today.getDate()).padStart(2, '0');
-    /* Auto-selecionar o dia correspondente ao mês atual ou hoje */
-    if (pMonth >= 1 && pMonth <= 12) {
-        /* Selecionar o primeiro dia visível do mês restaurado */
+
+    /* Restaurar dia selecionado ou usar hoje */
+    if (pDay) {
+        selectCalendarDay(pDay);
+    } else if (pMonth >= 1 && pMonth <= 12) {
         const firstDay = calendarYear + '-' + String(calendarMonth + 1).padStart(2, '0') + '-01';
         selectCalendarDay(firstDay);
     } else {
         selectCalendarDay(todayStr);
     }
 
-    /* Inicializar campos ocultos de mês/ano nos formulários */
-    syncCalMonthFields();
-
-    /* Abrir modal de criar evento já com a data de hoje por omissão */
+    /* Data por omissão no form de criar evento */
     const formCriar = document.getElementById('formCriarEvento');
     if (formCriar) {
         const dataInput = formCriar.querySelector('[name="data_evento"]');
         if (dataInput && !dataInput.value) dataInput.value = todayStr;
     }
 
+    /* Definir sidebar activa e modo de ecrã conforme a view inicial */
     <?php if ($mostrarMensagens): ?>
     hideDashboardContent();
-    <?php endif; ?>
-
-    <?php if (($_GET['view'] ?? '') === 'calendario'): ?>
+    setScreenActive(true);
+    setActiveSidebar('mensagens');
+    const thread = document.getElementById('messagesThread');
+    if (thread) thread.scrollTop = thread.scrollHeight;
+    <?php elseif (($_GET['view'] ?? '') === 'calendario'): ?>
     showCalendarScreen();
+    <?php else: ?>
+    setActiveSidebar('clube');
     <?php endif; ?>
 });
 </script>
