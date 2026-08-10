@@ -2,6 +2,28 @@
 session_start();
 require_once __DIR__ . '/basedados.h';
 
+/* ── AJAX: detalhe de jogador (carreira + lesões) ── */
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'jogador_detalhe') {
+    if (!isset($_SESSION['id_utilizador']) || !isset($_SESSION['id_clube'])) {
+        http_response_code(403); exit;
+    }
+    $idJ = (int)($_GET['id'] ?? 0);
+    $idC = (int)$_SESSION['id_clube'];
+    $resposta = ['carreira' => [], 'lesoes' => []];
+    $stmtCkJ = $conn->prepare("SELECT j.id_jogador FROM jogadores j JOIN equipa eq ON eq.id_equipa=j.id_equipa WHERE j.id_jogador=? AND eq.id_clube=? LIMIT 1");
+    $stmtCkJ->bind_param("ii", $idJ, $idC);
+    $stmtCkJ->execute();
+    if ($stmtCkJ->get_result()->fetch_assoc()) {
+        $resCarr = $conn->query("SELECT hc.id_carreira, hc.jogos, hc.golos_marcados, hc.assistências, ep.`época` AS epoca, c.nome_clube AS clube FROM `histórico_carreira` hc LEFT JOIN `época` ep ON ep.id_época=hc.id_época LEFT JOIN clube c ON c.id_clube=hc.id_clube WHERE hc.id_jogador=$idJ ORDER BY ep.id_época DESC");
+        while ($r = $resCarr->fetch_assoc()) $resposta['carreira'][] = $r;
+        $resLes = $conn->query("SELECT nome_lesão, tipo_lesão, tempo_recuperação, estado_lesão FROM `lesões` WHERE id_jogador=$idJ ORDER BY id_lesão DESC");
+        while ($r = $resLes->fetch_assoc()) $resposta['lesoes'][] = $r;
+    }
+    header('Content-Type: application/json');
+    echo json_encode($resposta, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 /* ── Protecção da página ── */
 if (
     !isset($_SESSION['id_utilizador']) ||
@@ -23,6 +45,13 @@ $sucesso = '';
 $activeTab = 'tab-info';
 $viewMode = $_GET['view'] ?? 'dashboard';
 $mostrarMensagens = ($viewMode === 'mensagens');
+$activeSidebarView = match ($viewMode) {
+    'mensagens' => 'mensagens',
+    'calendario' => 'calendario',
+    'escaloes' => 'escaloes',
+    'competicoes' => 'competicoes',
+    default => 'clube',
+};
 $chatSelecionadoId = (int)($_GET['chat'] ?? 0);
 
 $listaEscaloesDisponiveis = [
@@ -57,7 +86,37 @@ if ($checkLocalEvento && $checkLocalEvento->num_rows === 0) {
     $conn->query("ALTER TABLE eventos_clube ADD COLUMN local_evento VARCHAR(200) DEFAULT NULL AFTER hora_evento");
 }
 
-/* ── Coluna de timestamp em mensagens ── */
+/* ── Coluna id_utilizador em jogadores ── */
+$ckJogUtil = $conn->query("SHOW COLUMNS FROM jogadores LIKE 'id_utilizador'");
+if ($ckJogUtil && $ckJogUtil->num_rows === 0) {
+    $conn->query("ALTER TABLE jogadores ADD COLUMN id_utilizador INT DEFAULT NULL AFTER id_equipa");
+}
+
+/* ── Tabelas de competições e jogos do clube ── */
+$conn->query("CREATE TABLE IF NOT EXISTS `competicoes_clube` (
+    `id_competicao` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_clube` INT NOT NULL,
+    `id_equipa` INT NOT NULL,
+    `nome` VARCHAR(200) NOT NULL,
+    `tipo` ENUM('Liga','Taça','Torneio','Campeonato','Amigável','Outro') NOT NULL DEFAULT 'Liga',
+    `epoca` VARCHAR(20) DEFAULT NULL,
+    `estado` ENUM('A decorrer','Finalizada','Suspensa') NOT NULL DEFAULT 'A decorrer',
+    `descricao` TEXT DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogos_clube` (
+    `id_jogo` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_competicao` INT NOT NULL,
+    `adversario` VARCHAR(200) NOT NULL,
+    `data_jogo` DATE NOT NULL,
+    `hora_jogo` TIME DEFAULT NULL,
+    `casa` TINYINT(1) NOT NULL DEFAULT 1,
+    `local_jogo` VARCHAR(200) DEFAULT NULL,
+    `resultado_nos` INT DEFAULT NULL,
+    `resultado_adv` INT DEFAULT NULL,
+    `estado` ENUM('Agendado','Realizado','Cancelado','Adiado') NOT NULL DEFAULT 'Agendado',
+    `id_evento_clube` INT DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 $checkEnviadaEm = $conn->query("SHOW COLUMNS FROM mensagens LIKE 'enviada_em'");
 if ($checkEnviadaEm && $checkEnviadaEm->num_rows === 0) {
     $conn->query("ALTER TABLE mensagens ADD COLUMN enviada_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER estado");
@@ -1045,6 +1104,275 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    /* ── Criar jogador (+ utilizador) ── */
+    if ($acao === 'criar_jogador') {
+        $nomeCompleto    = trim($_POST['nome_completo'] ?? '');
+        $alcunha         = trim($_POST['alcunha_jogador'] ?? '');
+        $dataNasc        = trim($_POST['data_nascimento'] ?? '');
+        $nacionalidade   = trim($_POST['nacionalidade'] ?? '');
+        $paisNasc        = trim($_POST['pais_nascimento'] ?? $nacionalidade);
+        $posicao         = trim($_POST['posicao_principal'] ?? '');
+        $posicaoSec      = trim($_POST['posicao_secundaria'] ?? '') ?: null;
+        $numero          = trim($_POST['numero'] ?? '') ?: null;
+        $pe              = trim($_POST['pe_preferencial'] ?? '') ?: null;
+        $altura          = trim($_POST['altura'] ?? '') ?: null;
+        $peso            = trim($_POST['peso'] ?? '') ?: null;
+        $idEquipaJog     = (int)($_POST['id_equipa_jogador'] ?? 0);
+        $nomeUtilJog     = trim($_POST['nome_utilizador_jogador'] ?? '');
+        $passwordJog     = $_POST['password_jogador'] ?? '';
+        $emailJog        = trim($_POST['email_jogador'] ?? '') ?: null;
+
+        $posicoesValidas = ['Guarda-Redes','Defesa Central','Defesa Esquerdo','Defesa Direito','Ala Esquerdo','Ala Direito','Médio Defensivo','Médio Centro','Médio Esquerdo','Médio Direito','Médio Ofensivo','Extremo Esquerdo','Extremo Direito','Segundo Avançado','Ponta de Lança'];
+
+        if ($nomeCompleto === '' || $dataNasc === '' || $nacionalidade === '' || $posicao === '' || $idEquipaJog <= 0 || $nomeUtilJog === '' || $passwordJog === '') {
+            $erro = 'Preenche todos os campos obrigatórios do jogador.';
+        } elseif (!in_array($posicao, $posicoesValidas, true)) {
+            $erro = 'Posição inválida.';
+        } elseif (!preg_match('/^[A-Za-z0-9._-]{3,30}$/', $nomeUtilJog)) {
+            $erro = 'Nome de utilizador inválido (3-30 chars, sem espaços).';
+        } else {
+            $stmtCkJogUser = $conn->prepare("SELECT id_utilizador FROM utilizador WHERE nome_utilizador = ? LIMIT 1");
+            $stmtCkJogUser->bind_param("s", $nomeUtilJog);
+            $stmtCkJogUser->execute();
+            if ($stmtCkJogUser->get_result()->fetch_assoc()) {
+                $erro = 'Já existe um utilizador com esse nome.';
+            } else {
+                $conn->begin_transaction();
+                try {
+                    $stmtCriarUtilJog = $conn->prepare("INSERT INTO utilizador (nome_utilizador,email_utilizador,primeiro_nome,`último_nome`,password,tipo_utilizador,id_clube) VALUES (?,?,?,?,'temp','jogador',?)");
+                    $partes = explode(' ', $nomeCompleto, 2);
+                    $prNome = $partes[0]; $ulNome = $partes[1] ?? '';
+                    $emailJogIns = $emailJog ?? '';
+                    $stmtCriarUtilJog->bind_param("ssssi", $nomeUtilJog, $emailJogIns, $prNome, $ulNome, $id_clube);
+                    $stmtCriarUtilJog->execute();
+                    $idNovoUtil = $stmtCriarUtilJog->insert_id;
+
+                    /* Actualizar password via trigger */
+                    $stmtPwd = $conn->prepare("UPDATE utilizador SET password=? WHERE id_utilizador=?");
+                    $stmtPwd->bind_param("si", $passwordJog, $idNovoUtil);
+                    $stmtPwd->execute();
+
+                    $stmtCriarJog = $conn->prepare("INSERT INTO jogadores (nome_completo,alcunha_jogador,data_nascimento,nacionalidade,`país_nascimento`,`posição_principal`,`posição_secundária`,`número_favorito`,`pé_preferencial`,altura,peso,id_equipa,id_utilizador,foto_jogador) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'')");
+                    $stmtCriarJog->bind_param("sssssssssssii", $nomeCompleto,$alcunha,$dataNasc,$nacionalidade,$paisNasc,$posicao,$posicaoSec,$numero,$pe,$altura,$peso,$idEquipaJog,$idNovoUtil);
+                    $stmtCriarJog->execute();
+
+                    $conn->commit();
+                    $sucesso = 'Jogador criado com sucesso.';
+                } catch (Throwable $e) {
+                    $conn->rollback();
+                    $erro = 'Erro ao criar jogador: ' . $e->getMessage();
+                }
+            }
+        }
+    }
+
+    /* ── Editar jogador ── */
+    if ($acao === 'editar_jogador') {
+        $idJog       = (int)($_POST['id_jogador'] ?? 0);
+        $nomeCompleto= trim($_POST['nome_completo'] ?? '');
+        $alcunha     = trim($_POST['alcunha_jogador'] ?? '');
+        $dataNasc    = trim($_POST['data_nascimento'] ?? '');
+        $nacionalidade= trim($_POST['nacionalidade'] ?? '');
+        $paisNasc    = trim($_POST['pais_nascimento'] ?? $nacionalidade);
+        $posicao     = trim($_POST['posicao_principal'] ?? '');
+        $posicaoSec  = trim($_POST['posicao_secundaria'] ?? '') ?: null;
+        $numero      = trim($_POST['numero'] ?? '') ?: null;
+        $pe          = trim($_POST['pe_preferencial'] ?? '') ?: null;
+        $altura      = trim($_POST['altura'] ?? '') ?: null;
+        $peso        = trim($_POST['peso'] ?? '') ?: null;
+        $idEquipaJog = (int)($_POST['id_equipa_jogador'] ?? 0);
+
+        if ($idJog <= 0 || $nomeCompleto === '' || $posicao === '' || $idEquipaJog <= 0) {
+            $erro = 'Dados inválidos.';
+        } else {
+            $stmtCkJogClub = $conn->prepare("SELECT j.id_jogador FROM jogadores j JOIN equipa eq ON eq.id_equipa=j.id_equipa WHERE j.id_jogador=? AND eq.id_clube=? LIMIT 1");
+            $stmtCkJogClub->bind_param("ii", $idJog, $id_clube);
+            $stmtCkJogClub->execute();
+            if (!$stmtCkJogClub->get_result()->fetch_assoc()) {
+                $erro = 'Jogador não encontrado.';
+            } else {
+                $stmtEditJog = $conn->prepare("UPDATE jogadores SET nome_completo=?,alcunha_jogador=?,data_nascimento=?,nacionalidade=?,`país_nascimento`=?,`posição_principal`=?,`posição_secundária`=?,`número_favorito`=?,`pé_preferencial`=?,altura=?,peso=?,id_equipa=? WHERE id_jogador=?");
+                $stmtEditJog->bind_param("sssssssssssii", $nomeCompleto,$alcunha,$dataNasc,$nacionalidade,$paisNasc,$posicao,$posicaoSec,$numero,$pe,$altura,$peso,$idEquipaJog,$idJog);
+                if ($stmtEditJog->execute()) { $sucesso = 'Jogador atualizado.'; } else { $erro = 'Erro ao editar.'; }
+            }
+        }
+    }
+
+    /* ── Remover jogador ── */
+    if ($acao === 'remover_jogador') {
+        $idJog = (int)($_POST['id_jogador'] ?? 0);
+        if ($idJog <= 0) { $erro = 'Inválido.'; } else {
+            $stmtGetJog = $conn->prepare("SELECT j.id_utilizador FROM jogadores j JOIN equipa eq ON eq.id_equipa=j.id_equipa WHERE j.id_jogador=? AND eq.id_clube=? LIMIT 1");
+            $stmtGetJog->bind_param("ii", $idJog, $id_clube);
+            $stmtGetJog->execute();
+            $jogRow = $stmtGetJog->get_result()->fetch_assoc();
+            if (!$jogRow) { $erro = 'Jogador não encontrado.'; } else {
+                $conn->begin_transaction();
+                try {
+                    $conn->query("DELETE FROM `lesões` WHERE id_jogador=$idJog");
+                    $conn->query("DELETE FROM `histórico_carreira` WHERE id_jogador=$idJog");
+                    $conn->query("DELETE FROM jogadores WHERE id_jogador=$idJog");
+                    if (!empty($jogRow['id_utilizador'])) {
+                        $uid = (int)$jogRow['id_utilizador'];
+                        $conn->query("DELETE FROM mensagens WHERE origem=$uid OR destino=$uid");
+                        $conn->query("DELETE FROM notificacao WHERE id_utilizador=$uid");
+                        $conn->query("DELETE FROM utilizador WHERE id_utilizador=$uid");
+                    }
+                    $conn->commit();
+                    $sucesso = 'Jogador removido.';
+                } catch (Throwable $e) { $conn->rollback(); $erro = 'Erro ao remover jogador.'; }
+            }
+        }
+    }
+
+    /* ── Criar competição ── */
+    if ($acao === 'criar_competicao') {
+        $nomeComp  = trim($_POST['nome_competicao'] ?? '');
+        $tipoComp  = trim($_POST['tipo_competicao'] ?? 'Liga');
+        $epocaComp = trim($_POST['epoca_competicao'] ?? '');
+        $estadoComp= trim($_POST['estado_competicao'] ?? 'A decorrer');
+        $descComp  = trim($_POST['descricao_competicao'] ?? '');
+        $idEquipaComp = (int)($_POST['id_equipa_competicao'] ?? 0);
+        $tiposValidos = ['Liga','Taça','Torneio','Campeonato','Amigável','Outro'];
+        $estadosValidos = ['A decorrer','Finalizada','Suspensa'];
+
+        if ($nomeComp === '' || $idEquipaComp <= 0 || !in_array($tipoComp, $tiposValidos, true) || !in_array($estadoComp, $estadosValidos, true)) {
+            $erro = 'Preenche os campos obrigatórios da competição.';
+        } else {
+            $stmtCkEqC = $conn->prepare("SELECT id_equipa FROM equipa WHERE id_equipa=? AND id_clube=? LIMIT 1");
+            $stmtCkEqC->bind_param("ii", $idEquipaComp, $id_clube);
+            $stmtCkEqC->execute();
+            if (!$stmtCkEqC->get_result()->fetch_assoc()) { $erro = 'Equipa inválida.'; } else {
+                $stmtCriarComp = $conn->prepare("INSERT INTO competicoes_clube (id_clube,id_equipa,nome,tipo,epoca,estado,descricao) VALUES (?,?,?,?,?,?,?)");
+                $stmtCriarComp->bind_param("iisssss", $id_clube,$idEquipaComp,$nomeComp,$tipoComp,$epocaComp,$estadoComp,$descComp);
+                if ($stmtCriarComp->execute()) { $sucesso = 'Competição criada.'; } else { $erro = 'Erro ao criar competição.'; }
+            }
+        }
+    }
+
+    /* ── Editar competição ── */
+    if ($acao === 'editar_competicao') {
+        $idComp    = (int)($_POST['id_competicao'] ?? 0);
+        $nomeComp  = trim($_POST['nome_competicao'] ?? '');
+        $tipoComp  = trim($_POST['tipo_competicao'] ?? 'Liga');
+        $epocaComp = trim($_POST['epoca_competicao'] ?? '');
+        $estadoComp= trim($_POST['estado_competicao'] ?? 'A decorrer');
+        $descComp  = trim($_POST['descricao_competicao'] ?? '');
+        if ($idComp <= 0 || $nomeComp === '') { $erro = 'Dados inválidos.'; } else {
+            $stmtEditComp = $conn->prepare("UPDATE competicoes_clube SET nome=?,tipo=?,epoca=?,estado=?,descricao=? WHERE id_competicao=? AND id_clube=?");
+            $stmtEditComp->bind_param("sssssii", $nomeComp,$tipoComp,$epocaComp,$estadoComp,$descComp,$idComp,$id_clube);
+            if ($stmtEditComp->execute()) { $sucesso = 'Competição atualizada.'; } else { $erro = 'Erro ao editar.'; }
+        }
+    }
+
+    /* ── Remover competição ── */
+    if ($acao === 'remover_competicao') {
+        $idComp = (int)($_POST['id_competicao'] ?? 0);
+        if ($idComp <= 0) { $erro = 'Inválido.'; } else {
+            $conn->begin_transaction();
+            try {
+                /* Remover eventos criados pelos jogos */
+                $resJogComp = $conn->query("SELECT id_evento_clube FROM jogos_clube WHERE id_competicao=$idComp AND id_evento_clube IS NOT NULL");
+                while ($rjc = $resJogComp->fetch_assoc()) {
+                    $conn->query("DELETE FROM eventos_clube WHERE id_evento=" . (int)$rjc['id_evento_clube']);
+                }
+                $conn->query("DELETE FROM jogos_clube WHERE id_competicao=$idComp");
+                $stmtDelComp = $conn->prepare("DELETE FROM competicoes_clube WHERE id_competicao=? AND id_clube=?");
+                $stmtDelComp->bind_param("ii", $idComp, $id_clube);
+                $stmtDelComp->execute();
+                $conn->commit();
+                $sucesso = 'Competição removida.';
+            } catch (Throwable $e) { $conn->rollback(); $erro = 'Erro ao remover.'; }
+        }
+    }
+
+    /* ── Criar jogo ── */
+    if ($acao === 'criar_jogo') {
+        $idCompJogo  = (int)($_POST['id_competicao_jogo'] ?? 0);
+        $adversario  = trim($_POST['adversario'] ?? '');
+        $dataJogo    = trim($_POST['data_jogo'] ?? '');
+        $horaJogo    = trim($_POST['hora_jogo'] ?? '') ?: null;
+        $casaJogo    = isset($_POST['casa_jogo']) ? 1 : 0;
+        $localJogo   = trim($_POST['local_jogo'] ?? '') ?: null;
+        $estadoJogo  = trim($_POST['estado_jogo'] ?? 'Agendado');
+
+        if ($idCompJogo <= 0 || $adversario === '' || $dataJogo === '') {
+            $erro = 'Preenche os campos obrigatórios do jogo.';
+        } else {
+            $stmtCkComp = $conn->prepare("SELECT cc.id_competicao, cc.id_equipa FROM competicoes_clube cc WHERE cc.id_competicao=? AND cc.id_clube=? LIMIT 1");
+            $stmtCkComp->bind_param("ii", $idCompJogo, $id_clube);
+            $stmtCkComp->execute();
+            $compRow = $stmtCkComp->get_result()->fetch_assoc();
+            if (!$compRow) { $erro = 'Competição inválida.'; } else {
+                $conn->begin_transaction();
+                try {
+                    $stmtCriarJogo = $conn->prepare("INSERT INTO jogos_clube (id_competicao,adversario,data_jogo,hora_jogo,casa,local_jogo,estado) VALUES (?,?,?,?,?,?,?)");
+                    $stmtCriarJogo->bind_param("isssiis", $idCompJogo,$adversario,$dataJogo,$horaJogo,$casaJogo,$localJogo,$estadoJogo);
+                    $stmtCriarJogo->execute();
+                    $idNovoJogo = $stmtCriarJogo->insert_id;
+
+                    /* Auto-criar eventos_clube */
+                    $descEvento = 'Jogo vs ' . $adversario;
+                    $tipoEvEvento = 'Jogo';
+                    $estadoEv = ($estadoJogo === 'Realizado') ? 'Realizado' : (($estadoJogo === 'Cancelado') ? 'Cancelado' : 'Por realizar');
+                    $stmtCriarEv = $conn->prepare("INSERT INTO eventos_clube (id_equipa,tipo_evento,`descrição_evento`,estado_evento,data_evento,hora_evento,local_evento) VALUES (?,?,?,?,?,?,?)");
+                    $stmtCriarEv->bind_param("issssss", $compRow['id_equipa'],$tipoEvEvento,$descEvento,$estadoEv,$dataJogo,$horaJogo,$localJogo);
+                    $stmtCriarEv->execute();
+                    $idNovoEvento = $stmtCriarEv->insert_id;
+
+                    $stmtLinkEv = $conn->prepare("UPDATE jogos_clube SET id_evento_clube=? WHERE id_jogo=?");
+                    $stmtLinkEv->bind_param("ii", $idNovoEvento, $idNovoJogo);
+                    $stmtLinkEv->execute();
+
+                    $conn->commit();
+                    $sucesso = 'Jogo criado.';
+                } catch (Throwable $e) { $conn->rollback(); $erro = 'Erro ao criar jogo: ' . $e->getMessage(); }
+            }
+        }
+    }
+
+    /* ── Atualizar resultado jogo ── */
+    if ($acao === 'resultado_jogo') {
+        $idJogoR    = (int)($_POST['id_jogo_resultado'] ?? 0);
+        $resultNos  = $_POST['resultado_nos'] !== '' ? (int)$_POST['resultado_nos'] : null;
+        $resultAdv  = $_POST['resultado_adv'] !== '' ? (int)$_POST['resultado_adv'] : null;
+        $estadoJR   = trim($_POST['estado_jogo_resultado'] ?? 'Realizado');
+        if ($idJogoR <= 0) { $erro = 'Jogo inválido.'; } else {
+            $stmtResJog = $conn->prepare("UPDATE jogos_clube jc JOIN competicoes_clube cc ON cc.id_competicao=jc.id_competicao SET jc.resultado_nos=?,jc.resultado_adv=?,jc.estado=? WHERE jc.id_jogo=? AND cc.id_clube=?");
+            $stmtResJog->bind_param("iisii", $resultNos,$resultAdv,$estadoJR,$idJogoR,$id_clube);
+            if ($stmtResJog->execute()) {
+                /* Actualizar estado do evento relacionado */
+                $stmtEvJog = $conn->query("SELECT id_evento_clube FROM jogos_clube WHERE id_jogo=$idJogoR LIMIT 1");
+                if ($evJogRow = $stmtEvJog->fetch_assoc()) {
+                    $evId = (int)$evJogRow['id_evento_clube'];
+                    if ($evId) $conn->query("UPDATE eventos_clube SET estado_evento='$estadoJR' WHERE id_evento=$evId");
+                }
+                $sucesso = 'Resultado guardado.';
+            } else { $erro = 'Erro ao guardar resultado.'; }
+        }
+    }
+
+    /* ── Remover jogo ── */
+    if ($acao === 'remover_jogo') {
+        $idJogoD = (int)($_POST['id_jogo'] ?? 0);
+        if ($idJogoD <= 0) { $erro = 'Inválido.'; } else {
+            $stmtGetEvJog = $conn->query("SELECT id_evento_clube FROM jogos_clube WHERE id_jogo=$idJogoD LIMIT 1");
+            $evJogR = $stmtGetEvJog->fetch_assoc();
+            $conn->begin_transaction();
+            try {
+                if (!empty($evJogR['id_evento_clube'])) {
+                    $evIdD = (int)$evJogR['id_evento_clube'];
+                    $conn->query("DELETE FROM eventos_clube WHERE id_evento=$evIdD");
+                }
+                $stmtDelJog = $conn->prepare("DELETE jc FROM jogos_clube jc JOIN competicoes_clube cc ON cc.id_competicao=jc.id_competicao WHERE jc.id_jogo=? AND cc.id_clube=?");
+                $stmtDelJog->bind_param("ii", $idJogoD, $id_clube);
+                $stmtDelJog->execute();
+                $conn->commit();
+                $sucesso = 'Jogo removido.';
+            } catch (Throwable $e) { $conn->rollback(); $erro = 'Erro ao remover jogo.'; }
+        }
+    }
+
     /* ── Criar evento ── */
     if ($acao === 'criar_evento') {
         $idEquipaEvento  = (int)($_POST['id_equipa_evento'] ?? 0);
@@ -1054,14 +1382,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dataEvento      = trim($_POST['data_evento'] ?? '');
         $horaEvento      = trim($_POST['hora_evento'] ?? '') ?: null;
         $localEvento     = trim($_POST['local_evento'] ?? '') ?: null;
-        $calMonth = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
-        $calYear  = (int)($_POST['cal_year'] ?? (int)date('Y'));
-        $calDay   = trim($_POST['cal_day'] ?? '');
-        $calDayParam = $calDay ? '&cal_day=' . urlencode($calDay) : '';
+        $calMonth        = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
+        $calYear         = (int)($_POST['cal_year'] ?? (int)date('Y'));
+        $calDay          = trim($_POST['cal_day'] ?? '');
+        $calDayParam     = $calDay !== '' ? '&cal_day=' . urlencode($calDay) : '';
 
-        $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
+        $tiposEventoValidos = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
         $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
-        $estadosComDataFutura = ['Por realizar'];
 
         if ($idEquipaEvento <= 0 || $tipoEvento === '' || $dataEvento === '') {
             $erro = 'Preenche os campos obrigatórios do evento.';
@@ -1069,12 +1396,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $erro = 'Tipo de evento inválido.';
         } elseif (!in_array($estadoEvento, $estadosEventoValidos, true)) {
             $erro = 'Estado do evento inválido.';
-        } elseif (in_array($estadoEvento, $estadosComDataFutura, true) && $dataEvento < date('Y-m-d')) {
+        } elseif ($estadoEvento === 'Por realizar' && $dataEvento < date('Y-m-d')) {
             $erro = 'Eventos "Por realizar" devem ter data atual ou futura.';
         } else {
             $stmtCkEqEv = $conn->prepare("SELECT id_equipa FROM equipa WHERE id_equipa = ? AND id_clube = ? LIMIT 1");
             $stmtCkEqEv->bind_param("ii", $idEquipaEvento, $id_clube);
             $stmtCkEqEv->execute();
+
             if (!$stmtCkEqEv->get_result()->fetch_assoc()) {
                 $erro = 'Equipa inválida.';
             } else {
@@ -1083,13 +1411,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmtCriarEv->bind_param("issssss", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento);
+
                 if ($stmtCriarEv->execute()) {
                     $_SESSION['flash_sucesso'] = 'Evento criado com sucesso.';
                     header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                     exit;
-                } else {
-                    $erro = 'Erro ao criar evento.';
                 }
+
+                $erro = 'Erro ao criar evento.';
             }
         }
     }
@@ -1107,9 +1436,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $calMonth        = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
         $calYear         = (int)($_POST['cal_year'] ?? (int)date('Y'));
         $calDay          = trim($_POST['cal_day'] ?? '');
-        $calDayParam     = $calDay ? '&cal_day=' . urlencode($calDay) : '';
+        $calDayParam     = $calDay !== '' ? '&cal_day=' . urlencode($calDay) : '';
 
-        $tiposEventoValidos  = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
+        $tiposEventoValidos = ['Treino','Jogo','Reunião Técnico-Tática','Sessão de Recuperação','Convívio de Equipa','Outro'];
         $estadosEventoValidos = ['Por realizar','Realizado','Cancelado','Adiado'];
 
         if ($idEvento <= 0 || $idEquipaEvento <= 0 || $tipoEvento === '' || $dataEvento === '') {
@@ -1124,50 +1453,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtCkEqEv = $conn->prepare("SELECT id_equipa FROM equipa WHERE id_equipa = ? AND id_clube = ? LIMIT 1");
             $stmtCkEqEv->bind_param("ii", $idEquipaEvento, $id_clube);
             $stmtCkEqEv->execute();
+
             if (!$stmtCkEqEv->get_result()->fetch_assoc()) {
                 $erro = 'Equipa inválida.';
             } else {
                 $stmtEditEv = $conn->prepare("
                     UPDATE eventos_clube ec
                     JOIN equipa eq ON eq.id_equipa = ec.id_equipa
-                    SET ec.id_equipa = ?, ec.tipo_evento = ?, ec.`descrição_evento` = ?, ec.estado_evento = ?, ec.data_evento = ?, ec.hora_evento = ?, ec.local_evento = ?
-                    WHERE ec.id_evento = ? AND eq.id_clube = ?
+                    SET ec.id_equipa = ?,
+                        ec.tipo_evento = ?,
+                        ec.`descrição_evento` = ?,
+                        ec.estado_evento = ?,
+                        ec.data_evento = ?,
+                        ec.hora_evento = ?,
+                        ec.local_evento = ?
+                    WHERE ec.id_evento = ?
+                      AND eq.id_clube = ?
                 ");
                 $stmtEditEv->bind_param("issssssii", $idEquipaEvento, $tipoEvento, $descricaoEvento, $estadoEvento, $dataEvento, $horaEvento, $localEvento, $idEvento, $id_clube);
+
                 if ($stmtEditEv->execute()) {
                     $_SESSION['flash_sucesso'] = 'Evento atualizado com sucesso.';
                     header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                     exit;
-                } else {
-                    $erro = 'Erro ao atualizar evento.';
                 }
+
+                $erro = 'Erro ao atualizar evento.';
             }
         }
     }
 
     /* ── Remover evento ── */
     if ($acao === 'remover_evento') {
-        $idEvento  = (int)($_POST['id_evento'] ?? 0);
-        $calMonth  = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
-        $calYear   = (int)($_POST['cal_year'] ?? (int)date('Y'));
-        $calDay    = trim($_POST['cal_day'] ?? '');
-        $calDayParam = $calDay ? '&cal_day=' . urlencode($calDay) : '';
+        $idEvento      = (int)($_POST['id_evento'] ?? 0);
+        $calMonth      = max(1, min(12, (int)($_POST['cal_month'] ?? (int)date('n'))));
+        $calYear       = (int)($_POST['cal_year'] ?? (int)date('Y'));
+        $calDay        = trim($_POST['cal_day'] ?? '');
+        $calDayParam   = $calDay !== '' ? '&cal_day=' . urlencode($calDay) : '';
+
         if ($idEvento <= 0) {
             $erro = 'Evento inválido.';
         } else {
             $stmtDelEv = $conn->prepare("
-                DELETE ec FROM eventos_clube ec
+                DELETE ec
+                FROM eventos_clube ec
                 JOIN equipa eq ON eq.id_equipa = ec.id_equipa
-                WHERE ec.id_evento = ? AND eq.id_clube = ?
+                WHERE ec.id_evento = ?
+                  AND eq.id_clube = ?
             ");
             $stmtDelEv->bind_param("ii", $idEvento, $id_clube);
+
             if ($stmtDelEv->execute()) {
                 $_SESSION['flash_sucesso'] = 'Evento removido com sucesso.';
                 header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                 exit;
-            } else {
-                $erro = 'Erro ao remover evento.';
             }
+
+            $erro = 'Erro ao remover evento.';
         }
     }
 }
@@ -1423,6 +1765,62 @@ $resEventosCalendario = $stmtEventosCalendario->get_result();
 while ($row = $resEventosCalendario->fetch_assoc()) {
     $eventosCalendario[] = $row;
 }
+
+/* ── Buscar jogadores por equipa (para o ecrã de escalões) ── */
+$jogadoresPorEquipa = [];
+$stmtJogadores = $conn->prepare("
+    SELECT j.id_jogador, j.nome_completo, j.alcunha_jogador, j.`posição_principal`,
+           j.`posição_secundária`, j.`número_favorito`, j.`pé_preferencial`,
+           j.data_nascimento, j.nacionalidade, j.altura, j.peso,
+           j.id_equipa, j.id_utilizador, j.foto_jogador
+    FROM jogadores j
+    JOIN equipa eq ON eq.id_equipa = j.id_equipa
+    WHERE eq.id_clube = ?
+    ORDER BY j.id_equipa, j.`número_favorito` ASC, j.nome_completo ASC
+");
+$stmtJogadores->bind_param("i", $id_clube);
+$stmtJogadores->execute();
+$resJogadores = $stmtJogadores->get_result();
+while ($row = $resJogadores->fetch_assoc()) {
+    $row['tem_foto'] = !empty($row['foto_jogador']) && strlen($row['foto_jogador']) > 10;
+    $row['foto_base64'] = $row['tem_foto'] ? 'data:image/png;base64,' . base64_encode($row['foto_jogador']) : null;
+    unset($row['foto_jogador']);
+    $jogadoresPorEquipa[$row['id_equipa']][] = $row;
+}
+
+/* ── Buscar competições do clube ── */
+$competicoesClube = [];
+$stmtCompetiu = $conn->prepare("
+    SELECT cc.id_competicao, cc.id_equipa, cc.nome, cc.tipo, cc.epoca, cc.estado, cc.descricao,
+           eq.`escalão`, eq.hierarquia
+    FROM competicoes_clube cc
+    JOIN equipa eq ON eq.id_equipa = cc.id_equipa
+    WHERE cc.id_clube = ?
+    ORDER BY cc.id_competicao DESC
+");
+$stmtCompetiu->bind_param("i", $id_clube);
+$stmtCompetiu->execute();
+$resComp = $stmtCompetiu->get_result();
+while ($row = $resComp->fetch_assoc()) {
+    $competicoesClube[] = $row;
+}
+
+/* ── Buscar jogos de todas as competições do clube ── */
+$jogosPorCompeticao = [];
+$stmtJogosClub = $conn->prepare("
+    SELECT jc.id_jogo, jc.id_competicao, jc.adversario, jc.data_jogo, jc.hora_jogo,
+           jc.casa, jc.local_jogo, jc.resultado_nos, jc.resultado_adv, jc.estado
+    FROM jogos_clube jc
+    JOIN competicoes_clube cc ON cc.id_competicao = jc.id_competicao
+    WHERE cc.id_clube = ?
+    ORDER BY jc.data_jogo ASC, jc.hora_jogo ASC
+");
+$stmtJogosClub->bind_param("i", $id_clube);
+$stmtJogosClub->execute();
+$resJogosC = $stmtJogosClub->get_result();
+while ($row = $resJogosC->fetch_assoc()) {
+    $jogosPorCompeticao[$row['id_competicao']][] = $row;
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -1441,7 +1839,11 @@ while ($row = $resEventosCalendario->fetch_assoc()) {
 
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
 
+html, body { height: 100%; }
+
 body { background: #f0f2f7; }
+
+body.layout-locked { overflow: hidden; }
 
 /* ══════════════════════════════════
    TOP BAR
@@ -1683,6 +2085,12 @@ body { background: #f0f2f7; }
     transition: margin-left .22s cubic-bezier(.4,0,.2,1);
 }
 
+body.layout-locked .main {
+    height: calc(100vh - var(--topbar-h));
+    min-height: 0;
+    overflow: hidden;
+}
+
 .sidebar:hover ~ .main { margin-left: 210px; }
 
 /* ══════════════════════════════════
@@ -1694,6 +2102,12 @@ body { background: #f0f2f7; }
     padding: 28px 32px 36px;
     box-shadow: 0 4px 24px rgba(0,0,0,.07);
     position: relative;
+}
+
+body.layout-locked #dashboardCard {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .card-header-actions {
@@ -1943,7 +2357,7 @@ body { background: #f0f2f7; }
     font-weight: 600;
     color: rgba(255,255,255,.75);
     cursor: pointer;
-    transition: background .15s, color .15s, border-color .15s;
+    transition: background .15s, color .15s, border-color .15s, padding-left .15s;
 }
 
 .notification-tab:hover,
@@ -1951,6 +2365,7 @@ body { background: #f0f2f7; }
     background: rgba(255,255,255,.13);
     color: #fff;
     border-left-color: #fff;
+    padding-left: 26px;
 }
 
 .notifications-list {
@@ -2042,7 +2457,9 @@ body { background: #f0f2f7; }
 }
 
 .calendar-shell.visible {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 .calendar-header {
@@ -2101,6 +2518,21 @@ body { background: #f0f2f7; }
     margin-bottom: 4px;
 }
 
+.calendar-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    flex: 1;
+    min-height: 0;
+}
+
+.calendar-grid-wrap {
+    padding: 18px 16px;
+    border-right: 1px solid #e8edf5;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .calendar-weekday {
     text-align: center;
     font-size: 11px;
@@ -2115,6 +2547,8 @@ body { background: #f0f2f7; }
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 2px;
+    flex: 1;
+    align-content: stretch;
 }
 
 .calendar-day {
@@ -2165,6 +2599,13 @@ body { background: #f0f2f7; }
     height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
+}
+
+.calendar-events-panel {
+    padding: 16px 14px;
+    background: #f8faff;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .calendar-events-panel-title {
@@ -2276,7 +2717,8 @@ body { background: #f0f2f7; }
 .messages-shell.visible {
     display: grid;
     grid-template-columns: 310px 1fr;
-    height: calc(100vh - var(--topbar-h));
+    height: 100%;
+    min-height: 0;
 }
 
 .messages-sidebar {
@@ -2284,8 +2726,8 @@ body { background: #f0f2f7; }
     background: #fff;
     display: flex;
     flex-direction: column;
+    min-height: 0;
     overflow: hidden;
-    height: 100%;
 }
 
 .messages-sidebar-header {
@@ -2293,12 +2735,13 @@ body { background: #f0f2f7; }
     border-bottom: 1px solid #eef2f7;
     font-weight: 700;
     color: #1f2b3d;
-    flex-shrink: 0;
 }
 
 .messages-list {
     overflow-y: auto;
     flex: 1;
+    min-height: 0;
+    max-height: none;
 }
 
 .message-user {
@@ -2379,8 +2822,8 @@ body { background: #f0f2f7; }
     display: flex;
     flex-direction: column;
     background: #f9fbff;
+    min-height: 0;
     overflow: hidden;
-    height: 100%;
 }
 
 .messages-chat-header {
@@ -2393,7 +2836,6 @@ body { background: #f0f2f7; }
     padding: 0 16px;
     font-weight: 700;
     color: #1f2b3d;
-    flex-shrink: 0;
 }
 
 .messages-thread {
@@ -2442,6 +2884,7 @@ body { background: #f0f2f7; }
     border-top: 1px solid #e5ebf5;
     background: #fff;
     padding: 12px;
+    flex-shrink: 0;
 }
 
 .messages-compose form {
@@ -2926,7 +3369,6 @@ body { background: #f0f2f7; }
 
     .messages-shell.visible {
         grid-template-columns: 1fr;
-        height: calc(100vh - var(--topbar-h));
     }
 
     .messages-sidebar {
@@ -2936,66 +3378,274 @@ body { background: #f0f2f7; }
     }
 
     .messages-list {
-        flex: 1;
+        max-height: none;
     }
-}
 
-/* ── Modo ecrã completo para mensagens e calendário ── */
-.main.screen-active {
-    padding: 0;
-}
-.main.screen-active #dashboardCard {
-    border-radius: 0;
-    padding: 0;
-    box-shadow: none;
-    min-height: 0;
-}
-
-/* ── Calendário ecrã completo ── */
-.calendar-shell.visible {
-    display: flex;
-    flex-direction: column;
-    height: calc(100vh - var(--topbar-h));
-}
-
-.calendar-header {
-    flex-shrink: 0;
-}
-
-.calendar-body {
-    display: grid;
-    grid-template-columns: 1fr 300px;
-    flex: 1;
-    overflow: hidden;
-    min-height: 0;
-}
-
-.calendar-grid-wrap {
-    padding: 18px 16px;
-    border-right: 1px solid #e8edf5;
-    overflow-y: auto;
-}
-
-.calendar-events-panel {
-    padding: 16px 14px;
-    background: #f8faff;
-    overflow-y: auto;
-}
-
-@media (max-width: 860px) {
     .calendar-body {
         grid-template-columns: 1fr;
-        overflow-y: auto;
     }
+
     .calendar-grid-wrap {
         border-right: none;
         border-bottom: 1px solid #e8edf5;
-        overflow-y: visible;
     }
+
     .calendar-events-panel {
         max-height: 260px;
     }
 }
+
+/* ── Novos ecrãs (escalões, competições) ── */
+.screen-shell {
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.07);
+    padding: 28px 32px 36px;
+    display: none;
+}
+.screen-shell.visible { display: block; }
+
+/* ── Ecrã de Escalões ── */
+.escaloes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 22px;
+}
+.escaloes-team-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 22px;
+}
+.escalao-tab-btn {
+    padding: 8px 18px;
+    border: 1.5px solid #d9e0f0;
+    border-radius: 999px;
+    background: #f8f9fc;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    transition: background .14s, color .14s, border-color .14s;
+}
+.escalao-tab-btn:hover { background: #eef2ff; border-color: var(--club); color: var(--club); }
+.escalao-tab-btn.active { background: var(--club); border-color: var(--club); color: #fff; }
+
+.players-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 16px;
+}
+.player-card {
+    background: #f8f9fc;
+    border: 1.5px solid #e8edf5;
+    border-radius: 16px;
+    padding: 18px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: box-shadow .15s, transform .15s, border-color .15s;
+}
+.player-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.10); transform: translateY(-2px); border-color: var(--club); }
+.player-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #e4eaf5;
+    border: 3px solid var(--club);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--club);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.player-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.player-number {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--club);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.player-card-wrap { position: relative; }
+.player-name { font-size: 13px; font-weight: 700; color: #1f2b3d; text-align: center; line-height: 1.2; }
+.player-pos { font-size: 11px; color: #6b7280; text-align: center; }
+
+/* ── Ecrã de Competições ── */
+.competicoes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.competicao-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 18px;
+}
+.competicao-card {
+    background: #fff;
+    border: 1.5px solid #e0e7f2;
+    border-radius: 20px;
+    padding: 22px 18px 18px;
+    cursor: pointer;
+    transition: box-shadow .15s, transform .15s, border-color .15s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+}
+.competicao-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,.10); transform: translateY(-3px); border-color: var(--club); }
+.competicao-card-tipo {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #eef2ff;
+    color: var(--club);
+    align-self: flex-start;
+}
+.competicao-card-nome { font-size: 16px; font-weight: 700; color: #1f2b3d; }
+.competicao-card-equipa { font-size: 12px; color: #6b7280; }
+.competicao-card-estado {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    align-self: flex-start;
+}
+.estado-decorrer { background: #dcfce7; color: #15803d; }
+.estado-finalizada { background: #f3f4f6; color: #6b7280; }
+.estado-suspensa { background: #fef9c3; color: #a16207; }
+.competicao-card-actions {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity .15s;
+}
+.competicao-card:hover .competicao-card-actions { opacity: 1; }
+
+/* ── Vista jogos de competição ── */
+.jogos-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.btn-back {
+    border: none;
+    background: #f0f2f7;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background .14s;
+}
+.btn-back:hover { background: #e4e8f0; }
+.jogo-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid #e8edf5;
+    background: #fff;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    transition: box-shadow .14s;
+}
+.jogo-row:hover { box-shadow: 0 4px 14px rgba(0,0,0,.07); }
+.jogo-data { font-size: 12px; color: #6b7280; min-width: 90px; }
+.jogo-equipa { font-size: 14px; font-weight: 600; flex: 1; }
+.jogo-resultado {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--club);
+    min-width: 60px;
+    text-align: center;
+}
+.jogo-estado {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+}
+.jogo-estado-Agendado { background: #dbeafe; color: #1d4ed8; }
+.jogo-estado-Realizado { background: #dcfce7; color: #15803d; }
+.jogo-estado-Cancelado { background: #fee2e2; color: #dc2626; }
+.jogo-estado-Adiado { background: #fef9c3; color: #a16207; }
+.jogo-casa-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #f0f2f7;
+    color: #555;
+}
+
+/* ── Modal tabs (para perfil jogador) ── */
+.modal-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #f0f2f7;
+}
+.modal-tab-btn {
+    padding: 10px 18px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 600;
+    color: #6b7280;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color .14s, border-color .14s;
+}
+.modal-tab-btn.active { color: var(--club); border-bottom-color: var(--club); }
+.modal-tab-panel { display: none; }
+.modal-tab-panel.active { display: block; }
+
+.info-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 18px;
+    font-size: 13px;
+}
+.info-grid-2 .lbl { font-weight: 700; color: #374151; }
+.info-grid-2 .val { color: #6b7280; }
+
+.historial-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.historial-table th { background: #f5f7fb; padding: 8px 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 1px solid #e8edf5; }
+.historial-table td { padding: 8px 12px; border-bottom: 1px solid #f0f3f9; color: #555; }
 </style>
 </head>
 <body>
@@ -3047,27 +3697,27 @@ body { background: #f0f2f7; }
 
 <!-- ══ SIDEBAR ══ -->
 <div class="sidebar" id="sidebar">
-    <a href="#" data-view="clube" onclick="event.preventDefault(); showDashboard();">
+    <a href="#" data-view="clube" class="<?= $activeSidebarView === 'clube' ? 'active' : '' ?>" onclick="event.preventDefault(); showDashboard();">
         <img src="assets/clube.png" alt="">
         <span>Clube</span>
     </a>
-    <a href="#" data-view="escaloes">
+    <a href="#" data-view="escaloes" class="<?= $activeSidebarView === 'escaloes' ? 'active' : '' ?>" onclick="event.preventDefault(); showEscaloesScreen();">
         <img src="assets/escaloes.png" alt="">
         <span>Escalões</span>
     </a>
-    <a href="#" data-view="eventos">
+    <a href="#" data-view="competicoes" class="<?= $activeSidebarView === 'competicoes' ? 'active' : '' ?>" onclick="event.preventDefault(); showCompeticoesScreen();">
         <img src="assets/eventos.png" alt="">
-        <span>Eventos</span>
+        <span>Competições</span>
     </a>
-    <a href="#" data-view="calendario" onclick="event.preventDefault(); showCalendarScreen();">
+    <a href="#" data-view="calendario" class="<?= $activeSidebarView === 'calendario' ? 'active' : '' ?>" onclick="event.preventDefault(); showCalendarScreen();">
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
-    <a href="#" data-view="mensagens" onclick="event.preventDefault(); showMessagesScreen();">
+    <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
         <img src="assets/mensagens.png" alt="">
         <span>Mensagens</span>
     </a>
-    <a href="#" data-view="home">
+    <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>">
         <img src="assets/home.png" alt="">
         <span>Página Principal</span>
     </a>
@@ -3306,6 +3956,115 @@ body { background: #f0f2f7; }
                     <div class="calendar-events-panel-title" id="calendarPanelTitle">Seleciona um dia</div>
                     <div id="calendarDayEvents"></div>
                 </div>
+            </div>
+        </div>
+
+        <!-- ══ ECRÃ ESCALÕES ══ -->
+        <div class="screen-shell" id="escaloesScreen">
+            <div class="escaloes-header">
+                <h2 style="font-size:20px;font-weight:700;color:#1f2b3d;">Escalões — Jogadores</h2>
+                <?php if ($isAdminClube): ?>
+                <button class="btn-create" type="button" onclick="openModal('modalCriarJogador')">+ Adicionar Jogador</button>
+                <?php endif; ?>
+            </div>
+
+            <?php if (empty($escaloesClube)): ?>
+                <div class="empty-state"><p>Nenhum escalão criado. Cria escalões no menu <strong>Clube</strong>.</p></div>
+            <?php else: ?>
+            <div class="escaloes-team-tabs">
+                <?php foreach ($escaloesClube as $i => $esc): ?>
+                <button class="escalao-tab-btn <?= $i === 0 ? 'active' : '' ?>"
+                        onclick="selectEscalao(this, <?= (int)$esc['id_equipa'] ?>)"
+                        data-equipa="<?= (int)$esc['id_equipa'] ?>">
+                    <?= htmlspecialchars($esc['escalão'] . ' ' . $esc['hierarquia']) ?>
+                </button>
+                <?php endforeach; ?>
+            </div>
+
+            <div id="playersContent">
+                <?php foreach ($escaloesClube as $i => $esc): ?>
+                <div id="players-equipa-<?= (int)$esc['id_equipa'] ?>" style="<?= $i > 0 ? 'display:none;' : '' ?>">
+                    <?php $jogadoresEquipa = $jogadoresPorEquipa[(int)$esc['id_equipa']] ?? []; ?>
+                    <?php if (empty($jogadoresEquipa)): ?>
+                        <div class="empty-state"><p>Sem jogadores neste escalão.</p></div>
+                    <?php else: ?>
+                    <div class="players-grid">
+                        <?php foreach ($jogadoresEquipa as $jog): ?>
+                        <div class="player-card-wrap">
+                            <div class="player-card" onclick="openPlayerProfile(<?= (int)$jog['id_jogador'] ?>)">
+                                <div class="player-avatar">
+                                    <?php if ($jog['foto_base64']): ?>
+                                        <img src="<?= $jog['foto_base64'] ?>" alt="">
+                                    <?php else: ?>
+                                        <?= htmlspecialchars(strtoupper(substr($jog['alcunha_jogador'] ?: $jog['nome_completo'], 0, 1))) ?>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if ($jog['número_favorito']): ?>
+                                <div class="player-number"><?= htmlspecialchars($jog['número_favorito']) ?></div>
+                                <?php endif; ?>
+                                <div class="player-name"><?= htmlspecialchars($jog['alcunha_jogador'] ?: $jog['nome_completo']) ?></div>
+                                <div class="player-pos"><?= htmlspecialchars($jog['posição_principal']) ?></div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- ══ ECRÃ COMPETIÇÕES ══ -->
+        <div class="screen-shell" id="competicoesScreen">
+            <!-- Vista: lista de competições -->
+            <div id="competicoesLista">
+                <div class="competicoes-header">
+                    <h2 style="font-size:20px;font-weight:700;color:#1f2b3d;">Competições</h2>
+                    <?php if ($isAdminClube): ?>
+                    <button class="btn-create" type="button" onclick="openModal('modalCriarCompeticao')">+ Criar Competição</button>
+                    <?php endif; ?>
+                </div>
+                <?php if (empty($competicoesClube)): ?>
+                    <div class="empty-state"><p>Sem competições criadas.</p></div>
+                <?php else: ?>
+                <div class="competicao-cards" id="competicaoCardsGrid">
+                    <?php foreach ($competicoesClube as $comp): ?>
+                    <?php $estadoCss = ['A decorrer'=>'estado-decorrer','Finalizada'=>'estado-finalizada','Suspensa'=>'estado-suspensa'][$comp['estado']] ?? ''; ?>
+                    <div class="competicao-card" onclick="openCompeticao(<?= (int)$comp['id_competicao'] ?>)">
+                        <span class="competicao-card-tipo"><?= htmlspecialchars($comp['tipo']) ?></span>
+                        <div class="competicao-card-nome"><?= htmlspecialchars($comp['nome']) ?></div>
+                        <div class="competicao-card-equipa"><?= htmlspecialchars($comp['escalão'] . ' ' . $comp['hierarquia']) ?><?= $comp['epoca'] ? ' · ' . htmlspecialchars($comp['epoca']) : '' ?></div>
+                        <span class="competicao-card-estado <?= $estadoCss ?>"><?= htmlspecialchars($comp['estado']) ?></span>
+                        <?php if ($isAdminClube): ?>
+                        <div class="competicao-card-actions" onclick="event.stopPropagation()">
+                            <button class="btn-row-edit" title="Editar" onclick="openEditCompeticao(<?= (int)$comp['id_competicao'] ?>)">✎</button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Remover competição e todos os jogos?');">
+                                <input type="hidden" name="acao" value="remover_competicao">
+                                <input type="hidden" name="id_competicao" value="<?= (int)$comp['id_competicao'] ?>">
+                                <button class="btn-row-edit btn-row-delete" type="submit">×</button>
+                            </form>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Vista: jogos de uma competição (hidden by default) -->
+            <div id="competicaoDetalhe" style="display:none;">
+                <div class="jogos-header">
+                    <button class="btn-back" onclick="backToCompeticoes()">&#8592; Competições</button>
+                    <div>
+                        <div style="font-size:18px;font-weight:700;color:#1f2b3d;" id="detalheNome"></div>
+                        <div style="font-size:13px;color:#6b7280;" id="detalheInfo"></div>
+                    </div>
+                    <?php if ($isAdminClube): ?>
+                    <button class="btn-create" type="button" style="margin-left:auto;" onclick="openCriarJogoModal()">+ Criar Jogo</button>
+                    <?php endif; ?>
+                </div>
+                <div id="jogosLista"></div>
             </div>
         </div>
 
@@ -4000,7 +4759,7 @@ body { background: #f0f2f7; }
             <input type="hidden" name="acao" value="criar_evento">
             <input type="hidden" name="cal_month" class="cal-month-field">
             <input type="hidden" name="cal_year" class="cal-year-field">
-            <input type="hidden" name="cal_day" class="cal-day-field"></div>
+            <input type="hidden" name="cal_day" class="cal-day-field">
             <div class="edit-grid">
                 <div class="edit-group full">
                     <label>Escalão / Equipa</label>
@@ -4069,7 +4828,7 @@ body { background: #f0f2f7; }
             <input type="hidden" name="id_evento" id="editEventoId">
             <input type="hidden" name="cal_month" class="cal-month-field">
             <input type="hidden" name="cal_year" class="cal-year-field">
-            <input type="hidden" name="cal_day" class="cal-day-field"></div>
+            <input type="hidden" name="cal_day" class="cal-day-field">
             <div class="edit-grid">
                 <div class="edit-group full">
                     <label>Escalão / Equipa</label>
@@ -4123,6 +4882,299 @@ body { background: #f0f2f7; }
         </form>
     </div>
 </div>
+<?php endif; ?>
+
+<!-- ══ MODAL CRIAR JOGADOR ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalCriarJogador">
+<div class="modal large">
+    <div class="modal-header">
+        <div class="modal-title">Adicionar Jogador</div>
+        <button class="modal-close" type="button" onclick="closeModal('modalCriarJogador')">×</button>
+    </div>
+    <form method="POST">
+        <input type="hidden" name="acao" value="criar_jogador">
+        <div class="edit-grid">
+            <div class="edit-group full"><label>Nome Completo *</label><input type="text" name="nome_completo" required></div>
+            <div class="edit-group"><label>Alcunha</label><input type="text" name="alcunha_jogador"></div>
+            <div class="edit-group"><label>Data de Nascimento *</label><input type="date" name="data_nascimento" required></div>
+            <div class="edit-group"><label>Nacionalidade *</label><input type="text" name="nacionalidade" required></div>
+            <div class="edit-group"><label>País de Nascimento</label><input type="text" name="pais_nascimento"></div>
+            <div class="edit-group"><label>Posição Principal *</label>
+                <select name="posicao_principal" required>
+                    <option value="">Selecionar</option>
+                    <?php foreach (['Guarda-Redes','Defesa Central','Defesa Esquerdo','Defesa Direito','Ala Esquerdo','Ala Direito','Médio Defensivo','Médio Centro','Médio Esquerdo','Médio Direito','Médio Ofensivo','Extremo Esquerdo','Extremo Direito','Segundo Avançado','Ponta de Lança'] as $pos): ?>
+                    <option value="<?= $pos ?>"><?= $pos ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Posição Secundária</label>
+                <select name="posicao_secundaria">
+                    <option value="">Nenhuma</option>
+                    <?php foreach (['Guarda-Redes','Defesa Central','Defesa Esquerdo','Defesa Direito','Ala Esquerdo','Ala Direito','Médio Defensivo','Médio Centro','Médio Esquerdo','Médio Direito','Médio Ofensivo','Extremo Esquerdo','Extremo Direito','Segundo Avançado','Ponta de Lança'] as $pos): ?>
+                    <option value="<?= $pos ?>"><?= $pos ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Nº Camisola</label>
+                <select name="numero"><option value="">—</option>
+                <?php for($n=1;$n<=99;$n++): ?><option value="<?=$n?>"><?=$n?></option><?php endfor; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Pé Preferencial</label>
+                <select name="pe_preferencial"><option value="">—</option>
+                <?php foreach (['Direito','Esquerdo','Ambos'] as $pe): ?><option value="<?=$pe?>"><?=$pe?></option><?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Altura (cm)</label><input type="text" name="altura" maxlength="3" placeholder="ex: 178"></div>
+            <div class="edit-group"><label>Peso (kg)</label><input type="text" name="peso" maxlength="3" placeholder="ex: 72"></div>
+            <div class="edit-group full"><label>Equipa / Escalão *</label>
+                <select name="id_equipa_jogador" required>
+                    <option value="">Selecionar equipa</option>
+                    <?php foreach ($escaloesClube as $eq): ?>
+                    <option value="<?= (int)$eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão'] . ' ' . $eq['hierarquia']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Nome de Utilizador *</label><input type="text" name="nome_utilizador_jogador" minlength="3" maxlength="30" required></div>
+            <div class="edit-group"><label>Password Inicial *</label><input type="password" name="password_jogador" required></div>
+            <div class="edit-group full"><label>Email (opcional)</label><input type="email" name="email_jogador"></div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" type="button" onclick="closeModal('modalCriarJogador')">Cancelar</button>
+            <button class="btn-save" type="submit">Criar Jogador</button>
+        </div>
+    </form>
+</div></div>
+<?php endif; ?>
+
+<!-- ══ MODAL PERFIL JOGADOR ══ -->
+<div class="modal-backdrop" id="modalPerfilJogador">
+<div class="modal large">
+    <div class="modal-header">
+        <div class="modal-title" id="playerProfileTitle">Perfil do Jogador</div>
+        <button class="modal-close" type="button" onclick="closeModal('modalPerfilJogador')">×</button>
+    </div>
+    <div class="modal-tabs">
+        <button class="modal-tab-btn active" onclick="switchModalTab(this,'ptab-info')">Info</button>
+        <button class="modal-tab-btn" onclick="switchModalTab(this,'ptab-carreira')">Carreira</button>
+        <button class="modal-tab-btn" onclick="switchModalTab(this,'ptab-lesoes')">Lesões</button>
+    </div>
+    <div class="modal-tab-panel active" id="ptab-info"><div id="playerInfoContent"></div></div>
+    <div class="modal-tab-panel" id="ptab-carreira"><div id="playerCarreiraContent"></div></div>
+    <div class="modal-tab-panel" id="ptab-lesoes"><div id="playerLesoesContent"></div></div>
+    <div class="modal-actions" id="playerProfileActions"></div>
+</div></div>
+
+<!-- ══ MODAL EDITAR JOGADOR ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalEditarJogador">
+<div class="modal large">
+    <div class="modal-header">
+        <div class="modal-title">Editar Jogador</div>
+        <button class="modal-close" type="button" onclick="closeModal('modalEditarJogador')">×</button>
+    </div>
+    <form method="POST" id="formEditarJogador">
+        <input type="hidden" name="acao" value="editar_jogador">
+        <input type="hidden" name="id_jogador" id="editJogadorId">
+        <div class="edit-grid">
+            <div class="edit-group full"><label>Nome Completo *</label><input type="text" name="nome_completo" id="editJogNome" required></div>
+            <div class="edit-group"><label>Alcunha</label><input type="text" name="alcunha_jogador" id="editJogAlcunha"></div>
+            <div class="edit-group"><label>Data de Nascimento *</label><input type="date" name="data_nascimento" id="editJogData" required></div>
+            <div class="edit-group"><label>Nacionalidade *</label><input type="text" name="nacionalidade" id="editJogNac" required></div>
+            <div class="edit-group"><label>País de Nascimento</label><input type="text" name="pais_nascimento" id="editJogPais"></div>
+            <div class="edit-group"><label>Posição Principal *</label>
+                <select name="posicao_principal" id="editJogPos" required>
+                    <?php foreach (['Guarda-Redes','Defesa Central','Defesa Esquerdo','Defesa Direito','Ala Esquerdo','Ala Direito','Médio Defensivo','Médio Centro','Médio Esquerdo','Médio Direito','Médio Ofensivo','Extremo Esquerdo','Extremo Direito','Segundo Avançado','Ponta de Lança'] as $pos): ?>
+                    <option value="<?= $pos ?>"><?= $pos ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Posição Secundária</label>
+                <select name="posicao_secundaria" id="editJogPosSec">
+                    <option value="">Nenhuma</option>
+                    <?php foreach (['Guarda-Redes','Defesa Central','Defesa Esquerdo','Defesa Direito','Ala Esquerdo','Ala Direito','Médio Defensivo','Médio Centro','Médio Esquerdo','Médio Direito','Médio Ofensivo','Extremo Esquerdo','Extremo Direito','Segundo Avançado','Ponta de Lança'] as $pos): ?>
+                    <option value="<?= $pos ?>"><?= $pos ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Nº Camisola</label>
+                <select name="numero" id="editJogNum"><option value="">—</option>
+                <?php for($n=1;$n<=99;$n++): ?><option value="<?=$n?>"><?=$n?></option><?php endfor; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Pé Preferencial</label>
+                <select name="pe_preferencial" id="editJogPe"><option value="">—</option>
+                <?php foreach (['Direito','Esquerdo','Ambos'] as $pe): ?><option value="<?=$pe?>"><?=$pe?></option><?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Altura (cm)</label><input type="text" name="altura" id="editJogAltura" maxlength="3"></div>
+            <div class="edit-group"><label>Peso (kg)</label><input type="text" name="peso" id="editJogPeso" maxlength="3"></div>
+            <div class="edit-group full"><label>Equipa / Escalão *</label>
+                <select name="id_equipa_jogador" id="editJogEquipa" required>
+                    <?php foreach ($escaloesClube as $eq): ?>
+                    <option value="<?= (int)$eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão'] . ' ' . $eq['hierarquia']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" type="button" onclick="closeModal('modalEditarJogador')">Cancelar</button>
+            <button class="btn-save" type="submit">Guardar</button>
+        </div>
+    </form>
+</div></div>
+<?php endif; ?>
+
+<!-- ══ MODAL CRIAR COMPETIÇÃO ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalCriarCompeticao">
+<div class="modal">
+    <div class="modal-header">
+        <div class="modal-title">Criar Competição</div>
+        <button class="modal-close" type="button" onclick="closeModal('modalCriarCompeticao')">×</button>
+    </div>
+    <form method="POST">
+        <input type="hidden" name="acao" value="criar_competicao">
+        <div class="edit-grid">
+            <div class="edit-group full"><label>Nome da Competição *</label><input type="text" name="nome_competicao" required></div>
+            <div class="edit-group"><label>Tipo *</label>
+                <select name="tipo_competicao" required>
+                    <?php foreach (['Liga','Taça','Torneio','Campeonato','Amigável','Outro'] as $tc): ?>
+                    <option value="<?=$tc?>"><?=$tc?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Época</label><input type="text" name="epoca_competicao" placeholder="ex: 2025/2026"></div>
+            <div class="edit-group"><label>Estado</label>
+                <select name="estado_competicao">
+                    <?php foreach (['A decorrer','Finalizada','Suspensa'] as $ec): ?>
+                    <option value="<?=$ec?>"><?=$ec?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group full"><label>Equipa / Escalão *</label>
+                <select name="id_equipa_competicao" required>
+                    <option value="">Selecionar equipa</option>
+                    <?php foreach ($escaloesClube as $eq): ?>
+                    <option value="<?= (int)$eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão'] . ' ' . $eq['hierarquia']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group full"><label>Descrição (opcional)</label><input type="text" name="descricao_competicao"></div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" type="button" onclick="closeModal('modalCriarCompeticao')">Cancelar</button>
+            <button class="btn-save" type="submit">Criar</button>
+        </div>
+    </form>
+</div></div>
+<?php endif; ?>
+
+<!-- ══ MODAL EDITAR COMPETIÇÃO ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalEditarCompeticao">
+<div class="modal">
+    <div class="modal-header">
+        <div class="modal-title">Editar Competição</div>
+        <button class="modal-close" type="button" onclick="closeModal('modalEditarCompeticao')">×</button>
+    </div>
+    <form method="POST">
+        <input type="hidden" name="acao" value="editar_competicao">
+        <input type="hidden" name="id_competicao" id="editCompId">
+        <div class="edit-grid">
+            <div class="edit-group full"><label>Nome *</label><input type="text" name="nome_competicao" id="editCompNome" required></div>
+            <div class="edit-group"><label>Tipo</label>
+                <select name="tipo_competicao" id="editCompTipo">
+                    <?php foreach (['Liga','Taça','Torneio','Campeonato','Amigável','Outro'] as $tc): ?>
+                    <option value="<?=$tc?>"><?=$tc?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group"><label>Época</label><input type="text" name="epoca_competicao" id="editCompEpoca"></div>
+            <div class="edit-group full"><label>Estado</label>
+                <select name="estado_competicao" id="editCompEstado">
+                    <?php foreach (['A decorrer','Finalizada','Suspensa'] as $ec): ?>
+                    <option value="<?=$ec?>"><?=$ec?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group full"><label>Descrição</label><input type="text" name="descricao_competicao" id="editCompDesc"></div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" type="button" onclick="closeModal('modalEditarCompeticao')">Cancelar</button>
+            <button class="btn-save" type="submit">Guardar</button>
+        </div>
+    </form>
+</div></div>
+<?php endif; ?>
+
+<!-- ══ MODAL CRIAR JOGO ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalCriarJogo">
+<div class="modal">
+    <div class="modal-header">
+        <div class="modal-title">Criar Jogo</div>
+        <button class="modal-close" type="button" onclick="closeModal('modalCriarJogo')">×</button>
+    </div>
+    <form method="POST">
+        <input type="hidden" name="acao" value="criar_jogo">
+        <input type="hidden" name="id_competicao_jogo" id="criarJogoCompId">
+        <div class="edit-grid">
+            <div class="edit-group full"><label>Adversário *</label><input type="text" name="adversario" required></div>
+            <div class="edit-group"><label>Data *</label><input type="date" name="data_jogo" required></div>
+            <div class="edit-group"><label>Hora</label><input type="time" name="hora_jogo"></div>
+            <div class="edit-group"><label>Local</label><input type="text" name="local_jogo"></div>
+            <div class="edit-group"><label>Estado</label>
+                <select name="estado_jogo">
+                    <?php foreach (['Agendado','Realizado','Cancelado','Adiado'] as $ej): ?>
+                    <option value="<?=$ej?>"><?=$ej?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="edit-group" style="align-self:end;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" name="casa_jogo" value="1" checked style="width:auto;border-radius:4px;">
+                    Em casa
+                </label>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" type="button" onclick="closeModal('modalCriarJogo')">Cancelar</button>
+            <button class="btn-save" type="submit">Criar Jogo</button>
+        </div>
+    </form>
+</div></div>
+<?php endif; ?>
+
+<!-- ══ MODAL RESULTADO JOGO ══ -->
+<?php if ($isAdminClube): ?>
+<div class="modal-backdrop" id="modalResultadoJogo">
+<div class="modal">
+    <div class="modal-header">
+        <div class="modal-title">Editar Resultado</div>
+        <button class="modal-close" type="button" onclick="closeModal('modalResultadoJogo')">×</button>
+    </div>
+    <form method="POST">
+        <input type="hidden" name="acao" value="resultado_jogo">
+        <input type="hidden" name="id_jogo_resultado" id="resultadoJogoId">
+        <div class="edit-grid">
+            <div class="edit-group"><label>Nós</label><input type="number" name="resultado_nos" id="resultadoNos" min="0"></div>
+            <div class="edit-group"><label>Adversário</label><input type="number" name="resultado_adv" id="resultadoAdv" min="0"></div>
+            <div class="edit-group full"><label>Estado</label>
+                <select name="estado_jogo_resultado" id="resultadoEstado">
+                    <?php foreach (['Agendado','Realizado','Cancelado','Adiado'] as $ej): ?>
+                    <option value="<?=$ej?>"><?=$ej?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" type="button" onclick="closeModal('modalResultadoJogo')">Cancelar</button>
+            <button class="btn-save" type="submit">Guardar</button>
+        </div>
+    </form>
+</div></div>
 <?php endif; ?>
 
 <script>
@@ -4184,101 +5236,91 @@ function setActiveSidebar(view) {
     });
 }
 
-function setScreenActive(active) {
-    const main = document.querySelector('.main');
-    if (main) main.classList.toggle('screen-active', active);
+function setLayoutLock(locked) {
+    document.body.classList.toggle('layout-locked', locked);
+}
+
+function hideAllScreens() {
+    ['profileScreen','notificationsScreen','messagesScreen','calendarScreen','escaloesScreen','competicoesScreen'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.style.display = 'none'; el.classList.remove('visible'); }
+    });
 }
 
 function showProfileScreen() {
     const dashboard = document.getElementById('dashboardCard');
-    const profile = document.getElementById('profileScreen');
-    const notifications = document.getElementById('notificationsScreen');
-    const messages = document.getElementById('messagesScreen');
-    const calendar = document.getElementById('calendarScreen');
-
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
-    setScreenActive(false);
-
-    if (profile) { profile.style.display = 'block'; profile.classList.add('visible'); }
-    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
-    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
-    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
+    hideAllScreens();
+    setLayoutLock(false);
+    const el = document.getElementById('profileScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
 }
 
 function showNotificationsScreen() {
     const dashboard = document.getElementById('dashboardCard');
-    const profile = document.getElementById('profileScreen');
-    const notifications = document.getElementById('notificationsScreen');
-    const messages = document.getElementById('messagesScreen');
-    const calendar = document.getElementById('calendarScreen');
-
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
-    setScreenActive(false);
-
-    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
-    if (notifications) { notifications.style.display = 'block'; notifications.classList.add('visible'); }
-    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
-    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
+    hideAllScreens();
+    setLayoutLock(false);
+    const el = document.getElementById('notificationsScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
 }
 
 function showDashboard() {
     const dashboard = document.getElementById('dashboardCard');
-    const profile = document.getElementById('profileScreen');
-    const notifications = document.getElementById('notificationsScreen');
-    const messages = document.getElementById('messagesScreen');
-    const calendar = document.getElementById('calendarScreen');
-
     if (dashboard) dashboard.style.display = 'block';
     showDashboardContent();
-    setScreenActive(false);
+    hideAllScreens();
+    setLayoutLock(false);
     setActiveSidebar('clube');
-
-    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
-    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
-    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
-    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
 }
 
 function showMessagesScreen() {
     const dashboard = document.getElementById('dashboardCard');
-    const profile = document.getElementById('profileScreen');
-    const notifications = document.getElementById('notificationsScreen');
-    const messages = document.getElementById('messagesScreen');
-    const calendar = document.getElementById('calendarScreen');
-
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
-    setScreenActive(true);
+    hideAllScreens();
+    setLayoutLock(true);
     setActiveSidebar('mensagens');
-
-    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
-    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
-    if (messages) { messages.style.display = ''; messages.classList.add('visible'); }
-    if (calendar) { calendar.style.display = 'none'; calendar.classList.remove('visible'); }
-
-    /* Scroll thread para o fundo */
+    const el = document.getElementById('messagesScreen');
+    if (el) { el.style.display = ''; el.classList.add('visible'); }
     const thread = document.getElementById('messagesThread');
-    if (thread) thread.scrollTop = thread.scrollHeight;
+    if (thread) setTimeout(() => { thread.scrollTop = thread.scrollHeight; }, 50);
 }
 
 function showCalendarScreen() {
     const dashboard = document.getElementById('dashboardCard');
-    const profile = document.getElementById('profileScreen');
-    const notifications = document.getElementById('notificationsScreen');
-    const messages = document.getElementById('messagesScreen');
-    const calendar = document.getElementById('calendarScreen');
-
     if (dashboard) dashboard.style.display = 'block';
     hideDashboardContent();
-    setScreenActive(true);
+    hideAllScreens();
+    setLayoutLock(true);
     setActiveSidebar('calendario');
+    const el = document.getElementById('calendarScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
+}
 
-    if (profile) { profile.style.display = 'none'; profile.classList.remove('visible'); }
-    if (notifications) { notifications.style.display = 'none'; notifications.classList.remove('visible'); }
-    if (messages) { messages.style.display = 'none'; messages.classList.remove('visible'); }
-    if (calendar) { calendar.style.display = 'flex'; calendar.classList.add('visible'); }
+function showEscaloesScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+    hideAllScreens();
+    setLayoutLock(false);
+    setActiveSidebar('escaloes');
+    const el = document.getElementById('escaloesScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
+}
+
+function showCompeticoesScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+    hideAllScreens();
+    setLayoutLock(false);
+    setActiveSidebar('competicoes');
+    const el = document.getElementById('competicoesScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
+    renderCompeticoes();
 }
 
 function saveProfileChanges() {
@@ -4914,16 +5956,210 @@ document.addEventListener('DOMContentLoaded', function () {
     /* Definir sidebar activa e modo de ecrã conforme a view inicial */
     <?php if ($mostrarMensagens): ?>
     hideDashboardContent();
-    setScreenActive(true);
+    setLayoutLock(true);
     setActiveSidebar('mensagens');
     const thread = document.getElementById('messagesThread');
-    if (thread) thread.scrollTop = thread.scrollHeight;
+    if (thread) setTimeout(() => { thread.scrollTop = thread.scrollHeight; }, 50);
     <?php elseif (($_GET['view'] ?? '') === 'calendario'): ?>
     showCalendarScreen();
     <?php else: ?>
+    setLayoutLock(false);
     setActiveSidebar('clube');
     <?php endif; ?>
 });
+
+/* ══════════════════════════════════
+   ESCALÕES — JOGADORES
+══════════════════════════════════ */
+const jogadoresData = <?= json_encode(array_merge(...array_values($jogadoresPorEquipa ?: [[]])), JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+
+function selectEscalao(btn, idEquipa) {
+    document.querySelectorAll('.escalao-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('[id^="players-equipa-"]').forEach(el => el.style.display = 'none');
+    const target = document.getElementById('players-equipa-' + idEquipa);
+    if (target) target.style.display = 'block';
+}
+
+function switchModalTab(btn, panelId) {
+    btn.closest('.modal').querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.closest('.modal').querySelectorAll('.modal-tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const panel = document.getElementById(panelId);
+    if (panel) panel.classList.add('active');
+}
+
+function openPlayerProfile(idJogador) {
+    const jog = jogadoresData.find(j => j.id_jogador == idJogador);
+    if (!jog) return;
+
+    document.getElementById('playerProfileTitle').textContent = jog.alcunha_jogador || jog.nome_completo;
+
+    /* Tab Info */
+    const anos = jog.data_nascimento ? Math.floor((Date.now() - new Date(jog.data_nascimento)) / 31557600000) : '—';
+    document.getElementById('playerInfoContent').innerHTML = `
+        <div class="info-grid-2">
+            <span class="lbl">Nome Completo</span><span class="val">${esc(jog.nome_completo)}</span>
+            <span class="lbl">Alcunha</span><span class="val">${esc(jog.alcunha_jogador) || '—'}</span>
+            <span class="lbl">Posição Principal</span><span class="val">${esc(jog.posição_principal)}</span>
+            <span class="lbl">Posição Secundária</span><span class="val">${esc(jog.posição_secundária) || '—'}</span>
+            <span class="lbl">Nº Camisola</span><span class="val">${esc(jog.número_favorito) || '—'}</span>
+            <span class="lbl">Pé Preferencial</span><span class="val">${esc(jog.pé_preferencial) || '—'}</span>
+            <span class="lbl">Data de Nascimento</span><span class="val">${esc(jog.data_nascimento)} (${anos} anos)</span>
+            <span class="lbl">Nacionalidade</span><span class="val">${esc(jog.nacionalidade)}</span>
+            <span class="lbl">País de Nascimento</span><span class="val">${esc(jog.país_nascimento) || '—'}</span>
+            <span class="lbl">Altura</span><span class="val">${jog.altura ? jog.altura + ' cm' : '—'}</span>
+            <span class="lbl">Peso</span><span class="val">${jog.peso ? jog.peso + ' kg' : '—'}</span>
+        </div>`;
+
+    /* Fetch carreira e lesões via AJAX */
+    fetch('index-admin.php?ajax=jogador_detalhe&id=' + idJogador)
+        .then(r => r.json())
+        .then(data => {
+            const carreira = data.carreira || [];
+            const lesoes   = data.lesoes   || [];
+            document.getElementById('playerCarreiraContent').innerHTML = carreira.length
+                ? `<table class="historial-table"><thead><tr><th>Época</th><th>Clube</th><th>Jogos</th><th>Golos</th><th>Assist.</th></tr></thead><tbody>
+                    ${carreira.map(c=>`<tr><td>${esc(c.epoca)}</td><td>${esc(c.clube)}</td><td>${c.jogos}</td><td>${c.golos_marcados}</td><td>${c.assistências}</td></tr>`).join('')}
+                   </tbody></table>`
+                : '<p style="color:#9aa0ae;padding:16px 0;text-align:center;">Sem histórico de carreira.</p>';
+
+            document.getElementById('playerLesoesContent').innerHTML = lesoes.length
+                ? `<table class="historial-table"><thead><tr><th>Lesão</th><th>Tipo</th><th>Recuperação</th><th>Estado</th></tr></thead><tbody>
+                    ${lesoes.map(l=>`<tr><td>${esc(l.nome_lesão)}</td><td>${esc(l.tipo_lesão)}</td><td>${esc(l.tempo_recuperação)}</td><td>${esc(l.estado_lesão)}</td></tr>`).join('')}
+                   </tbody></table>`
+                : '<p style="color:#9aa0ae;padding:16px 0;text-align:center;">Sem lesões registadas.</p>';
+        }).catch(() => {});
+
+    /* Botões de acção (admin) */
+    const adminHtml = <?= $isAdminClube ? 'true' : 'false' ?>;
+    document.getElementById('playerProfileActions').innerHTML = adminHtml
+        ? `<button class="btn-cancel" type="button" onclick="closeModal('modalPerfilJogador')">Fechar</button>
+           <button class="btn-save" type="button" onclick="openEditJogador(${idJogador})">Editar</button>
+           <form method="POST" style="display:inline;" onsubmit="return confirm('Remover jogador?');">
+               <input type="hidden" name="acao" value="remover_jogador">
+               <input type="hidden" name="id_jogador" value="${idJogador}">
+               <button class="btn-remove" type="submit">Remover</button>
+           </form>`
+        : `<button class="btn-cancel" type="button" onclick="closeModal('modalPerfilJogador')">Fechar</button>`;
+
+    openModal('modalPerfilJogador');
+}
+
+function openEditJogador(idJogador) {
+    const jog = jogadoresData.find(j => j.id_jogador == idJogador);
+    if (!jog) return;
+    closeModal('modalPerfilJogador');
+    document.getElementById('editJogadorId').value  = jog.id_jogador;
+    document.getElementById('editJogNome').value    = jog.nome_completo;
+    document.getElementById('editJogAlcunha').value = jog.alcunha_jogador || '';
+    document.getElementById('editJogData').value    = jog.data_nascimento || '';
+    document.getElementById('editJogNac').value     = jog.nacionalidade   || '';
+    document.getElementById('editJogPais').value    = jog.país_nascimento || '';
+    document.getElementById('editJogPos').value     = jog.posição_principal || '';
+    document.getElementById('editJogPosSec').value  = jog.posição_secundária || '';
+    document.getElementById('editJogNum').value     = jog.número_favorito || '';
+    document.getElementById('editJogPe').value      = jog.pé_preferencial || '';
+    document.getElementById('editJogAltura').value  = jog.altura || '';
+    document.getElementById('editJogPeso').value    = jog.peso   || '';
+    document.getElementById('editJogEquipa').value  = jog.id_equipa || '';
+    openModal('modalEditarJogador');
+}
+
+function esc(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ══════════════════════════════════
+   COMPETIÇÕES
+══════════════════════════════════ */
+const competicoesData = <?= json_encode($competicoesClube, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+const jogosPorComp    = <?= json_encode($jogosPorCompeticao, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+let currentCompId = null;
+
+function renderCompeticoes() {
+    /* Nothing to do — cards rendered by PHP */
+}
+
+function openCompeticao(idComp) {
+    currentCompId = idComp;
+    const comp = competicoesData.find(c => c.id_competicao == idComp);
+    if (!comp) return;
+
+    document.getElementById('detalheNome').textContent = comp.nome;
+    document.getElementById('detalheInfo').textContent = comp.tipo + (comp.epoca ? ' · ' + comp.epoca : '') + ' · ' + comp.escalão + ' ' + comp.hierarquia;
+
+    document.getElementById('competicoesLista').style.display = 'none';
+    document.getElementById('competicaoDetalhe').style.display = 'block';
+
+    renderJogos(idComp);
+}
+
+function backToCompeticoes() {
+    currentCompId = null;
+    document.getElementById('competicoesLista').style.display = 'block';
+    document.getElementById('competicaoDetalhe').style.display = 'none';
+}
+
+function renderJogos(idComp) {
+    const jogos = jogosPorComp[idComp] || [];
+    const isAdmin = <?= $isAdminClube ? 'true' : 'false' ?>;
+    const lista = document.getElementById('jogosLista');
+
+    if (!jogos.length) {
+        lista.innerHTML = '<div class="empty-state"><p>Sem jogos criados nesta competição.</p></div>';
+        return;
+    }
+
+    lista.innerHTML = jogos.map(j => {
+        const estadoClass = 'jogo-estado-' + (j.estado || 'Agendado');
+        const resultado = (j.resultado_nos !== null && j.resultado_adv !== null)
+            ? `${j.resultado_nos} – ${j.resultado_adv}` : '— – —';
+        const casaBadge = j.casa ? '<span class="jogo-casa-badge">Casa</span>' : '<span class="jogo-casa-badge">Fora</span>';
+        const adminActions = isAdmin
+            ? `<button class="btn-row-edit" onclick="openResultadoModal(${j.id_jogo},${j.resultado_nos ?? 'null'},${j.resultado_adv ?? 'null'},'${j.estado}')" title="Resultado">⚽</button>
+               <form method="POST" style="display:inline;" onsubmit="return confirm('Remover jogo?');">
+                   <input type="hidden" name="acao" value="remover_jogo">
+                   <input type="hidden" name="id_jogo" value="${j.id_jogo}">
+                   <button class="btn-row-edit btn-row-delete" type="submit">×</button>
+               </form>` : '';
+        return `<div class="jogo-row">
+            <div class="jogo-data">${esc(j.data_jogo)}${j.hora_jogo ? '<br><small>'+esc(j.hora_jogo.substring(0,5))+'</small>' : ''}</div>
+            <div class="jogo-equipa">vs ${esc(j.adversario)}${j.local_jogo ? '<br><small style="color:#9aa0ae">📍'+esc(j.local_jogo)+'</small>' : ''}</div>
+            ${casaBadge}
+            <div class="jogo-resultado">${resultado}</div>
+            <span class="jogo-estado ${estadoClass}">${esc(j.estado)}</span>
+            <div style="display:flex;gap:6px;">${adminActions}</div>
+        </div>`;
+    }).join('');
+}
+
+function openCriarJogoModal() {
+    if (!currentCompId) return;
+    document.getElementById('criarJogoCompId').value = currentCompId;
+    openModal('modalCriarJogo');
+}
+
+function openResultadoModal(idJogo, nos, adv, estado) {
+    document.getElementById('resultadoJogoId').value  = idJogo;
+    document.getElementById('resultadoNos').value     = nos !== null ? nos : '';
+    document.getElementById('resultadoAdv').value     = adv !== null ? adv : '';
+    document.getElementById('resultadoEstado').value  = estado || 'Agendado';
+    openModal('modalResultadoJogo');
+}
+
+function openEditCompeticao(idComp) {
+    const comp = competicoesData.find(c => c.id_competicao == idComp);
+    if (!comp) return;
+    document.getElementById('editCompId').value     = comp.id_competicao;
+    document.getElementById('editCompNome').value   = comp.nome;
+    document.getElementById('editCompTipo').value   = comp.tipo;
+    document.getElementById('editCompEpoca').value  = comp.epoca || '';
+    document.getElementById('editCompEstado').value = comp.estado;
+    document.getElementById('editCompDesc').value   = comp.descricao || '';
+    openModal('modalEditarCompeticao');
+}
 </script>
 
 </body>
