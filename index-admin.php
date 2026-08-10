@@ -50,6 +50,7 @@ $activeSidebarView = match ($viewMode) {
     'calendario' => 'calendario',
     'escaloes' => 'escaloes',
     'competicoes' => 'competicoes',
+    'home' => 'home',
     default => 'clube',
 };
 $chatSelecionadoId = (int)($_GET['chat'] ?? 0);
@@ -3717,9 +3718,9 @@ body.layout-locked #dashboardCard {
         <img src="assets/mensagens.png" alt="">
         <span>Mensagens</span>
     </a>
-    <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>">
+    <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
         <img src="assets/home.png" alt="">
-        <span>Página Principal</span>
+        <span>Menu Principal</span>
     </a>
 </div>
 
@@ -5276,6 +5277,15 @@ function showDashboard() {
     setActiveSidebar('clube');
 }
 
+function showMainMenu() {
+    const dashboard = document.getElementById('dashboardCard');
+    if (dashboard) dashboard.style.display = 'block';
+    showDashboardContent();
+    hideAllScreens();
+    setLayoutLock(false);
+    setActiveSidebar('home');
+}
+
 function showMessagesScreen() {
     const dashboard = document.getElementById('dashboardCard');
     if (dashboard) dashboard.style.display = 'block';
@@ -5962,6 +5972,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (thread) setTimeout(() => { thread.scrollTop = thread.scrollHeight; }, 50);
     <?php elseif (($_GET['view'] ?? '') === 'calendario'): ?>
     showCalendarScreen();
+    <?php elseif (($_GET['view'] ?? '') === 'home'): ?>
+    showMainMenu();
     <?php else: ?>
     setLayoutLock(false);
     setActiveSidebar('clube');
