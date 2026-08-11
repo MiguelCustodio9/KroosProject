@@ -10,8 +10,9 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'jogador_detalhe') {
     $idJ = (int)($_GET['id'] ?? 0);
     $idC = (int)$_SESSION['id_clube'];
     $resposta = ['carreira' => [], 'lesoes' => []];
-    $stmtCkJ = $conn->prepare("SELECT j.id_jogador FROM jogadores j JOIN equipa eq ON eq.id_equipa=j.id_equipa WHERE j.id_jogador=? AND eq.id_clube=? LIMIT 1");
-    $stmtCkJ->bind_param("ii", $idJ, $idC);
+    $idU = (int)$_SESSION['id_utilizador'];
+    $stmtCkJ = $conn->prepare("SELECT j.id_jogador FROM jogadores j JOIN equipa eq ON eq.id_equipa=j.id_equipa JOIN acesso_equipa ae ON ae.id_equipa=eq.id_equipa WHERE j.id_jogador=? AND eq.id_clube=? AND ae.id_utilizador=? LIMIT 1");
+    $stmtCkJ->bind_param("iii", $idJ, $idC, $idU);
     $stmtCkJ->execute();
     if ($stmtCkJ->get_result()->fetch_assoc()) {
         $resCarr = $conn->query("SELECT hc.id_carreira, hc.jogos, hc.golos_marcados, hc.assistências, ep.`época` AS epoca, c.nome_clube AS clube FROM `histórico_carreira` hc LEFT JOIN `época` ep ON ep.id_época=hc.id_época LEFT JOIN clube c ON c.id_clube=hc.id_clube WHERE hc.id_jogador=$idJ ORDER BY ep.id_época DESC");
@@ -34,12 +35,12 @@ if (
     exit;
 }
 
-if ($_SESSION['tipo_utilizador'] === 'treinador') {
-    header('Location: index-treinador.php');
+if ($_SESSION['tipo_utilizador'] === 'admin_clube') {
+    header('Location: index-admin.php');
     exit;
 }
 
-if ($_SESSION['tipo_utilizador'] !== 'admin_clube') {
+if ($_SESSION['tipo_utilizador'] !== 'treinador') {
     header('Location: login.php');
     exit;
 }
@@ -47,20 +48,20 @@ if ($_SESSION['tipo_utilizador'] !== 'admin_clube') {
 $id_utilizador = $_SESSION['id_utilizador'];
 $id_clube      = $_SESSION['id_clube'];
 $tipo_utilizador_sessao = $_SESSION['tipo_utilizador'];
-$isAdminClube = true;
+$isAdminClube = false;
 
 $erro = '';
 $sucesso = '';
 $activeTab = 'tab-info';
-$viewMode = $_GET['view'] ?? 'dashboard';
+$viewMode = $_GET['view'] ?? 'treinos';
 $mostrarMensagens = ($viewMode === 'mensagens');
 $activeSidebarView = match ($viewMode) {
     'mensagens' => 'mensagens',
     'calendario' => 'calendario',
-    'escaloes' => 'escaloes',
-    'competicoes' => 'competicoes',
+    'jogos' => 'jogos',
+    'campeonato' => 'campeonato',
     'home' => 'home',
-    default => 'clube',
+    default => 'treinos',
 };
 $chatSelecionadoId = (int)($_GET['chat'] ?? 0);
 
@@ -101,6 +102,58 @@ $ckJogUtil = $conn->query("SHOW COLUMNS FROM jogadores LIKE 'id_utilizador'");
 if ($ckJogUtil && $ckJogUtil->num_rows === 0) {
     $conn->query("ALTER TABLE jogadores ADD COLUMN id_utilizador INT DEFAULT NULL AFTER id_equipa");
 }
+
+/* ── Ligação dos treinos às equipas ── */
+$checkTreinoEquipa = $conn->query("SHOW COLUMNS FROM treino LIKE 'id_equipa'");
+if ($checkTreinoEquipa && $checkTreinoEquipa->num_rows === 0) {
+    $conn->query("ALTER TABLE treino ADD COLUMN id_equipa INT DEFAULT NULL AFTER id_treino");
+}
+
+$checkTreinoEquipaIndex = $conn->query("SHOW INDEX FROM treino WHERE Key_name = 'idx_treino_equipa'");
+if ($checkTreinoEquipaIndex && $checkTreinoEquipaIndex->num_rows === 0) {
+    $conn->query("ALTER TABLE treino ADD KEY idx_treino_equipa (id_equipa)");
+}
+
+function diaSemanaPt(string $data): string
+{
+    $dias = [
+        1 => 'Segunda-feira',
+        2 => 'Terça-feira',
+        3 => 'Quarta-feira',
+        4 => 'Quinta-feira',
+        5 => 'Sexta-feira',
+        6 => 'Sábado',
+        7 => 'Domingo'
+    ];
+
+    $n = (int)date('N', strtotime($data));
+    return $dias[$n] ?? 'Segunda-feira';
+}
+
+/* ── Equipas atribuídas ao treinador ── */
+$equipasTreinador = [];
+$stmtEquipasTreinador = $conn->prepare("
+    SELECT DISTINCT
+        eq.id_equipa,
+        eq.`escalão`,
+        eq.hierarquia,
+        ep.`época`,
+        ep.`id_época`
+    FROM acesso_equipa ae
+    INNER JOIN equipa eq ON eq.id_equipa = ae.id_equipa
+    LEFT JOIN `época` ep ON ep.`id_época` = eq.`id_época`
+    WHERE ae.id_utilizador = ?
+      AND eq.id_clube = ?
+    ORDER BY ep.`id_época` DESC, eq.`escalão`, eq.hierarquia
+");
+$stmtEquipasTreinador->bind_param("ii", $id_utilizador, $id_clube);
+$stmtEquipasTreinador->execute();
+$resEquipasTreinador = $stmtEquipasTreinador->get_result();
+while ($row = $resEquipasTreinador->fetch_assoc()) {
+    $equipasTreinador[] = $row;
+}
+
+$idsEquipasTreinador = array_map(static fn($eq) => (int)$eq['id_equipa'], $equipasTreinador);
 
 /* ── Tabelas de competições e jogos do clube ── */
 $conn->query("CREATE TABLE IF NOT EXISTS `competicoes_clube` (
@@ -149,6 +202,257 @@ if (isset($_SESSION['flash_erro'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $acao = $_POST['acao'] ?? '';
+
+    $acoesApenasAdmin = [
+        'editar_clube',
+        'criar_escalao',
+        'editar_escalao',
+        'remover_escalao',
+        'criar_treinador',
+        'editar_treinador',
+        'remover_treinador',
+        'criar_jogador',
+        'editar_jogador',
+        'remover_jogador',
+        'criar_competicao',
+        'editar_competicao',
+        'remover_competicao',
+        'criar_jogo',
+        'resultado_jogo',
+        'remover_jogo',
+        'criar_evento',
+        'editar_evento',
+        'remover_evento'
+    ];
+
+    if (in_array($acao, $acoesApenasAdmin, true)) {
+        $_SESSION['flash_erro'] = 'Não tens permissão para executar essa ação.';
+        header('Location: index-treinador.php');
+        exit;
+    }
+
+    /* ── Criar treino ── */
+    if ($acao === 'criar_treino') {
+        $viewMode = 'treinos';
+        $idEquipaTreino = (int)($_POST['id_equipa_treino'] ?? 0);
+        $numeroTreino   = (int)($_POST['numero_treino'] ?? 0);
+        $dataTreino     = trim($_POST['data_treino'] ?? '');
+        $horaTreino     = trim($_POST['hora_treino'] ?? '');
+        $conteudoTreino = trim($_POST['conteudo_treino'] ?? '');
+        $observacoes    = trim($_POST['observacoes_treino'] ?? '');
+
+        if ($idEquipaTreino <= 0 || $numeroTreino <= 0 || $dataTreino === '' || $horaTreino === '' || $conteudoTreino === '') {
+            $erro = 'Preenche os campos obrigatórios do treino.';
+        } else {
+            $stmtCheckEquipaTreino = $conn->prepare("
+                SELECT eq.id_equipa
+                FROM acesso_equipa ae
+                INNER JOIN equipa eq ON eq.id_equipa = ae.id_equipa
+                WHERE ae.id_utilizador = ?
+                  AND eq.id_clube = ?
+                  AND eq.id_equipa = ?
+                LIMIT 1
+            ");
+            $stmtCheckEquipaTreino->bind_param("iii", $id_utilizador, $id_clube, $idEquipaTreino);
+            $stmtCheckEquipaTreino->execute();
+            $equipaTreinoValida = $stmtCheckEquipaTreino->get_result()->fetch_assoc();
+
+            if (!$equipaTreinoValida) {
+                $erro = 'Não tens acesso a essa equipa.';
+            } else {
+                $diaSemana = diaSemanaPt($dataTreino);
+                $idPlano = null;
+                $observacoes = $observacoes !== '' ? $observacoes : null;
+
+                $stmtCriarTreino = $conn->prepare("
+                    INSERT INTO treino
+                    (id_equipa, `número_treino`, `data`, hora, `conteúdo`, id_plano, `observações`, dia_da_semana)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmtCriarTreino->bind_param(
+                    "iisssiss",
+                    $idEquipaTreino,
+                    $numeroTreino,
+                    $dataTreino,
+                    $horaTreino,
+                    $conteudoTreino,
+                    $idPlano,
+                    $observacoes,
+                    $diaSemana
+                );
+
+                if ($stmtCriarTreino->execute()) {
+                    $sucesso = 'Treino criado com sucesso.';
+                } else {
+                    $erro = 'Erro ao criar treino.';
+                }
+            }
+        }
+    }
+
+    /* ── Editar treino ── */
+    if ($acao === 'editar_treino') {
+        $viewMode = 'treinos';
+        $idTreino       = (int)($_POST['id_treino'] ?? 0);
+        $idEquipaTreino = (int)($_POST['id_equipa_treino'] ?? 0);
+        $numeroTreino   = (int)($_POST['numero_treino'] ?? 0);
+        $dataTreino     = trim($_POST['data_treino'] ?? '');
+        $horaTreino     = trim($_POST['hora_treino'] ?? '');
+        $conteudoTreino = trim($_POST['conteudo_treino'] ?? '');
+        $observacoes    = trim($_POST['observacoes_treino'] ?? '');
+
+        if ($idTreino <= 0 || $idEquipaTreino <= 0 || $numeroTreino <= 0 || $dataTreino === '' || $horaTreino === '' || $conteudoTreino === '') {
+            $erro = 'Dados de treino inválidos.';
+        } else {
+            $stmtCheckTreino = $conn->prepare("
+                SELECT t.id_treino
+                FROM treino t
+                INNER JOIN equipa eq ON eq.id_equipa = t.id_equipa
+                INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+                WHERE t.id_treino = ?
+                  AND ae.id_utilizador = ?
+                  AND eq.id_clube = ?
+                LIMIT 1
+            ");
+            $stmtCheckTreino->bind_param("iii", $idTreino, $id_utilizador, $id_clube);
+            $stmtCheckTreino->execute();
+            $treinoAtual = $stmtCheckTreino->get_result()->fetch_assoc();
+
+            $stmtCheckEquipaTreino = $conn->prepare("
+                SELECT eq.id_equipa
+                FROM acesso_equipa ae
+                INNER JOIN equipa eq ON eq.id_equipa = ae.id_equipa
+                WHERE ae.id_utilizador = ?
+                  AND eq.id_clube = ?
+                  AND eq.id_equipa = ?
+                LIMIT 1
+            ");
+            $stmtCheckEquipaTreino->bind_param("iii", $id_utilizador, $id_clube, $idEquipaTreino);
+            $stmtCheckEquipaTreino->execute();
+            $equipaTreinoValida = $stmtCheckEquipaTreino->get_result()->fetch_assoc();
+
+            if (!$treinoAtual || !$equipaTreinoValida) {
+                $erro = 'Não tens acesso a esse treino.';
+            } else {
+                $diaSemana = diaSemanaPt($dataTreino);
+                $observacoes = $observacoes !== '' ? $observacoes : null;
+
+                $stmtEditarTreino = $conn->prepare("
+                    UPDATE treino
+                    SET id_equipa = ?,
+                        `número_treino` = ?,
+                        `data` = ?,
+                        hora = ?,
+                        `conteúdo` = ?,
+                        `observações` = ?,
+                        dia_da_semana = ?
+                    WHERE id_treino = ?
+                ");
+                $stmtEditarTreino->bind_param(
+                    "iisssssi",
+                    $idEquipaTreino,
+                    $numeroTreino,
+                    $dataTreino,
+                    $horaTreino,
+                    $conteudoTreino,
+                    $observacoes,
+                    $diaSemana,
+                    $idTreino
+                );
+
+                if ($stmtEditarTreino->execute()) {
+                    $sucesso = 'Treino atualizado com sucesso.';
+                } else {
+                    $erro = 'Erro ao atualizar treino.';
+                }
+            }
+        }
+    }
+
+    /* ── Remover treino ── */
+    if ($acao === 'remover_treino') {
+        $viewMode = 'treinos';
+        $idTreino = (int)($_POST['id_treino'] ?? 0);
+
+        if ($idTreino <= 0) {
+            $erro = 'Treino inválido.';
+        } else {
+            $stmtRemoverTreino = $conn->prepare("
+                DELETE t
+                FROM treino t
+                INNER JOIN equipa eq ON eq.id_equipa = t.id_equipa
+                INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+                WHERE t.id_treino = ?
+                  AND ae.id_utilizador = ?
+                  AND eq.id_clube = ?
+            ");
+            $stmtRemoverTreino->bind_param("iii", $idTreino, $id_utilizador, $id_clube);
+
+            if ($stmtRemoverTreino->execute() && $stmtRemoverTreino->affected_rows > 0) {
+                $sucesso = 'Treino removido com sucesso.';
+            } else {
+                $erro = 'Não foi possível remover o treino.';
+            }
+        }
+    }
+
+    /* ── Atualizar resultado de jogo ── */
+    if ($acao === 'atualizar_resultado_treinador') {
+        $viewMode = 'jogos';
+        $idJogoResultado = (int)($_POST['id_jogo_resultado'] ?? 0);
+        $resultadoNos = ($_POST['resultado_nos'] ?? '') !== '' ? (int)$_POST['resultado_nos'] : null;
+        $resultadoAdv = ($_POST['resultado_adv'] ?? '') !== '' ? (int)$_POST['resultado_adv'] : null;
+        $estadoJogoResultado = trim($_POST['estado_jogo_resultado'] ?? 'Realizado');
+        $estadosJogoValidos = ['Agendado','Realizado','Cancelado','Adiado'];
+
+        if ($idJogoResultado <= 0 || !in_array($estadoJogoResultado, $estadosJogoValidos, true)) {
+            $erro = 'Dados do jogo inválidos.';
+        } else {
+            $stmtCheckJogo = $conn->prepare("
+                SELECT jc.id_jogo, jc.id_evento_clube
+                FROM jogos_clube jc
+                INNER JOIN competicoes_clube cc ON cc.id_competicao = jc.id_competicao
+                INNER JOIN equipa eq ON eq.id_equipa = cc.id_equipa
+                INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+                WHERE jc.id_jogo = ?
+                  AND ae.id_utilizador = ?
+                  AND cc.id_clube = ?
+                LIMIT 1
+            ");
+            $stmtCheckJogo->bind_param("iii", $idJogoResultado, $id_utilizador, $id_clube);
+            $stmtCheckJogo->execute();
+            $jogoValido = $stmtCheckJogo->get_result()->fetch_assoc();
+
+            if (!$jogoValido) {
+                $erro = 'Não tens acesso a esse jogo.';
+            } else {
+                $stmtAtualizarResultado = $conn->prepare("
+                    UPDATE jogos_clube
+                    SET resultado_nos = ?,
+                        resultado_adv = ?,
+                        estado = ?
+                    WHERE id_jogo = ?
+                ");
+                $stmtAtualizarResultado->bind_param("iisi", $resultadoNos, $resultadoAdv, $estadoJogoResultado, $idJogoResultado);
+
+                if ($stmtAtualizarResultado->execute()) {
+                    if (!empty($jogoValido['id_evento_clube'])) {
+                        $estadoEvento = $estadoJogoResultado === 'Realizado'
+                            ? 'Realizado'
+                            : ($estadoJogoResultado === 'Cancelado' ? 'Cancelado' : 'Por realizar');
+                        $idEventoJogo = (int)$jogoValido['id_evento_clube'];
+                        $stmtAtualizarEvento = $conn->prepare("UPDATE eventos_clube SET estado_evento = ? WHERE id_evento = ?");
+                        $stmtAtualizarEvento->bind_param("si", $estadoEvento, $idEventoJogo);
+                        $stmtAtualizarEvento->execute();
+                    }
+
+                    $sucesso = 'Resultado atualizado com sucesso.';
+                } else {
+                    $erro = 'Erro ao atualizar resultado.';
+                }
+            }
+        }
+    }
 
     if ($acao === 'enviar_mensagem') {
         $destinoMensagem = (int)($_POST['destino_mensagem'] ?? 0);
@@ -1424,7 +1728,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($stmtCriarEv->execute()) {
                     $_SESSION['flash_sucesso'] = 'Evento criado com sucesso.';
-                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
+                    header("Location: index-treinador.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                     exit;
                 }
 
@@ -1484,7 +1788,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($stmtEditEv->execute()) {
                     $_SESSION['flash_sucesso'] = 'Evento atualizado com sucesso.';
-                    header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
+                    header("Location: index-treinador.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                     exit;
                 }
 
@@ -1515,7 +1819,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($stmtDelEv->execute()) {
                 $_SESSION['flash_sucesso'] = 'Evento removido com sucesso.';
-                header("Location: index-admin.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
+                header("Location: index-treinador.php?view=calendario&cal_month=$calMonth&cal_year=$calYear$calDayParam");
                 exit;
             }
 
@@ -1601,6 +1905,11 @@ $resEscaloes = $stmtEscaloes->get_result();
 
 while ($row = $resEscaloes->fetch_assoc()) {
     $escaloesClube[] = $row;
+}
+
+/* No painel do treinador só aparecem as equipas atribuídas a este treinador. */
+if (!$isAdminClube) {
+    $escaloesClube = $equipasTreinador;
 }
 
 /* ── Buscar treinadores do clube ── */
@@ -1758,37 +2067,71 @@ while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
 
-/* ── Buscar eventos do calendário (todos os escalões do clube) ── */
+/* ── Buscar eventos do calendário das equipas do treinador ── */
 $eventosCalendario = [];
 $stmtEventosCalendario = $conn->prepare("
-    SELECT ec.id_evento, ec.tipo_evento, ec.`descrição_evento` AS descricao_evento,
+    SELECT DISTINCT ec.id_evento, ec.tipo_evento, ec.`descrição_evento` AS descricao_evento,
            ec.estado_evento, ec.data_evento, ec.hora_evento, ec.local_evento,
            eq.id_equipa, eq.`escalão`, eq.hierarquia
     FROM eventos_clube ec
-    JOIN equipa eq ON eq.id_equipa = ec.id_equipa
-    WHERE eq.id_clube = ?
+    INNER JOIN equipa eq ON eq.id_equipa = ec.id_equipa
+    INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+    WHERE ae.id_utilizador = ?
+      AND eq.id_clube = ?
     ORDER BY ec.data_evento ASC, ec.hora_evento ASC
 ");
-$stmtEventosCalendario->bind_param("i", $id_clube);
+$stmtEventosCalendario->bind_param("ii", $id_utilizador, $id_clube);
 $stmtEventosCalendario->execute();
 $resEventosCalendario = $stmtEventosCalendario->get_result();
 while ($row = $resEventosCalendario->fetch_assoc()) {
     $eventosCalendario[] = $row;
 }
 
+/* ── Buscar treinos das equipas do treinador ── */
+$treinosTreinador = [];
+$stmtTreinosTreinador = $conn->prepare("
+    SELECT
+        t.id_treino,
+        t.id_equipa,
+        t.`número_treino` AS numero_treino,
+        t.`data` AS data_treino,
+        t.hora AS hora_treino,
+        t.`conteúdo` AS conteudo_treino,
+        t.`observações` AS observacoes_treino,
+        t.dia_da_semana,
+        eq.`escalão`,
+        eq.hierarquia,
+        ep.`época`
+    FROM treino t
+    INNER JOIN equipa eq ON eq.id_equipa = t.id_equipa
+    INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+    LEFT JOIN `época` ep ON ep.`id_época` = eq.`id_época`
+    WHERE ae.id_utilizador = ?
+      AND eq.id_clube = ?
+    ORDER BY t.`data` DESC, t.hora DESC, t.id_treino DESC
+");
+$stmtTreinosTreinador->bind_param("ii", $id_utilizador, $id_clube);
+$stmtTreinosTreinador->execute();
+$resTreinosTreinador = $stmtTreinosTreinador->get_result();
+while ($row = $resTreinosTreinador->fetch_assoc()) {
+    $treinosTreinador[] = $row;
+}
+
 /* ── Buscar jogadores por equipa (para o ecrã de escalões) ── */
 $jogadoresPorEquipa = [];
 $stmtJogadores = $conn->prepare("
-    SELECT j.id_jogador, j.nome_completo, j.alcunha_jogador, j.`posição_principal`,
+    SELECT DISTINCT j.id_jogador, j.nome_completo, j.alcunha_jogador, j.`posição_principal`,
            j.`posição_secundária`, j.`número_favorito`, j.`pé_preferencial`,
            j.data_nascimento, j.nacionalidade, j.altura, j.peso,
            j.id_equipa, j.id_utilizador, j.foto_jogador
     FROM jogadores j
-    JOIN equipa eq ON eq.id_equipa = j.id_equipa
-    WHERE eq.id_clube = ?
+    INNER JOIN equipa eq ON eq.id_equipa = j.id_equipa
+    INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+    WHERE ae.id_utilizador = ?
+      AND eq.id_clube = ?
     ORDER BY j.id_equipa, j.`número_favorito` ASC, j.nome_completo ASC
 ");
-$stmtJogadores->bind_param("i", $id_clube);
+$stmtJogadores->bind_param("ii", $id_utilizador, $id_clube);
 $stmtJogadores->execute();
 $resJogadores = $stmtJogadores->get_result();
 while ($row = $resJogadores->fetch_assoc()) {
@@ -1798,45 +2141,113 @@ while ($row = $resJogadores->fetch_assoc()) {
     $jogadoresPorEquipa[$row['id_equipa']][] = $row;
 }
 
-/* ── Buscar competições do clube ── */
+/* ── Buscar competições das equipas do treinador ── */
 $competicoesClube = [];
 $stmtCompetiu = $conn->prepare("
-    SELECT cc.id_competicao, cc.id_equipa, cc.nome, cc.tipo, cc.epoca, cc.estado, cc.descricao,
+    SELECT DISTINCT cc.id_competicao, cc.id_equipa, cc.nome, cc.tipo, cc.epoca, cc.estado, cc.descricao,
            eq.`escalão`, eq.hierarquia
     FROM competicoes_clube cc
-    JOIN equipa eq ON eq.id_equipa = cc.id_equipa
-    WHERE cc.id_clube = ?
+    INNER JOIN equipa eq ON eq.id_equipa = cc.id_equipa
+    INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+    WHERE ae.id_utilizador = ?
+      AND cc.id_clube = ?
     ORDER BY cc.id_competicao DESC
 ");
-$stmtCompetiu->bind_param("i", $id_clube);
+$stmtCompetiu->bind_param("ii", $id_utilizador, $id_clube);
 $stmtCompetiu->execute();
 $resComp = $stmtCompetiu->get_result();
 while ($row = $resComp->fetch_assoc()) {
     $competicoesClube[] = $row;
 }
 
-/* ── Buscar jogos de todas as competições do clube ── */
+/* ── Buscar jogos das competições das equipas do treinador ── */
 $jogosPorCompeticao = [];
+$jogosTreinador = [];
 $stmtJogosClub = $conn->prepare("
-    SELECT jc.id_jogo, jc.id_competicao, jc.adversario, jc.data_jogo, jc.hora_jogo,
-           jc.casa, jc.local_jogo, jc.resultado_nos, jc.resultado_adv, jc.estado
+    SELECT DISTINCT
+        jc.id_jogo,
+        jc.id_competicao,
+        jc.adversario,
+        jc.data_jogo,
+        jc.hora_jogo,
+        jc.casa,
+        jc.local_jogo,
+        jc.resultado_nos,
+        jc.resultado_adv,
+        jc.estado,
+        cc.nome AS nome_competicao,
+        cc.tipo AS tipo_competicao,
+        cc.epoca AS epoca_competicao,
+        cc.id_equipa,
+        eq.`escalão`,
+        eq.hierarquia
     FROM jogos_clube jc
-    JOIN competicoes_clube cc ON cc.id_competicao = jc.id_competicao
-    WHERE cc.id_clube = ?
+    INNER JOIN competicoes_clube cc ON cc.id_competicao = jc.id_competicao
+    INNER JOIN equipa eq ON eq.id_equipa = cc.id_equipa
+    INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+    WHERE ae.id_utilizador = ?
+      AND cc.id_clube = ?
     ORDER BY jc.data_jogo ASC, jc.hora_jogo ASC
 ");
-$stmtJogosClub->bind_param("i", $id_clube);
+$stmtJogosClub->bind_param("ii", $id_utilizador, $id_clube);
 $stmtJogosClub->execute();
 $resJogosC = $stmtJogosClub->get_result();
 while ($row = $resJogosC->fetch_assoc()) {
     $jogosPorCompeticao[$row['id_competicao']][] = $row;
+    $jogosTreinador[] = $row;
+}
+
+/* ── Estatísticas simples para o ecrã Campeonato ── */
+$estatisticasCampeonato = [];
+foreach ($competicoesClube as $comp) {
+    $idComp = (int)$comp['id_competicao'];
+    $stats = [
+        'id_competicao' => $idComp,
+        'nome' => $comp['nome'],
+        'tipo' => $comp['tipo'],
+        'epoca' => $comp['epoca'],
+        'estado' => $comp['estado'],
+        'equipa' => trim($comp['escalão'] . ' ' . $comp['hierarquia']),
+        'jogos' => 0,
+        'realizados' => 0,
+        'vitorias' => 0,
+        'empates' => 0,
+        'derrotas' => 0,
+        'golos_marcados' => 0,
+        'golos_sofridos' => 0,
+        'pontos' => 0
+    ];
+
+    foreach (($jogosPorCompeticao[$idComp] ?? []) as $jogo) {
+        $stats['jogos']++;
+
+        if ($jogo['estado'] === 'Realizado' && $jogo['resultado_nos'] !== null && $jogo['resultado_adv'] !== null) {
+            $stats['realizados']++;
+            $gm = (int)$jogo['resultado_nos'];
+            $gs = (int)$jogo['resultado_adv'];
+            $stats['golos_marcados'] += $gm;
+            $stats['golos_sofridos'] += $gs;
+
+            if ($gm > $gs) {
+                $stats['vitorias']++;
+                $stats['pontos'] += 3;
+            } elseif ($gm === $gs) {
+                $stats['empates']++;
+                $stats['pontos'] += 1;
+            } else {
+                $stats['derrotas']++;
+            }
+        }
+    }
+
+    $estatisticasCampeonato[] = $stats;
 }
 ?>
 <!DOCTYPE html>
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
-<title>Kroos | <?= htmlspecialchars($nomeClube) ?></title>
+<title>Kroos Treinador | <?= htmlspecialchars($nomeClube) ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
@@ -3656,6 +4067,250 @@ body.layout-locked #dashboardCard {
 .historial-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .historial-table th { background: #f5f7fb; padding: 8px 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 1px solid #e8edf5; }
 .historial-table td { padding: 8px 12px; border-bottom: 1px solid #f0f3f9; color: #555; }
+
+
+/* ══════════════════════════════════
+   ECRÃS TREINADOR: TREINOS / JOGOS / CAMPEONATO
+══════════════════════════════════ */
+.trainer-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.trainer-page-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #1f2b3d;
+    margin-bottom: 5px;
+}
+
+.trainer-page-subtitle {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.trainer-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.trainer-kpi-card {
+    background: #f8f9fc;
+    border: 1px solid #e6ebf5;
+    border-radius: 18px;
+    padding: 18px;
+}
+
+.trainer-kpi-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 8px;
+}
+
+.trainer-kpi-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--club);
+}
+
+.trainer-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.trainer-info-card {
+    background: #fff;
+    border: 1.5px solid #e2e8f4;
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, .04);
+    transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+
+.trainer-info-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--club);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .08);
+}
+
+.trainer-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.trainer-card-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #1f2b3d;
+    line-height: 1.2;
+}
+
+.trainer-card-meta {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+.trainer-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: var(--club);
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.trainer-card-body {
+    color: #4b5563;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
+
+.trainer-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.trainer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.trainer-game-row {
+    display: grid;
+    grid-template-columns: 120px 1fr auto auto auto;
+    align-items: center;
+    gap: 14px;
+    border: 1.5px solid #e2e8f4;
+    border-radius: 16px;
+    padding: 14px 16px;
+    background: #fff;
+}
+
+.trainer-game-date {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 700;
+}
+
+.trainer-game-main {
+    min-width: 0;
+}
+
+.trainer-game-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: #1f2b3d;
+}
+
+.trainer-game-subtitle {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 3px;
+}
+
+.trainer-result {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--club);
+    min-width: 72px;
+    text-align: center;
+}
+
+.trainer-standings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.standings-card {
+    border: 1.5px solid #e2e8f4;
+    border-radius: 18px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.standings-card-header {
+    background: #f8f9fc;
+    padding: 16px 18px;
+    border-bottom: 1px solid #e8edf5;
+}
+
+.standings-card-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #1f2b3d;
+}
+
+.standings-card-subtitle {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+.standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.standings-table th,
+.standings-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f3f9;
+    text-align: center;
+}
+
+.standings-table th:first-child,
+.standings-table td:first-child {
+    text-align: left;
+}
+
+.standings-table th {
+    color: #6b7280;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.standings-points {
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--club);
+}
+
+@media (max-width: 900px) {
+    .trainer-game-row {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+    }
+
+    .trainer-result {
+        text-align: left;
+    }
+}
+
 </style>
 </head>
 <body>
@@ -3707,17 +4362,17 @@ body.layout-locked #dashboardCard {
 
 <!-- ══ SIDEBAR ══ -->
 <div class="sidebar" id="sidebar">
-    <a href="#" data-view="clube" class="<?= $activeSidebarView === 'clube' ? 'active' : '' ?>" onclick="event.preventDefault(); showDashboard();">
-        <img src="assets/clube.png" alt="">
-        <span>Clube</span>
+    <a href="#" data-view="treinos" class="<?= $activeSidebarView === 'treinos' ? 'active' : '' ?>" onclick="event.preventDefault(); showTreinosScreen();">
+        <img src="assets/treinos.png" alt="">
+        <span>Treinos</span>
     </a>
-    <a href="#" data-view="escaloes" class="<?= $activeSidebarView === 'escaloes' ? 'active' : '' ?>" onclick="event.preventDefault(); showEscaloesScreen();">
-        <img src="assets/escaloes.png" alt="">
-        <span>Escalões</span>
+    <a href="#" data-view="jogos" class="<?= $activeSidebarView === 'jogos' ? 'active' : '' ?>" onclick="event.preventDefault(); showJogosScreen();">
+        <img src="assets/jogos.png" alt="">
+        <span>Jogos</span>
     </a>
-    <a href="#" data-view="competicoes" class="<?= $activeSidebarView === 'competicoes' ? 'active' : '' ?>" onclick="event.preventDefault(); showCompeticoesScreen();">
-        <img src="assets/eventos.png" alt="">
-        <span>Competições</span>
+    <a href="#" data-view="campeonato" class="<?= $activeSidebarView === 'campeonato' ? 'active' : '' ?>" onclick="event.preventDefault(); showCampeonatoScreen();">
+        <img src="assets/campeonato.png" alt="">
+        <span>Campeonato</span>
     </a>
     <a href="#" data-view="calendario" class="<?= $activeSidebarView === 'calendario' ? 'active' : '' ?>" onclick="event.preventDefault(); showCalendarScreen();">
         <img src="assets/calendario.png" alt="">
@@ -3729,7 +4384,7 @@ body.layout-locked #dashboardCard {
     </a>
     <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
         <img src="assets/home.png" alt="">
-        <span>Menu Principal</span>
+        <span>Página Principal</span>
     </a>
 </div>
 
@@ -3865,7 +4520,7 @@ body.layout-locked #dashboardCard {
                                 $isAtivoChat = ($chatSelecionadoId === $uId);
                                 $badgeNaoLidas = (int)($uMsg['nao_lidas'] ?? 0);
                             ?>
-                            <a class="message-user <?= $isAtivoChat ? 'active' : '' ?>" href="index-admin.php?view=mensagens&chat=<?= $uId ?>">
+                            <a class="message-user <?= $isAtivoChat ? 'active' : '' ?>" href="index-treinador.php?view=mensagens&chat=<?= $uId ?>">
                                 <div class="message-user-avatar">
                                     <?php if (!empty($uMsg['foto_base64'])): ?>
                                         <img src="<?= $uMsg['foto_base64'] ?>" alt="<?= htmlspecialchars($nomeU) ?>">
@@ -3923,7 +4578,7 @@ body.layout-locked #dashboardCard {
                     </div>
 
                     <div class="messages-compose">
-                        <form method="POST" action="index-admin.php?view=mensagens&chat=<?= (int)$chatSelecionadoId ?>">
+                        <form method="POST" action="index-treinador.php?view=mensagens&chat=<?= (int)$chatSelecionadoId ?>">
                             <input type="hidden" name="acao" value="enviar_mensagem">
                             <input type="hidden" name="destino_mensagem" value="<?= (int)$chatSelecionadoId ?>">
                             <textarea name="conteudo_mensagem" placeholder="Escreve uma mensagem..." required></textarea>
@@ -3967,6 +4622,174 @@ body.layout-locked #dashboardCard {
                     <div id="calendarDayEvents"></div>
                 </div>
             </div>
+        </div>
+
+        <!-- ══ ECRÃ TREINOS ══ -->
+        <div class="screen-shell" id="treinosScreen">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Treinos</h2>
+                    <p class="trainer-page-subtitle">Gerir os treinos das equipas que te foram atribuídas.</p>
+                </div>
+                <?php if (!empty($equipasTreinador)): ?>
+                    <button class="btn-create" type="button" onclick="openModal('modalCriarTreino')">+ Criar Treino</button>
+                <?php endif; ?>
+            </div>
+
+            <div class="trainer-kpi-grid">
+                <div class="trainer-kpi-card">
+                    <div class="trainer-kpi-label">Equipas</div>
+                    <div class="trainer-kpi-value"><?= count($equipasTreinador) ?></div>
+                </div>
+                <div class="trainer-kpi-card">
+                    <div class="trainer-kpi-label">Treinos registados</div>
+                    <div class="trainer-kpi-value"><?= count($treinosTreinador) ?></div>
+                </div>
+                <div class="trainer-kpi-card">
+                    <div class="trainer-kpi-label">Próximo treino</div>
+                    <div class="trainer-kpi-value" style="font-size:18px;">
+                        <?php
+                            $proximoTreinoTexto = '—';
+                            foreach (array_reverse($treinosTreinador) as $trProx) {
+                                if (($trProx['data_treino'] ?? '') >= date('Y-m-d')) {
+                                    $proximoTreinoTexto = date('d/m', strtotime($trProx['data_treino'])) . ' ' . substr($trProx['hora_treino'], 0, 5);
+                                    break;
+                                }
+                            }
+                        ?>
+                        <?= htmlspecialchars($proximoTreinoTexto) ?>
+                    </div>
+                </div>
+            </div>
+
+            <?php if (empty($equipasTreinador)): ?>
+                <div class="empty-state"><p>Ainda não tens equipas associadas. O admin do clube tem de te associar a uma equipa.</p></div>
+            <?php elseif (empty($treinosTreinador)): ?>
+                <div class="empty-state"><p>Ainda não há treinos registados para as tuas equipas.</p></div>
+            <?php else: ?>
+                <div class="trainer-card-grid">
+                    <?php foreach ($treinosTreinador as $treino): ?>
+                        <div class="trainer-info-card">
+                            <div class="trainer-card-top">
+                                <div>
+                                    <div class="trainer-card-title">Treino #<?= (int)$treino['numero_treino'] ?></div>
+                                    <div class="trainer-card-meta">
+                                        <?= htmlspecialchars($treino['escalão'] . ' ' . $treino['hierarquia']) ?>
+                                        <?= !empty($treino['época']) ? ' · ' . htmlspecialchars($treino['época']) : '' ?>
+                                    </div>
+                                </div>
+                                <span class="trainer-pill"><?= htmlspecialchars(date('d/m', strtotime($treino['data_treino'])) . ' · ' . substr($treino['hora_treino'], 0, 5)) ?></span>
+                            </div>
+                            <div class="trainer-card-meta" style="margin-bottom:8px;"><?= htmlspecialchars($treino['dia_da_semana']) ?></div>
+                            <div class="trainer-card-body"><?= htmlspecialchars($treino['conteudo_treino']) ?></div>
+                            <?php if (!empty($treino['observacoes_treino'])): ?>
+                                <div class="trainer-card-body" style="margin-top:10px;color:#6b7280;"><strong>Obs.:</strong> <?= htmlspecialchars($treino['observacoes_treino']) ?></div>
+                            <?php endif; ?>
+                            <div class="trainer-card-actions">
+                                <button class="btn-row-edit" type="button" title="Editar treino" onclick="openEditTreinoModal(<?= (int)$treino['id_treino'] ?>)">✎</button>
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Remover este treino?');">
+                                    <input type="hidden" name="acao" value="remover_treino">
+                                    <input type="hidden" name="id_treino" value="<?= (int)$treino['id_treino'] ?>">
+                                    <button class="btn-row-edit btn-row-delete" type="submit" title="Remover treino">×</button>
+                                </form>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- ══ ECRÃ JOGOS ══ -->
+        <div class="screen-shell" id="jogosScreen">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Jogos</h2>
+                    <p class="trainer-page-subtitle">Jogos das competições associadas às tuas equipas.</p>
+                </div>
+            </div>
+
+            <?php if (empty($jogosTreinador)): ?>
+                <div class="empty-state"><p>Ainda não há jogos associados às tuas equipas.</p></div>
+            <?php else: ?>
+                <div class="trainer-list">
+                    <?php foreach ($jogosTreinador as $jogo): ?>
+                        <?php
+                            $resultadoJogo = ($jogo['resultado_nos'] !== null && $jogo['resultado_adv'] !== null)
+                                ? $jogo['resultado_nos'] . ' – ' . $jogo['resultado_adv']
+                                : '— – —';
+                            $estadoClass = 'jogo-estado-' . ($jogo['estado'] ?? 'Agendado');
+                        ?>
+                        <div class="trainer-game-row">
+                            <div class="trainer-game-date">
+                                <?= htmlspecialchars(date('d/m/Y', strtotime($jogo['data_jogo']))) ?>
+                                <?php if (!empty($jogo['hora_jogo'])): ?><br><small><?= htmlspecialchars(substr($jogo['hora_jogo'], 0, 5)) ?></small><?php endif; ?>
+                            </div>
+                            <div class="trainer-game-main">
+                                <div class="trainer-game-title">vs <?= htmlspecialchars($jogo['adversario']) ?></div>
+                                <div class="trainer-game-subtitle">
+                                    <?= htmlspecialchars($jogo['nome_competicao']) ?> · <?= htmlspecialchars($jogo['escalão'] . ' ' . $jogo['hierarquia']) ?>
+                                    <?php if (!empty($jogo['local_jogo'])): ?> · 📍 <?= htmlspecialchars($jogo['local_jogo']) ?><?php endif; ?>
+                                </div>
+                            </div>
+                            <span class="jogo-casa-badge"><?= $jogo['casa'] ? 'Casa' : 'Fora' ?></span>
+                            <div class="trainer-result"><?= htmlspecialchars($resultadoJogo) ?></div>
+                            <span class="jogo-estado <?= htmlspecialchars($estadoClass) ?>"><?= htmlspecialchars($jogo['estado']) ?></span>
+                            <button class="btn-row-edit" type="button" title="Atualizar resultado" onclick="openResultadoTreinadorModal(<?= (int)$jogo['id_jogo'] ?>)">⚽</button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- ══ ECRÃ CAMPEONATO ══ -->
+        <div class="screen-shell" id="campeonatoScreen">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Campeonato</h2>
+                    <p class="trainer-page-subtitle">Resumo das competições e rendimento das tuas equipas.</p>
+                </div>
+            </div>
+
+            <?php if (empty($estatisticasCampeonato)): ?>
+                <div class="empty-state"><p>Ainda não existem competições associadas às tuas equipas.</p></div>
+            <?php else: ?>
+                <div class="trainer-standings-grid">
+                    <?php foreach ($estatisticasCampeonato as $stats): ?>
+                        <div class="standings-card">
+                            <div class="standings-card-header">
+                                <div class="standings-card-title"><?= htmlspecialchars($stats['nome']) ?></div>
+                                <div class="standings-card-subtitle">
+                                    <?= htmlspecialchars($stats['tipo']) ?><?= $stats['epoca'] ? ' · ' . htmlspecialchars($stats['epoca']) : '' ?> · <?= htmlspecialchars($stats['equipa']) ?>
+                                </div>
+                            </div>
+                            <table class="standings-table">
+                                <thead>
+                                    <tr>
+                                        <th>Pts</th>
+                                        <th>J</th>
+                                        <th>V</th>
+                                        <th>E</th>
+                                        <th>D</th>
+                                        <th>GM</th>
+                                        <th>GS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="standings-points"><?= (int)$stats['pontos'] ?></td>
+                                        <td><?= (int)$stats['realizados'] ?></td>
+                                        <td><?= (int)$stats['vitorias'] ?></td>
+                                        <td><?= (int)$stats['empates'] ?></td>
+                                        <td><?= (int)$stats['derrotas'] ?></td>
+                                        <td><?= (int)$stats['golos_marcados'] ?></td>
+                                        <td><?= (int)$stats['golos_sofridos'] ?></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- ══ ECRÃ ESCALÕES ══ -->
@@ -4097,6 +4920,7 @@ body.layout-locked #dashboardCard {
             <div class="tabs">
                 <button class="tab <?= $activeTab === 'tab-info' ? 'active' : '' ?>" onclick="switchTab(this,'tab-info')">Info</button>
                 <button class="tab <?= $activeTab === 'tab-escaloes' ? 'active' : '' ?>" onclick="switchTab(this,'tab-escaloes')">Escalões</button>
+                <button class="tab <?= $activeTab === 'tab-jogadores' ? 'active' : '' ?>" onclick="switchTab(this,'tab-jogadores')">Jogadores</button>
                 <button class="tab <?= $activeTab === 'tab-treinadores' ? 'active' : '' ?>" onclick="switchTab(this,'tab-treinadores')">Treinadores</button>
             </div>
 
@@ -4272,6 +5096,79 @@ body.layout-locked #dashboardCard {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+            <?php endif; ?>
+
+        </div>
+
+        <!-- ── Painel Jogadores ── -->
+        <div class="tab-panel <?= $activeTab === 'tab-jogadores' ? 'active' : '' ?>" id="tab-jogadores">
+
+            <div class="tab-action-row">
+                <div>
+                    <h3>Jogadores</h3>
+                    <p style="font-size:13px;color:#6b7280;margin-top:4px;">
+                        Jogadores dos escalões/equipas associados ao teu perfil de treinador.
+                    </p>
+                </div>
+            </div>
+
+            <?php if (empty($escaloesClube)): ?>
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 8v4M12 16h.01"/>
+                    </svg>
+                    <p>Ainda não tens escalões/equipas associados.</p>
+                </div>
+            <?php else: ?>
+                <div class="escaloes-team-tabs">
+                    <?php foreach ($escaloesClube as $i => $esc): ?>
+                        <button
+                            class="escalao-tab-btn menu-jogadores-tab-btn <?= $i === 0 ? 'active' : '' ?>"
+                            type="button"
+                            onclick="selectMenuJogadores(this, <?= (int)$esc['id_equipa'] ?>)"
+                        >
+                            <?= htmlspecialchars($esc['escalão'] . ' ' . $esc['hierarquia']) ?>
+                            <?= !empty($esc['época']) ? ' · ' . htmlspecialchars($esc['época']) : '' ?>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+
+                <div id="menuPlayersContent">
+                    <?php foreach ($escaloesClube as $i => $esc): ?>
+                        <div id="menu-players-equipa-<?= (int)$esc['id_equipa'] ?>" style="<?= $i > 0 ? 'display:none;' : '' ?>">
+                            <?php $jogadoresEquipa = $jogadoresPorEquipa[(int)$esc['id_equipa']] ?? []; ?>
+
+                            <?php if (empty($jogadoresEquipa)): ?>
+                                <div class="empty-state"><p>Sem jogadores neste escalão.</p></div>
+                            <?php else: ?>
+                                <div class="players-grid">
+                                    <?php foreach ($jogadoresEquipa as $jog): ?>
+                                        <div class="player-card-wrap">
+                                            <div class="player-card" onclick="openPlayerProfile(<?= (int)$jog['id_jogador'] ?>)">
+                                                <div class="player-avatar">
+                                                    <?php if (!empty($jog['foto_base64'])): ?>
+                                                        <img src="<?= $jog['foto_base64'] ?>" alt="">
+                                                    <?php else: ?>
+                                                        <?= htmlspecialchars(strtoupper(substr($jog['alcunha_jogador'] ?: $jog['nome_completo'], 0, 1))) ?>
+                                                    <?php endif; ?>
+                                                </div>
+
+                                                <?php if (!empty($jog['número_favorito'])): ?>
+                                                    <div class="player-number"><?= htmlspecialchars($jog['número_favorito']) ?></div>
+                                                <?php endif; ?>
+
+                                                <div class="player-name"><?= htmlspecialchars($jog['alcunha_jogador'] ?: $jog['nome_completo']) ?></div>
+                                                <div class="player-pos"><?= htmlspecialchars($jog['posição_principal']) ?></div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
 
         </div>
@@ -4765,7 +5662,7 @@ body.layout-locked #dashboardCard {
             <div class="modal-title">Criar evento</div>
             <button class="modal-close" type="button" onclick="closeModal('modalCriarEvento')">×</button>
         </div>
-        <form method="POST" action="index-admin.php?view=calendario" id="formCriarEvento" onsubmit="return validarFormEvento(this)">
+        <form method="POST" action="index-treinador.php?view=calendario" id="formCriarEvento" onsubmit="return validarFormEvento(this)">
             <input type="hidden" name="acao" value="criar_evento">
             <input type="hidden" name="cal_month" class="cal-month-field">
             <input type="hidden" name="cal_year" class="cal-year-field">
@@ -4833,7 +5730,7 @@ body.layout-locked #dashboardCard {
             <div class="modal-title">Editar evento</div>
             <button class="modal-close" type="button" onclick="closeModal('modalEditarEvento')">×</button>
         </div>
-        <form method="POST" action="index-admin.php?view=calendario" id="formEditarEvento" onsubmit="return validarFormEvento(this)">
+        <form method="POST" action="index-treinador.php?view=calendario" id="formEditarEvento" onsubmit="return validarFormEvento(this)">
             <input type="hidden" name="acao" value="editar_evento">
             <input type="hidden" name="id_evento" id="editEventoId">
             <input type="hidden" name="cal_month" class="cal-month-field">
@@ -5187,6 +6084,163 @@ body.layout-locked #dashboardCard {
 </div></div>
 <?php endif; ?>
 
+<!-- ══ MODAL CRIAR TREINO ══ -->
+<div class="modal-backdrop" id="modalCriarTreino">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Criar treino</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalCriarTreino')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="criar_treino">
+
+            <div class="edit-grid">
+                <div class="edit-group full">
+                    <label>Equipa</label>
+                    <select name="id_equipa_treino" required>
+                        <option value="">Selecionar equipa</option>
+                        <?php foreach ($equipasTreinador as $eq): ?>
+                            <option value="<?= (int)$eq['id_equipa'] ?>">
+                                <?= htmlspecialchars($eq['escalão'] . ' ' . $eq['hierarquia'] . ' — ' . ($eq['época'] ?? '')) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group">
+                    <label>Número do treino</label>
+                    <input type="number" name="numero_treino" min="1" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Data</label>
+                    <input type="date" name="data_treino" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Hora</label>
+                    <input type="time" name="hora_treino" required>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Conteúdo</label>
+                    <input type="text" name="conteudo_treino" placeholder="Ex: Finalização, posse e bolas paradas" required>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Observações</label>
+                    <input type="text" name="observacoes_treino" placeholder="Opcional">
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalCriarTreino')">Cancelar</button>
+                <button class="btn-save" type="submit">Criar treino</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ MODAL EDITAR TREINO ══ -->
+<div class="modal-backdrop" id="modalEditarTreino">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Editar treino</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalEditarTreino')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="editar_treino">
+            <input type="hidden" name="id_treino" id="editTreinoId">
+
+            <div class="edit-grid">
+                <div class="edit-group full">
+                    <label>Equipa</label>
+                    <select name="id_equipa_treino" id="editTreinoEquipa" required>
+                        <?php foreach ($equipasTreinador as $eq): ?>
+                            <option value="<?= (int)$eq['id_equipa'] ?>">
+                                <?= htmlspecialchars($eq['escalão'] . ' ' . $eq['hierarquia'] . ' — ' . ($eq['época'] ?? '')) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="edit-group">
+                    <label>Número do treino</label>
+                    <input type="number" name="numero_treino" id="editTreinoNumero" min="1" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Data</label>
+                    <input type="date" name="data_treino" id="editTreinoData" required>
+                </div>
+
+                <div class="edit-group">
+                    <label>Hora</label>
+                    <input type="time" name="hora_treino" id="editTreinoHora" required>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Conteúdo</label>
+                    <input type="text" name="conteudo_treino" id="editTreinoConteudo" required>
+                </div>
+
+                <div class="edit-group full">
+                    <label>Observações</label>
+                    <input type="text" name="observacoes_treino" id="editTreinoObservacoes">
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalEditarTreino')">Cancelar</button>
+                <button class="btn-save" type="submit">Guardar alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ══ MODAL RESULTADO JOGO TREINADOR ══ -->
+<div class="modal-backdrop" id="modalResultadoTreinador">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">Atualizar resultado</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalResultadoTreinador')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="atualizar_resultado_treinador">
+            <input type="hidden" name="id_jogo_resultado" id="trainerResultadoJogoId">
+
+            <div class="edit-grid">
+                <div class="edit-group">
+                    <label>Nós</label>
+                    <input type="number" name="resultado_nos" id="trainerResultadoNos" min="0">
+                </div>
+
+                <div class="edit-group">
+                    <label>Adversário</label>
+                    <input type="number" name="resultado_adv" id="trainerResultadoAdv" min="0">
+                </div>
+
+                <div class="edit-group full">
+                    <label>Estado</label>
+                    <select name="estado_jogo_resultado" id="trainerResultadoEstado">
+                        <?php foreach (['Agendado','Realizado','Cancelado','Adiado'] as $estadoJogo): ?>
+                            <option value="<?= $estadoJogo ?>"><?= $estadoJogo ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalResultadoTreinador')">Cancelar</button>
+                <button class="btn-save" type="submit">Guardar resultado</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 /* Tabs */
 function switchTab(btn, panelId) {
@@ -5251,7 +6305,7 @@ function setLayoutLock(locked) {
 }
 
 function hideAllScreens() {
-    ['profileScreen','notificationsScreen','messagesScreen','calendarScreen','escaloesScreen','competicoesScreen'].forEach(id => {
+    ['profileScreen','notificationsScreen','messagesScreen','calendarScreen','treinosScreen','jogosScreen','campeonatoScreen','escaloesScreen','competicoesScreen'].forEach(id => {
         const el = document.getElementById(id);
         if (el) { el.style.display = 'none'; el.classList.remove('visible'); }
     });
@@ -5340,6 +6394,40 @@ function showCompeticoesScreen() {
     const el = document.getElementById('competicoesScreen');
     if (el) { el.style.display = 'block'; el.classList.add('visible'); }
     renderCompeticoes();
+}
+
+
+function showTreinosScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+    hideAllScreens();
+    setLayoutLock(false);
+    setActiveSidebar('treinos');
+    const el = document.getElementById('treinosScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
+}
+
+function showJogosScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+    hideAllScreens();
+    setLayoutLock(false);
+    setActiveSidebar('jogos');
+    const el = document.getElementById('jogosScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
+}
+
+function showCampeonatoScreen() {
+    const dashboard = document.getElementById('dashboardCard');
+    if (dashboard) dashboard.style.display = 'block';
+    hideDashboardContent();
+    hideAllScreens();
+    setLayoutLock(false);
+    setActiveSidebar('campeonato');
+    const el = document.getElementById('campeonatoScreen');
+    if (el) { el.style.display = 'block'; el.classList.add('visible'); }
 }
 
 function saveProfileChanges() {
@@ -5858,7 +6946,7 @@ function renderDayEvents(dateStr) {
         const adminActions = isAdminClube ? `
             <div class="calendar-event-actions">
                 <button class="btn-row-edit" type="button" title="Editar" onclick="openEditEventoModal(${ev.id_evento})">✎</button>
-                <form method="POST" action="index-admin.php?view=calendario" style="display:inline;"
+                <form method="POST" action="index-treinador.php?view=calendario" style="display:inline;"
                       onsubmit="return confirm('Remover este evento?');">
                     <input type="hidden" name="acao" value="remover_evento">
                     <input type="hidden" name="id_evento" value="${ev.id_evento}">
@@ -5981,11 +7069,14 @@ document.addEventListener('DOMContentLoaded', function () {
     if (thread) setTimeout(() => { thread.scrollTop = thread.scrollHeight; }, 50);
     <?php elseif (($_GET['view'] ?? '') === 'calendario'): ?>
     showCalendarScreen();
+    <?php elseif (($_GET['view'] ?? '') === 'jogos'): ?>
+    showJogosScreen();
+    <?php elseif (($_GET['view'] ?? '') === 'campeonato'): ?>
+    showCampeonatoScreen();
     <?php elseif (($_GET['view'] ?? '') === 'home'): ?>
     showMainMenu();
     <?php else: ?>
-    setLayoutLock(false);
-    setActiveSidebar('clube');
+    showTreinosScreen();
     <?php endif; ?>
 });
 
@@ -5999,6 +7090,14 @@ function selectEscalao(btn, idEquipa) {
     btn.classList.add('active');
     document.querySelectorAll('[id^="players-equipa-"]').forEach(el => el.style.display = 'none');
     const target = document.getElementById('players-equipa-' + idEquipa);
+    if (target) target.style.display = 'block';
+}
+
+function selectMenuJogadores(btn, idEquipa) {
+    document.querySelectorAll('.menu-jogadores-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('[id^="menu-players-equipa-"]').forEach(el => el.style.display = 'none');
+    const target = document.getElementById('menu-players-equipa-' + idEquipa);
     if (target) target.style.display = 'block';
 }
 
@@ -6034,7 +7133,7 @@ function openPlayerProfile(idJogador) {
         </div>`;
 
     /* Fetch carreira e lesões via AJAX */
-    fetch('index-admin.php?ajax=jogador_detalhe&id=' + idJogador)
+    fetch('index-treinador.php?ajax=jogador_detalhe&id=' + idJogador)
         .then(r => r.json())
         .then(data => {
             const carreira = data.carreira || [];
@@ -6090,6 +7189,39 @@ function openEditJogador(idJogador) {
 function esc(str) {
     if (str == null) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ══════════════════════════════════
+   TREINOS / JOGOS TREINADOR
+══════════════════════════════════ */
+const treinosTreinadorData = <?= json_encode($treinosTreinador, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+const jogosTreinadorData = <?= json_encode($jogosTreinador, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+
+function openEditTreinoModal(idTreino) {
+    const treino = treinosTreinadorData.find(t => String(t.id_treino) === String(idTreino));
+    if (!treino) return;
+
+    document.getElementById('editTreinoId').value = treino.id_treino;
+    document.getElementById('editTreinoEquipa').value = treino.id_equipa;
+    document.getElementById('editTreinoNumero').value = treino.numero_treino;
+    document.getElementById('editTreinoData').value = treino.data_treino;
+    document.getElementById('editTreinoHora').value = (treino.hora_treino || '').substring(0, 5);
+    document.getElementById('editTreinoConteudo').value = treino.conteudo_treino || '';
+    document.getElementById('editTreinoObservacoes').value = treino.observacoes_treino || '';
+
+    openModal('modalEditarTreino');
+}
+
+function openResultadoTreinadorModal(idJogo) {
+    const jogo = jogosTreinadorData.find(j => String(j.id_jogo) === String(idJogo));
+    if (!jogo) return;
+
+    document.getElementById('trainerResultadoJogoId').value = jogo.id_jogo;
+    document.getElementById('trainerResultadoNos').value = jogo.resultado_nos !== null ? jogo.resultado_nos : '';
+    document.getElementById('trainerResultadoAdv').value = jogo.resultado_adv !== null ? jogo.resultado_adv : '';
+    document.getElementById('trainerResultadoEstado').value = jogo.estado || 'Agendado';
+
+    openModal('modalResultadoTreinador');
 }
 
 /* ══════════════════════════════════

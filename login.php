@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $login = trim($_POST['login'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
-    if (!$login || !$password) {
+    if ($login === '' || $password === '') {
         $erro = 'Preenche todos os campos.';
     } else {
 
@@ -19,30 +19,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WHERE (email_utilizador = ? OR nome_utilizador = ?)
               AND password = MD5(?)
             LIMIT 1
-    ");
+        ");
 
-        $stmt->bind_param("sss", $login, $login, $password);
-        $stmt->execute();
-        $res = $stmt->get_result();
-
-        if ($res->num_rows === 1) {
-            $user = $res->fetch_assoc();
-
-            session_regenerate_id(true);
-
-            $_SESSION['id_utilizador'] = $user['id_utilizador'];
-            $_SESSION['tipo_utilizador'] = $user['tipo_utilizador'];
-            $_SESSION['id_clube'] = $user['id_clube']; 
-
-            if (in_array($user['tipo_utilizador'], ['admin_clube', 'treinador'], true)) {
-                header('Location: index-admin.php');
-                exit;
-            }
-
-            $erro = 'Este tipo de utilizador ainda não tem área de acesso disponível.';
-            $_SESSION = [];
+        if (!$stmt) {
+            $erro = 'Erro na preparação do login.';
         } else {
-            $erro = 'Credenciais inválidas.';
+            $stmt->bind_param("sss", $login, $login, $password);
+            $stmt->execute();
+            $res = $stmt->get_result();
+
+            if ($res->num_rows === 1) {
+                $user = $res->fetch_assoc();
+
+                session_regenerate_id(true);
+
+                $_SESSION['id_utilizador'] = $user['id_utilizador'];
+                $_SESSION['tipo_utilizador'] = $user['tipo_utilizador'];
+                $_SESSION['id_clube'] = $user['id_clube'];
+
+                if ($user['tipo_utilizador'] === 'admin_clube') {
+                    header('Location: index-admin.php');
+                    exit;
+                }
+
+                if ($user['tipo_utilizador'] === 'treinador') {
+                    header('Location: index-treinador.php');
+                    exit;
+                }
+
+                $erro = 'Este tipo de utilizador ainda não tem área de acesso disponível.';
+                $_SESSION = [];
+                session_destroy();
+
+            } else {
+                $erro = 'Credenciais inválidas.';
+            }
         }
     }
 }
@@ -56,9 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-
-
-<style>
+    <style>
         * {
             box-sizing: border-box;
             font-family: 'Inter', sans-serif;
@@ -71,8 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: flex;
             align-items: center;
             justify-content: center;
-             animation: pageIn 0.4s ease-out;
-            transition:opacity 0.25s ease, transform 0.25s ease;
+            animation: pageIn 0.4s ease-out;
+            transition: opacity 0.25s ease, transform 0.25s ease;
         }
 
         /* Cartão principal */
@@ -86,8 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow:
                 0 12px 24px rgba(0, 0, 0, 0.06),
                 0 40px 80px rgba(0, 0, 0, 0.08);
-                
-            transition:transform 0.25s ease, box-shadow 0.25s ease;
+
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
         }
 
         .card:hover {
@@ -106,6 +115,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .logo img {
             height: 72px;
+        }
+
+        /* Erro */
+        .error {
+            background: #fff1f1;
+            color: #b00020;
+            border: 1px solid #ffd0d0;
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-bottom: 22px;
+            text-align: center;
         }
 
         /* Inputs */
@@ -151,13 +172,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .btn-link {
             display: flex;
-        align-items: center;
-        justify-content: center;
-
-        text-decoration: none;
-        color: #fff;
-
-        cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            color: #fff;
+            cursor: pointer;
         }
 
         .btn-primary {
@@ -209,6 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 transform: translateY(0);
             }
         }
+
         @media (max-width: 600px) {
             .card {
                 width: 92%;
@@ -233,7 +253,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="error"><?= htmlspecialchars($erro) ?></div>
     <?php endif; ?>
 
-    <!-- 🔑 FORM ORIGINAL (apenas action real) -->
     <form method="post">
 
         <div class="field">
@@ -253,7 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </button>
 
         <button class="btn btn-google" type="button">
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg">
+            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google">
             Continuar com Google
         </button>
 
@@ -269,16 +288,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 
 </div>
-<script>
-document.getElementById('goRegister').addEventListener('click', function (e) {
-    e.preventDefault();
-    document.body.style.opacity = '0';
-    document.body.style.transform = 'translateY(-12px)';
 
-    setTimeout(() => {
-        window.location.href = this.href;
-    }, 250);
-});
+<script>
+const goRegister = document.getElementById('goRegister');
+
+if (goRegister) {
+    goRegister.addEventListener('click', function (e) {
+        e.preventDefault();
+
+        document.body.style.opacity = '0';
+        document.body.style.transform = 'translateY(-12px)';
+
+        setTimeout(() => {
+            window.location.href = this.href;
+        }, 250);
+    });
+}
 </script>
+
 </body>
 </html>
