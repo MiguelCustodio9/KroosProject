@@ -2569,10 +2569,11 @@ body.layout-locked #dashboardCard {
     grid-template-columns: repeat(7, 1fr);
     gap: 2px;
     flex: 1;
-    align-content: stretch;
+    align-content: start;
 }
 
 .calendar-day {
+    height: 68px;
     min-height: 68px;
     border-radius: 10px;
     padding: 6px 4px 4px;
