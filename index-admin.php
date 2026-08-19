@@ -4200,10 +4200,18 @@ body.layout-locked #dashboardCard {
                 <!-- Logo -->
                 <div class="club-logo-wrap">
                     <?php if ($logoClube): ?>
-                        <img id="clubLogoImage" src="<?= $logoClube ?>" alt="Logótipo de <?= htmlspecialchars($nomeClube) ?>" onerror="showClubLogoStatus('Não foi possível carregar o logótipo');">
-                        <div id="clubLogoStatus" class="club-logo-status" style="display:none;"></div>
+                        <img id="clubLogoImage"
+                            src="<?= $logoClube ?>"
+                            alt="Logótipo de <?= htmlspecialchars($nomeClube) ?>"
+                            onerror="showClubLogoStatus();">
+
+                        <div id="clubLogoStatus" class="club-logo-status" style="display:none;">
+                            SEM LOGÓTIPO
+                        </div>
                     <?php else: ?>
-                        <div class="club-logo-status">Logótipo não existe</div>
+                        <div class="club-logo-status">
+                            SEM LOGÓTIPO
+                        </div>
                     <?php endif; ?>
                 </div>
 
