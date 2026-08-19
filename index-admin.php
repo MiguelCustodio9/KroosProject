@@ -1849,11 +1849,19 @@ while ($row = $resJogosC->fetch_assoc()) {
 
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
 
-html, body { height: 100%; }
+html,
+body {
+    height: 100%;
+    overflow-x: hidden;
+}
 
-body { background: #f0f2f7; }
+body {
+    background: #f0f2f7;
+}
 
-body.layout-locked { overflow: hidden; }
+body.layout-locked {
+    overflow: hidden;
+}
 
 /* ══════════════════════════════════
    TOP BAR
@@ -2090,10 +2098,10 @@ body.layout-locked { overflow: hidden; }
 .main {
     margin-left: var(--sidebar-w);
     margin-top: var(--topbar-h);
+    height: calc(100vh - var(--topbar-h));
     padding: 28px 28px 40px;
-    min-height: calc(100vh - var(--topbar-h));
-    box-sizing: border-box;
     overflow-y: auto;
+    overflow-x: hidden;
     transition: margin-left .22s cubic-bezier(.4,0,.2,1);
 }
 
@@ -2101,7 +2109,7 @@ body.layout-locked .main {
     height: calc(100vh - var(--topbar-h));
     min-height: 0;
     overflow-y: auto;
-    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .sidebar:hover ~ .main { margin-left: 210px; }
