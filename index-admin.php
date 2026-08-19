@@ -3105,11 +3105,12 @@ body.layout-locked #dashboardCard {
     justify-content: center;
     text-align: center;
     padding: 14px;
-    color: #666;
-    font-size: 13px;
+    color: #777;
+    font-size: 15px;
+    font-weight: 600;
     line-height: 1.3;
+    letter-spacing: 0.5px;
 }
-
 .club-logo-placeholder {
     font-size: 32px;
     font-weight: 700;
@@ -5550,15 +5551,16 @@ function showTopbarLogoFallback(imgEl) {
     }
 }
 
-function showClubLogoStatus(message) {
+function showClubLogoStatus() {
     const logo = document.getElementById('clubLogoImage');
     const status = document.getElementById('clubLogoStatus');
 
     if (logo) {
         logo.style.display = 'none';
     }
+
     if (status) {
-        status.textContent = message;
+        status.textContent = 'SEM LOGÓTIPO';
         status.style.display = 'flex';
     }
 }
