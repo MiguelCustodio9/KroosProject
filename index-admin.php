@@ -5209,6 +5209,7 @@ body.layout-locked #dashboardCard {
 <?php endif; ?>
 
 <script>
+
 /* Tabs */
 function switchTab(btn, panelId) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
