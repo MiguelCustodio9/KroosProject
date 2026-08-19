@@ -2092,13 +2092,16 @@ body.layout-locked { overflow: hidden; }
     margin-top: var(--topbar-h);
     padding: 28px 28px 40px;
     min-height: calc(100vh - var(--topbar-h));
+    box-sizing: border-box;
+    overflow-y: auto;
     transition: margin-left .22s cubic-bezier(.4,0,.2,1);
 }
 
 body.layout-locked .main {
     height: calc(100vh - var(--topbar-h));
     min-height: 0;
-    overflow: hidden;
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .sidebar:hover ~ .main { margin-left: 210px; }
