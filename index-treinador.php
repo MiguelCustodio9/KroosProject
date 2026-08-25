@@ -2872,6 +2872,7 @@ body.layout-locked #dashboardCard {
     }
 }
 
+
 /* ── Calendário ── */
 .calendar-shell {
     background: #fff;
@@ -2952,12 +2953,18 @@ body.layout-locked #dashboardCard {
     min-height: 0;
 }
 
+.calendar-grid-container {
+    padding-bottom: 16px;
+    box-sizing: border-box;
+}
+
 .calendar-grid-wrap {
-    padding: 18px 16px;
+    padding: 18px 16px 28px 16px;
     border-right: 1px solid #e8edf5;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    box-sizing: border-box;
 }
 
 .calendar-weekday {
@@ -2985,6 +2992,7 @@ body.layout-locked #dashboardCard {
     cursor: pointer;
     transition: background .12s;
     position: relative;
+    margin-bottom: 4px;
 }
 
 .calendar-day:hover { background: #f0f4ff; }
