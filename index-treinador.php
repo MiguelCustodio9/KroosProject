@@ -2260,7 +2260,13 @@ foreach ($competicoesClube as $comp) {
 
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
 
-html, body { height: 100%; }
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    /* O valor 'auto' só mostra o scroll se o conteúdo for maior que o ecrã */
+    overflow-y: auto; 
+}
 
 body { background: #f0f2f7; }
 
@@ -7314,6 +7320,7 @@ function openEditCompeticao(idComp) {
     openModal('modalEditarCompeticao');
 }
 </script>
+
 
 </body>
 </html>
