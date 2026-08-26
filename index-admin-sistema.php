@@ -1066,6 +1066,105 @@ body.layout-locked .main {
 @media (max-width: 760px) {
     .messages-shell.visible { grid-template-columns: 1fr; }
 }
+
+/* ══════════════════════════════════
+   ESTATÍSTICAS
+══════════════════════════════════ */
+.stats-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+}
+
+.stats-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #000;
+    margin-bottom: 5px;
+}
+
+.stats-subtitle {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 26px;
+}
+
+.stat-card {
+    background: #fafafa;
+    border: 1px solid #eaeaea;
+    border-radius: 18px;
+    padding: 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color .15s ease, transform .15s ease, background .15s ease;
+}
+
+.stat-card:hover {
+    border-color: #000;
+    background: #fff;
+    transform: translateY(-2px);
+}
+
+.stat-card .stat-value {
+    font-size: 30px;
+    font-weight: 800;
+    color: #000;
+    line-height: 1;
+}
+
+.stat-card .stat-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.stats-section-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0 16px;
+}
+
+.stats-section-divider span {
+    font-size: 12px;
+    font-weight: 700;
+    color: #000;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    white-space: nowrap;
+}
+
+.stats-section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #eaeaea;
+}
+
+.stat-card.stat-card--dark {
+    background: #000;
+    border-color: #000;
+}
+
+.stat-card.stat-card--dark .stat-value { color: #fff; }
+.stat-card.stat-card--dark .stat-label { color: rgba(255,255,255,.65); }
+
+@media (max-width: 480px) {
+    .stat-card .stat-value { font-size: 24px; }
+}
+
 </style>
 </head>
 <body>
@@ -1258,6 +1357,95 @@ body.layout-locked .main {
 
         <!-- ══ ESTATÍSTICAS ══ -->
         <div>
+            <?php
+
+            $query = "
+                SELECT 
+                    (SELECT COUNT(*) FROM competicoes_clube) as total_competicoes,
+                    (SELECT COUNT(*) FROM jogadores) as total_jogadores,
+                    (SELECT COUNT(*) FROM clube) as total_clubes,
+                    (SELECT COUNT(*) FROM equipa) as total_equipas,
+                    (SELECT COUNT(*) FROM jogos_clube) as total_jogos,
+                    (SELECT COUNT(*) FROM estádio) as total_estadios,
+                    (SELECT COUNT(*) FROM treino) as total_treinos,
+                    (SELECT COUNT(*) FROM utilizador) as total_utilizadores,
+                    (SELECT COUNT(*) FROM utilizador WHERE tipo_utilizador = 'treinador') as total_treinadores,
+                    (SELECT COUNT(*) FROM utilizador WHERE tipo_utilizador = 'admin') as total_admin_sistema,
+                    (SELECT COUNT(*) FROM utilizador WHERE tipo_utilizador = 'admin_clube') as total_admin_clubes
+            ";
+
+            $result = mysqli_query($conn, $query);
+
+            if ($result) {
+                $estatisticas = mysqli_fetch_assoc($result);
+            } else {
+                echo "Erro ao buscar estatísticas: " . mysqli_error($conn);
+                $estatisticas = [];
+            }
+            ?>
+
+            <div class="estatisticas-container">
+                <div class="stats-header">
+                    <div>
+                        <h2 class="stats-title">Estatísticas Globais do Sistema</h2>
+                        <p class="stats-subtitle">Vista geral dos números registados em toda a plataforma Kroos.</p>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_clubes'] ?? 0 ?></span>
+                        <span class="stat-label">Clubes</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_equipas'] ?? 0 ?></span>
+                        <span class="stat-label">Equipas</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_jogadores'] ?? 0 ?></span>
+                        <span class="stat-label">Jogadores</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_treinadores'] ?? 0 ?></span>
+                        <span class="stat-label">Treinadores</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_competicoes'] ?? 0 ?></span>
+                        <span class="stat-label">Competições</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_jogos'] ?? 0 ?></span>
+                        <span class="stat-label">Jogos</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_treinos'] ?? 0 ?></span>
+                        <span class="stat-label">Treinos</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_estadios'] ?? 0 ?></span>
+                        <span class="stat-label">Estádios</span>
+                    </div>
+                </div>
+
+                <div class="stats-section-divider"><span>Utilizadores</span></div>
+
+                <div class="stats-grid">
+                    <div class="stat-card stat-card--dark">
+                        <span class="stat-value"><?= $estatisticas['total_utilizadores'] ?? 0 ?></span>
+                        <span class="stat-label">Total Registados</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_admin_clubes'] ?? 0 ?></span>
+                        <span class="stat-label">Admins de Clube</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value"><?= $estatisticas['total_admin_sistema'] ?? 0 ?></span>
+                        <span class="stat-label">Admins de Sistema</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
         </div>
 
         <!-- ══ GESTÃO DE UTILIZADORES ══ -->
