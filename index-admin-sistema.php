@@ -74,6 +74,114 @@ if (isset($_SESSION['flash_erro'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
 
+    /* ══════════════════════════════════
+       AÇÕES CRUD DA PLATAFORMA KROOS
+    ══════════════════════════════════ */
+    
+    // GESTÃO DE UTILIZADORES
+    if ($acao === 'criar_utilizador') {
+        $nome = trim($_POST['nome_utilizador'] ?? '');
+        $email = trim($_POST['email_utilizador'] ?? '');
+        $tipo = $_POST['tipo_utilizador'] ?? 'jogador';
+        $pNome = trim($_POST['primeiro_nome'] ?? '');
+        $uNome = trim($_POST['ultimo_nome'] ?? '');
+        
+        $stmt = $conn->prepare("INSERT INTO utilizador (nome_utilizador, email_utilizador, tipo_utilizador, primeiro_nome, `último_nome`, password) VALUES (?, ?, ?, ?, ?, MD5('123456'))");
+        $stmt->bind_param("sssss", $nome, $email, $tipo, $pNome, $uNome);
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Utilizador criado com sucesso (Pass: 123456)!";
+        else $_SESSION['flash_erro'] = "Erro ao criar utilizador.";
+        header("Location: index.php?view=utilizadores"); exit;
+    }
+    
+    if ($acao === 'eliminar_utilizador') {
+        $id = (int)($_POST['id_utilizador'] ?? 0);
+        $stmt = $conn->prepare("DELETE FROM utilizador WHERE id_utilizador = ? AND id_utilizador <> ?");
+        $stmt->bind_param("ii", $id, $id_utilizador);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Utilizador eliminado!";
+        header("Location: index.php?view=utilizadores"); exit;
+    }
+
+    // GESTÃO DE COMPETIÇÕES
+    if ($acao === 'criar_competicao') {
+        $nomeCompId = (int)($_POST['nome_competicao_id'] ?? 1);
+        $epoca = (int)($_POST['epoca'] ?? date('Y'));
+        $fases = (int)($_POST['numero_fases'] ?? 1);
+        
+        $stmt = $conn->prepare("INSERT INTO competição (nome_competicao_id, época, número_fases) VALUES (?, ?, ?)");
+        $stmt->bind_param("iii", $nomeCompId, $epoca, $fases);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Competição adicionada com sucesso!";
+        header("Location: index.php?view=competicoes"); exit;
+    }
+
+    if ($acao === 'eliminar_competicao') {
+        $id = (int)($_POST['competicao_id'] ?? 0);
+        $stmt = $conn->prepare("DELETE FROM competição WHERE competicao_id = ?");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Competição eliminada!";
+        header("Location: index.php?view=competicoes"); exit;
+    }
+
+    // GESTÃO DE JOGADORES
+    if ($acao === 'criar_jogador') {
+        $nome = trim($_POST['nome_completo'] ?? '');
+        $pos = $_POST['posicao_principal'] ?? 'Médio';
+        $num = (int)($_POST['numero_favorito'] ?? 0);
+        $equipa = (int)($_POST['equipa_id'] ?? 1);
+        
+        $stmt = $conn->prepare("INSERT INTO jogadores (nome_completo, posição_principal, número_favorito, equipa_id) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("ssii", $nome, $pos, $num, $equipa);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Jogador registado com sucesso!";
+        header("Location: index.php?view=jogadores"); exit;
+    }
+
+    if ($acao === 'eliminar_jogador') {
+        $id = (int)($_POST['jogador_id'] ?? 0);
+        $stmt = $conn->prepare("DELETE FROM jogadores WHERE jogador_id = ?");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Jogador removido!";
+        header("Location: index.php?view=jogadores"); exit;
+    }
+
+    // GESTÃO DE CLUBES
+    if ($acao === 'criar_clube') {
+        $nome = trim($_POST['nome_clube'] ?? '');
+        $sigla = trim($_POST['sigla'] ?? '');
+        $cor = $_POST['cor'] ?? '#000000';
+        
+        $stmt = $conn->prepare("INSERT INTO clube (nome_clube, sigla, cor) VALUES (?, ?, ?)");
+        $stmt->bind_param("sss", $nome, $sigla, $cor);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Clube criado com sucesso!";
+        header("Location: index.php?view=clubes"); exit;
+    }
+
+    if ($acao === 'eliminar_clube') {
+        $id = (int)($_POST['clube_id'] ?? 0);
+        $stmt = $conn->prepare("DELETE FROM clube WHERE clube_id = ?");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Clube eliminado!";
+        header("Location: index.php?view=clubes"); exit;
+    }
+
+    // GESTÃO DE NOTIFICAÇÕES (ADMIN SISTEMA)
+    if ($acao === 'criar_notificacao_sistema') {
+        $dest = (int)($_POST['id_utilizador'] ?? 0);
+        $tit = trim($_POST['titulo'] ?? '');
+        $msg = trim($_POST['mensagem'] ?? '');
+        
+        $stmt = $conn->prepare("INSERT INTO notificacao (id_utilizador, titulo, mensagem, tipo, estado) VALUES (?, ?, ?, 'sistema', 'Nao Lida')");
+        $stmt->bind_param("iss", $dest, $tit, $msg);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Notificação enviada!";
+        header("Location: index.php?view=notificacoes_gestao"); exit;
+    }
+
     if ($acao === 'editar_perfil') {
         $nomeUtilizador = trim($_POST['nome_utilizador'] ?? '');
         $emailUtilizador = trim($_POST['email'] ?? '');
@@ -190,7 +298,7 @@ $stmtNotificacoes = $conn->prepare("
     SELECT id_notificacao, titulo, mensagem, tipo, estado, criada_em, lida_em, link_acao
     FROM notificacao
     WHERE id_utilizador = ?
-    ORDER BY criada_em DESC
+    ORDER BY criada_em ASC
     LIMIT 20
 ");
 $stmtNotificacoes->bind_param("i", $id_utilizador);
@@ -209,6 +317,108 @@ $menusGestao = [
     'notificacoes_gestao'    => ['label' => 'Gestão de Notificações', 'icon' => 'assets/mensagens.png'],
     'definicoes'             => ['label' => 'Definições Gerais',      'icon' => 'assets/definicoes.png'],
 ];
+
+/* ── Consultas Corrigidas para os Ecrãs da Plataforma Kroos ── */
+
+// 1. Gestão de Utilizadores
+$listaUtilizadores = $conn->query("
+    SELECT 
+        u.id_utilizador,
+        u.nome_utilizador, 
+        u.foto_perfil,
+        u.email_utilizador,
+        u.telefone_utilizador,
+        u.primeiro_nome, 
+        u.último_nome,
+        u.data_nascimento,
+        u.tipo_utilizador,
+        u.tipo_treinador,
+        u.id_clube
+    FROM utilizador u
+    ORDER BY u.id_utilizador ASC
+")->fetch_all(MYSQLI_ASSOC);
+
+// 2. Lista de Competições (Junção entre 'competição' e o seu modelo 'competição_default')
+$listaCompeticoes = $conn->query("
+    SELECT 
+        c.id_competicao, 
+        c.id_clube, 
+        c.id_equipa, 
+        c.nome,
+        c.tipo,
+        c.epoca,
+        c.estado,
+        c.descricao
+    FROM competicoes_clube c 
+    ORDER BY c.id_competicao ASC
+")->fetch_all(MYSQLI_ASSOC);
+
+// 3. Lista de Jogadores e Escalão da Equipa
+$listaJogadores = $conn->query("
+    SELECT 
+        j.id_jogador, 
+        j.nome_completo, 
+        j.posição_principal, 
+        j.número_favorito, 
+        j.posição_secundária,
+        j.data_nascimento,
+        j.local_nascimento,
+        j.nacionalidade,
+        j.foto_jogador,
+        j.pé_preferencial,
+        j.altura,
+        j.peso,
+        j.instagram,
+        j.facebook,
+        j.twitter,
+        j.id_equipa,
+        e.escalão 
+    FROM jogadores j 
+    LEFT JOIN equipa e ON j.id_equipa = e.id_equipa 
+    ORDER BY j.id_jogador ASC
+")->fetch_all(MYSQLI_ASSOC);
+
+// 4. Lista de Clubes
+$listaClubes = $conn->query("
+    SELECT 
+        c.id_clube, 
+        c.nome_clube, 
+        c.sigla, 
+        c.logotipo,
+        c.data_fundação,
+        c.sede_morada,
+        c.país_clube,
+        c.cidade_clube,
+        c.telefone_clube,
+        c.email_clube,
+        c.website_clube,
+        c.presidente_clube,
+        c.instagram_clube,
+        c.facebook_clube,
+        c.youtube_clube,
+        c.twitter_clube,
+        c.tiktok_clube,
+        c.código_clube,
+        c.cor 
+    FROM clube c
+    ORDER BY c.id_clube ASC
+")->fetch_all(MYSQLI_ASSOC);
+
+// 5. Notificações de Gestão / Sistema (Ajustado para o modelo de mensagens/notificações)
+$listaNotifGestao = $conn->query("
+    SELECT 
+        n.id_notificacao, 
+        u.id_utilizador, 
+        n.titulo, 
+        n.mensagem, 
+        n.tipo,
+        n.estado, 
+        n.criada_em,
+        n.lida_em
+    FROM notificacao n 
+    INNER JOIN utilizador u ON n.id_utilizador = u.id_utilizador 
+    ORDER BY n.criada_em ASC
+")->fetch_all(MYSQLI_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -219,6 +429,16 @@ $menusGestao = [
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
+
+.kroos-table-wrap { width: 100%; overflow-x: auto; margin-top: 15px; }
+.kroos-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.kroos-table th, .kroos-table td { padding: 12px 16px; border-bottom: 1px solid #eaeaea; }
+.kroos-table th { background: #fafafa; font-weight: 700; text-transform: uppercase; font-size: 11px; }
+.btn-delete { background: #b00020; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.kroos-form-inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; background: #fafafa; padding: 16px; border-radius: 12px; border: 1px solid #eaeaea; }
+.kroos-form-inline input, .kroos-form-inline select { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
+
+
 :root {
     --club: #000000;
     --sidebar-w: 68px;
@@ -1048,26 +1268,246 @@ body.layout-locked .main {
             </div>
         </div>
 
-        <!-- ══ ECRÃS DE GESTÃO (vazios) ══ -->
-        <?php foreach ($menusGestao as $viewKey => $menu): ?>
-        <div class="screen-shell" id="screen-<?= $viewKey ?>">
+        <!-- ══ GESTÃO DE UTILIZADORES ══ -->
+        <div class="screen-shell" id="screen-utilizadores">
             <div class="trainer-page-header">
                 <div>
-                    <h2 class="trainer-page-title"><?= htmlspecialchars($menu['label']) ?></h2>
-                    <p class="trainer-page-subtitle">Ecrã em construção.</p>
+                    <h2 class="trainer-page-title">Gestão de Utilizadores</h2>
+                    <p class="trainer-page-subtitle">Visualiza e gere os utilizadores registados na plataforma Kroos.</p>
                 </div>
-                <button class="btn-create" type="button" disabled style="opacity:.4;cursor:not-allowed;">+ Adicionar</button>
             </div>
-            <div class="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 8v4M12 16h.01"/>
-                </svg>
-                <strong>Sem funcionalidades disponíveis ainda</strong>
-                Este menu vai conter a <?= htmlspecialchars(mb_strtolower($menu['label'])) ?>.
+            
+            <form method="post" class="kroos-form-inline">
+                <input type="hidden" name="acao" value="criar_utilizador">
+                <input type="text" name="nome_utilizador" placeholder="Nome de Utilizador" required>
+                <input type="email" name="email_utilizador" placeholder="Email" required>
+                <input type="text" name="primeiro_nome" placeholder="Primeiro Nome" required>
+                <input type="text" name="ultimo_nome" placeholder="Último Nome" required>
+                <select name="tipo_utilizador">
+                    <option value="jogador">Jogador</option>
+                    <option value="treinador">Treinador</option>
+                    <option value="admin_clube">Admin Clube</option>
+                    <option value="admin">Admin Sistema</option>
+                </select>
+                <button type="submit" class="btn-create">+ Adicionar Utilizador</button>
+            </form>
+
+            <div class="kroos-table-wrap">
+                <table class="kroos-table">
+                    <thead>
+                        <tr><th>ID</th><th>Utilizador</th><th>Nome Completo</th><th>Email</th><th>Tipo</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($listaUtilizadores as $u): ?>
+                        <tr>
+                            <td><?= $u['id_utilizador'] ?></td>
+                            <td><strong><?= htmlspecialchars($u['nome_utilizador']) ?></strong></td>
+                            <td><?= htmlspecialchars(($u['primeiro_nome'] ?? '').' '.($u['último_nome'] ?? '')) ?></td>
+                            <td><?= htmlspecialchars($u['email_utilizador']) ?></td>
+                            <td><span class="badge"><?= htmlspecialchars($u['tipo_utilizador']) ?></span></td>
+                            <td>
+                                <form method="post" onsubmit="return confirm('Eliminar utilizador?');">
+                                    <input type="hidden" name="acao" value="eliminar_utilizador">
+                                    <input type="hidden" name="id_utilizador" value="<?= $u['id_utilizador'] ?>">
+                                    <button class="btn-delete" type="submit">Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
-        <?php endforeach; ?>
+
+        <!-- ══ GESTÃO DE COMPETIÇÕES ══ -->
+        <div class="screen-shell" id="screen-competicoes">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Gestão de Competições</h2>
+                    <p class="trainer-page-subtitle">Configuração e listagem das competições desportivas.</p>
+                </div>
+            </div>
+
+            <form method="post" class="kroos-form-inline">
+                <input type="hidden" name="acao" value="criar_competicao">
+                <input type="number" name="nome_competicao_id" placeholder="ID Modelo Competição" required>
+                <input type="number" name="epoca" placeholder="Época (Ano)" value="<?= date('Y') ?>" required>
+                <input type="number" name="clube" placeholder= "Clube" required>
+                <button type="submit" class="btn-create">+ Adicionar Competição</button>
+            </form>
+
+            <div class="kroos-table-wrap">
+                <table class="kroos-table">
+                    <thead>
+                        <tr><th>ID</th><th>Competição</th><th>Época</th><th>Clube</th><th>Tipo</th><th>Estado</th><th>Descrição</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($listaCompeticoes as $c): ?>
+                        <tr>
+                            <td><?= $c['id_competicao'] ?></td>
+                            <td><strong><?= htmlspecialchars($c['nome']) ?></strong></td>
+                            <td><?= htmlspecialchars($c['epoca']) ?></td>
+                            <td><?= htmlspecialchars($c['id_clube']) ?></td>
+                            <td>
+                                <form method="post" onsubmit="return confirm('Eliminar competição?');">
+                                    <input type="hidden" name="acao" value="eliminar_competicao">
+                                    <input type="hidden" name="competicao_id" value="<?= $c['id_competicao'] ?>">
+                                    <button class="btn-delete" type="submit">Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══ GESTÃO DE JOGADORES ══ -->
+        <div class="screen-shell" id="screen-jogadores">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Gestão de Jogadores</h2>
+                    <p class="trainer-page-subtitle">Registo dos atletas dos planteis do Kroos.</p>
+                </div>
+            </div>
+
+            <form method="post" class="kroos-form-inline">
+                <input type="hidden" name="acao" value="criar_jogador">
+                <input type="text" name="nome_completo" placeholder="Nome Completo do Atleta" required>
+                <input type="number" name="numero_favorito" placeholder="Dorsal" required>
+                <select name="posicao_principal">
+                    <option value="Guarda-Redes">Guarda-Redes</option>
+                    <option value="Defesa">Defesa</option>
+                    <option value="Médio">Médio</option>
+                    <option value="Avançado">Avançado</option>
+                </select>
+                <input type="number" name="equipa_id" placeholder="ID Equipa" value="1" required>
+                <button type="submit" class="btn-create">+ Adicionar Jogador</button>
+            </form>
+
+            <div class="kroos-table-wrap">
+                <table class="kroos-table">
+                    <thead>
+                        <tr><th>ID</th><th>Nome Completo</th><th>Dorsal</th><th>Posição</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($listaJogadores as $j): ?>
+                        <tr>
+                            <td><?= $j['id_jogador'] ?></td>
+                            <td><strong><?= htmlspecialchars($j['nome_completo']) ?></strong></td>
+                            <td>#<?= htmlspecialchars($j['número_favorito']) ?></td>
+                            <td><?= htmlspecialchars($j['posição_principal']) ?></td>
+                            <td>
+                                <form method="post" onsubmit="return confirm('Eliminar jogador?');">
+                                    <input type="hidden" name="acao" value="eliminar_jogador">
+                                    <input type="hidden" name="id_jogador" value="<?= $j['id_jogador'] ?>">
+                                    <button class="btn-delete" type="submit">Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══ GESTÃO DE CLUBES ══ -->
+        <div class="screen-shell" id="screen-clubes">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Gestão de Clubes</h2>
+                    <p class="trainer-page-subtitle">Administração dos clubes associados.</p>
+                </div>
+            </div>
+
+            <form method="post" class="kroos-form-inline">
+                <input type="hidden" name="acao" value="criar_clube">
+                <input type="text" name="nome_clube" placeholder="Nome do Clube" required>
+                <input type="text" name="sigla" placeholder="Sigla (ex: IPCB)" required>
+                <input type="color" name="cor" value="#000000">
+                <button type="submit" class="btn-create">+ Adicionar Clube</button>
+            </form>
+
+            <div class="kroos-table-wrap">
+                <table class="kroos-table">
+                    <thead>
+                        <tr><th>ID</th><th>Nome do Clube</th><th>Sigla</th><th>Cor Principal</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($listaClubes as $cl): ?>
+                        <tr>
+                            <td><?= $cl['clube_id'] ?></td>
+                            <td><strong><?= htmlspecialchars($cl['nome_clube']) ?></strong></td>
+                            <td><?= htmlspecialchars($cl['sigla']) ?></td>
+                            <td><span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:<?= htmlspecialchars($cl['cor']) ?>"></span></td>
+                            <td>
+                                <form method="post" onsubmit="return confirm('Eliminar clube?');">
+                                    <input type="hidden" name="acao" value="eliminar_clube">
+                                    <input type="hidden" name="clube_id" value="<?= $cl['clube_id'] ?>">
+                                    <button class="btn-delete" type="submit">Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══ GESTÃO DE NOTIFICAÇÕES ══ -->
+        <div class="screen-shell" id="screen-notificacoes_gestao">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Gestão de Notificações do Sistema</h2>
+                    <p class="trainer-page-subtitle">Envia avisos e notificações aos utilizadores do sistema.</p>
+                </div>
+            </div>
+
+            <form method="post" class="kroos-form-inline">
+                <input type="hidden" name="acao" value="criar_notificacao_sistema">
+                <select name="id_utilizador" required>
+                    <?php foreach ($listaUtilizadores as $u): ?>
+                        <option value="<?= $u['id_utilizador'] ?>"><?= htmlspecialchars($u['nome_utilizador']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="text" name="titulo" placeholder="Título do aviso" required>
+                <input type="text" name="mensagem" placeholder="Mensagem completa..." required>
+                <button type="submit" class="btn-create">Enviar Notificação</button>
+            </form>
+
+            <div class="kroos-table-wrap">
+                <table class="kroos-table">
+                    <thead>
+                        <tr><th>ID</th><th>Destinatário</th><th>Título</th><th>Estado</th><th>Data</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($listaNotifGestao as $ng): ?>
+                        <tr>
+                            <td><?= $ng['id_notificacao'] ?></td>
+                            <td><strong><?= htmlspecialchars($ng['nome_utilizador']) ?></strong></td>
+                            <td><?= htmlspecialchars($ng['titulo']) ?></td>
+                            <td><?= htmlspecialchars($ng['estado']) ?></td>
+                            <td><?= htmlspecialchars($ng['criada_em']) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══ DEFINIÇÕES GERAIS ══ -->
+        <div class="screen-shell" id="screen-definicoes">
+            <div class="trainer-page-header">
+                <div>
+                    <h2 class="trainer-page-title">Definições Gerais</h2>
+                    <p class="trainer-page-subtitle">Definições do sistema Kroos Project.</p>
+                </div>
+            </div>
+            <div class="empty-state">
+                <strong>Plataforma de Apoio à Gestão Desportiva - Kroos</strong>
+                Versão 1.0 (Janeiro 2026)
+            </div>
+        </div>
 
     </div>
 </div>
