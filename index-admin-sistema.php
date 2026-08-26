@@ -358,6 +358,7 @@ $listaJogadores = $conn->query("
     SELECT 
         j.id_jogador, 
         j.nome_completo, 
+        j.alcunha_jogador,
         j.posição_principal, 
         j.número_favorito, 
         j.posição_secundária,
@@ -408,6 +409,7 @@ $listaClubes = $conn->query("
 $listaNotifGestao = $conn->query("
     SELECT 
         n.id_notificacao, 
+        n.id_clube,
         u.id_utilizador, 
         n.titulo, 
         n.mensagem, 
@@ -1295,7 +1297,7 @@ body.layout-locked .main {
             <div class="kroos-table-wrap">
                 <table class="kroos-table">
                     <thead>
-                        <tr><th>ID</th><th>Utilizador</th><th>Nome Completo</th><th>Email</th><th>Tipo</th><th>Ações</th></tr>
+                        <tr><th>ID</th><th>Utilizador</th><th>Nome Completo</th><th>Foto de Perfil</th><th>Telefone</th><th>Data de Nascimento</th><th>Email</th><th>Tipo de Utilizador</th><th>Tipo de Treinador</th><th>Ações</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaUtilizadores as $u): ?>
@@ -1303,8 +1305,14 @@ body.layout-locked .main {
                             <td><?= $u['id_utilizador'] ?></td>
                             <td><strong><?= htmlspecialchars($u['nome_utilizador']) ?></strong></td>
                             <td><?= htmlspecialchars(($u['primeiro_nome'] ?? '').' '.($u['último_nome'] ?? '')) ?></td>
+                            <td>
+                                <img src="caminho/para/pasta/<?= htmlspecialchars($c['foto_perfil']) ?>" alt="Foto de Perfil" style="width: 40px; height: 40px; object-fit: cover;">
+                            </td>
+                            <td><?= htmlspecialchars($u['telefone_utilizador']) ?></td>
+                            <td><?= htmlspecialchars($u['data_nascimento']) ?></td>
                             <td><?= htmlspecialchars($u['email_utilizador']) ?></td>
                             <td><span class="badge"><?= htmlspecialchars($u['tipo_utilizador']) ?></span></td>
+                            <td><span class="badge"><?= htmlspecialchars($u['tipo_treinador']) ?></span></td>
                             <td>
                                 <form method="post" onsubmit="return confirm('Eliminar utilizador?');">
                                     <input type="hidden" name="acao" value="eliminar_utilizador">
@@ -1348,6 +1356,9 @@ body.layout-locked .main {
                             <td><strong><?= htmlspecialchars($c['nome']) ?></strong></td>
                             <td><?= htmlspecialchars($c['epoca']) ?></td>
                             <td><?= htmlspecialchars($c['id_clube']) ?></td>
+                            <td><?= htmlspecialchars($c['tipo']) ?></td>
+                            <td><?= htmlspecialchars($c['estado']) ?></td>
+                            <td><?= htmlspecialchars($c['descricao']) ?></td>
                             <td>
                                 <form method="post" onsubmit="return confirm('Eliminar competição?');">
                                     <input type="hidden" name="acao" value="eliminar_competicao">
@@ -1381,22 +1392,38 @@ body.layout-locked .main {
                     <option value="Médio">Médio</option>
                     <option value="Avançado">Avançado</option>
                 </select>
-                <input type="number" name="equipa_id" placeholder="ID Equipa" value="1" required>
+                <input type="number" name="equipa_id" placeholder="ID Equipa" required>
                 <button type="submit" class="btn-create">+ Adicionar Jogador</button>
             </form>
 
             <div class="kroos-table-wrap">
                 <table class="kroos-table">
                     <thead>
-                        <tr><th>ID</th><th>Nome Completo</th><th>Dorsal</th><th>Posição</th><th>Ações</th></tr>
+                        <tr><th>ID</th><th>Nome Completo</th><th>Alcunha</th><th>Foto de Jogador</th><th>Dorsal</th><th>Posição Principal</th><th>Posição Secundária</th><th>Data de Nascimento</th><th>Local de Nascimento</th><th>Nacionalidade</th><th>País de Nascimento</th><th>Pé Preferencial</th><th>Altura</th><th>Peso</th><th>Instagram</th><th>Facebook</th><th>Twitter</th><th>Equipa</th><th>Ações</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaJogadores as $j): ?>
                         <tr>
                             <td><?= $j['id_jogador'] ?></td>
                             <td><strong><?= htmlspecialchars($j['nome_completo']) ?></strong></td>
+                            <td><?= htmlspecialchars($j['alcunha_jogador']) ?></td>
+                            <td>
+                                <img src="caminho/para/pasta/<?= htmlspecialchars($j['foto_jogador']) ?>" alt="Foto de Perfil" style="width: 40px; height: 40px; object-fit: cover;">
+                            </td>
                             <td>#<?= htmlspecialchars($j['número_favorito']) ?></td>
                             <td><?= htmlspecialchars($j['posição_principal']) ?></td>
+                            <td><?= htmlspecialchars($j['posição_secundária']) ?></td>
+                            <td><?= htmlspecialchars($j['data_nascimento']) ?></td>
+                            <td><?= htmlspecialchars($j['local_nascimento']) ?></td>
+                            <td><?= htmlspecialchars($j['nacionalidade']) ?></td>
+                            <td><?= htmlspecialchars($j['nacionalidade']) ?></td>
+                            <td><?= htmlspecialchars($j['pé_preferencial']) ?></td>
+                            <td><?= htmlspecialchars($j['altura']) ?> m</td>
+                            <td><?= htmlspecialchars($j['peso']) ?> kg</td>
+                            <td><?= htmlspecialchars($j['instagram']) ?></td>
+                            <td><?= htmlspecialchars($j['facebook']) ?></td>
+                            <td><?= htmlspecialchars($j['twitter']) ?></td>
+                            <td><?= htmlspecialchars($j['id_equipa']) ?></td>
                             <td>
                                 <form method="post" onsubmit="return confirm('Eliminar jogador?');">
                                     <input type="hidden" name="acao" value="eliminar_jogador">
@@ -1431,19 +1458,36 @@ body.layout-locked .main {
             <div class="kroos-table-wrap">
                 <table class="kroos-table">
                     <thead>
-                        <tr><th>ID</th><th>Nome do Clube</th><th>Sigla</th><th>Cor Principal</th><th>Ações</th></tr>
+                        <tr><th>ID</th><th>Nome do Clube</th><th>Sigla</th><th>Logótipo</th><th>Cor</th><th>Data de Fundação</th><th>Sede</th><th>País</th><th>Cidade</th><th>Telefone</th><th>Email</th><th>Website</th><th>Presidente</th><th>Instagram</th><th>Facebook</th><th>Youtube</th><th>Twitter</th><th>Tiktok</th><th>Código</th><th>Ações</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaClubes as $cl): ?>
                         <tr>
-                            <td><?= $cl['clube_id'] ?></td>
+                            <td><?= $cl['id_clube'] ?></td>
                             <td><strong><?= htmlspecialchars($cl['nome_clube']) ?></strong></td>
                             <td><?= htmlspecialchars($cl['sigla']) ?></td>
+                            <td>
+                                <img src="caminho/para/pasta/<?= htmlspecialchars($cl['logotipo']) ?>" alt="Logótipo" style="width: 40px; height: 40px; object-fit: cover;">
+                            </td>
                             <td><span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:<?= htmlspecialchars($cl['cor']) ?>"></span></td>
+                            <td><?= htmlspecialchars($cl['data_fundação']) ?></td>
+                            <td><?= htmlspecialchars($cl['sede_morada']) ?></td>
+                            <td><?= htmlspecialchars($cl['país_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['cidade_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['telefone_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['email_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['website_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['presidente_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['instagram_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['facebook_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['youtube_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['twitter_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['tiktok_clube']) ?></td>
+                            <td><?= htmlspecialchars($cl['código_clube']) ?></td>
                             <td>
                                 <form method="post" onsubmit="return confirm('Eliminar clube?');">
                                     <input type="hidden" name="acao" value="eliminar_clube">
-                                    <input type="hidden" name="clube_id" value="<?= $cl['clube_id'] ?>">
+                                    <input type="hidden" name="clube_id" value="<?= $cl['id_clube'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
                                 </form>
                             </td>
@@ -1478,16 +1522,26 @@ body.layout-locked .main {
             <div class="kroos-table-wrap">
                 <table class="kroos-table">
                     <thead>
-                        <tr><th>ID</th><th>Destinatário</th><th>Título</th><th>Estado</th><th>Data</th></tr>
+                        <tr><th>ID</th><th>Destinatário</th><th>Clube do Destinatário</th><th>Tipo</th><th>Título</th><th>Estado</th><th>Data de Criação</th><th>Data de Leitura</th><th>Ações</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaNotifGestao as $ng): ?>
                         <tr>
                             <td><?= $ng['id_notificacao'] ?></td>
-                            <td><strong><?= htmlspecialchars($ng['nome_utilizador']) ?></strong></td>
+                            <td><strong><?= htmlspecialchars($ng['id_utilizador']) ?></strong></td>
+                            <td><?= htmlspecialchars($ng['id_clube']) ?></td>
+                            <td><?= htmlspecialchars($ng['tipo']) ?></td>
                             <td><?= htmlspecialchars($ng['titulo']) ?></td>
                             <td><?= htmlspecialchars($ng['estado']) ?></td>
                             <td><?= htmlspecialchars($ng['criada_em']) ?></td>
+                            <td><?= htmlspecialchars($ng['lida_em']) ?></td>
+                            <td>
+                                <form method="post" onsubmit="return confirm('Eliminar notificação?');">
+                                    <input type="hidden" name="acao" value="eliminar_notificacao">
+                                    <input type="hidden" name="id_notificacao" value="<?= $ng['id_notificacao'] ?>">
+                                    <button class="btn-delete" type="submit">Eliminar</button>
+                                </form>
+                            </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
