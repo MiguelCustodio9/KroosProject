@@ -31,7 +31,7 @@ $viewsValidas = [
     'clubes',
     'notificacoes_gestao',
     'definicoes',
-    'home'
+    'estatisticas'
 ];
 $viewMode = $_GET['view'] ?? 'home';
 if (!in_array($viewMode, $viewsValidas, true)) {
@@ -310,12 +310,12 @@ while ($row = $resNotificacoes->fetch_assoc()) {
 
 /* ── Menus de gestão (sidebar) ── */
 $menusGestao = [
-    'utilizadores'          => ['label' => 'Gestão de Utilizadores', 'icon' => 'assets/utilizadores.png'],
+    'utilizadores'          => ['label' => 'Gestão de Utilizadores', 'icon' => 'assets/user.png'],
     'competicoes'           => ['label' => 'Gestão de Competições',  'icon' => 'assets/campeonato.png'],
-    'jogadores'              => ['label' => 'Gestão de Jogadores',    'icon' => 'assets/jogadores.png'],
+    'jogadores'              => ['label' => 'Gestão de Jogadores',    'icon' => 'assets/soccer-player.png'],
     'clubes'                 => ['label' => 'Gestão de Clubes',       'icon' => 'assets/clube.png'],
     'notificacoes_gestao'    => ['label' => 'Gestão de Notificações', 'icon' => 'assets/mensagens.png'],
-    'definicoes'             => ['label' => 'Definições Gerais',      'icon' => 'assets/definicoes.png'],
+    'definicoes'             => ['label' => 'Definições Gerais',      'icon' => 'assets/settings.png'],
 ];
 
 /* ── Consultas Corrigidas para os Ecrãs da Plataforma Kroos ── */
@@ -1118,11 +1118,11 @@ body.layout-locked .main {
         <span class="side-label"><?= htmlspecialchars($menu['label']) ?></span>
     </a>
     <?php endforeach; ?>
-    <a href="#" data-view="home" class="<?= $viewMode === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showScreen('home');">
+    <a href="#" data-view="estatisticas" class="<?= $viewMode === 'estatisticas' ? 'active' : '' ?>" onclick="event.preventDefault(); showScreen('estatisticas');">
         <span class="side-icon">
-            <img src="assets/home.png" alt="" style="width:20px;height:20px;object-fit:contain;" onerror="this.style.display='none';">
+            <img src="assets/graph.png" alt="" style="width:20px;height:20px;object-fit:contain;" onerror="this.style.display='none';">
         </span>
-        <span class="side-label">Página Principal</span>
+        <span class="side-label">Estatísticas</span>
     </a>
 </div>
 
@@ -1256,18 +1256,8 @@ body.layout-locked .main {
             </div>
         <?php endif; ?>
 
-        <!-- ══ PÁGINA PRINCIPAL ══ -->
-        <div class="screen-shell" id="screen-home">
-            <div class="trainer-page-header">
-                <div>
-                    <h2 class="trainer-page-title">Página Principal</h2>
-                    <p class="trainer-page-subtitle">Painel de administração de sistema do Kroos.</p>
-                </div>
-            </div>
-            <div class="empty-state">
-                <strong>Bem-vindo, <?= htmlspecialchars($perfilUtilizador['primeiro_nome'] ?? 'Admin') ?>.</strong>
-                Seleciona um menu de gestão na barra lateral.
-            </div>
+        <!-- ══ ESTATÍSTICAS ══ -->
+        <div>
         </div>
 
         <!-- ══ GESTÃO DE UTILIZADORES ══ -->
