@@ -1356,7 +1356,7 @@ body.layout-locked .main {
         <?php endif; ?>
 
         <!-- ══ ESTATÍSTICAS ══ -->
-        <div>
+        <div class="screen-shell" id="screen-estatisticas">
             <?php
 
             $query = "
@@ -1444,8 +1444,6 @@ body.layout-locked .main {
                     </div>
                 </div>
             </div>
-
-        </div>
         </div>
 
         <!-- ══ GESTÃO DE UTILIZADORES ══ -->
@@ -1774,8 +1772,7 @@ function closeAlert(buttonEl) {
 }
 
 /* Gestão de ecrãs */
-const TODOS_OS_ECRAS = ['profileScreen', 'notificationsScreen', 'screen-home', 'screen-utilizadores', 'screen-competicoes', 'screen-jogadores', 'screen-clubes', 'screen-notificacoes_gestao', 'screen-definicoes'];
-
+const TODOS_OS_ECRAS = ['profileScreen', 'notificationsScreen', 'screen-home', 'screen-utilizadores', 'screen-competicoes', 'screen-jogadores', 'screen-clubes', 'screen-notificacoes_gestao', 'screen-definicoes', 'screen-estatisticas'];
 function hideAllScreens() {
     TODOS_OS_ECRAS.forEach(id => {
         const el = document.getElementById(id);
