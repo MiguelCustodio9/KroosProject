@@ -85,13 +85,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tipo = $_POST['tipo_utilizador'] ?? 'jogador';
         $pNome = trim($_POST['primeiro_nome'] ?? '');
         $uNome = trim($_POST['ultimo_nome'] ?? '');
-        
-        $stmt = $conn->prepare("INSERT INTO utilizador (nome_utilizador, email_utilizador, tipo_utilizador, primeiro_nome, `último_nome`, password) VALUES (?, ?, ?, ?, ?, MD5('123456'))");
-        $stmt->bind_param("sssss", $nome, $email, $tipo, $pNome, $uNome);
+        $telefone = trim($_POST['telefone_utilizador'] ?? '') ?: null;
+        $dataNasc = trim($_POST['data_nascimento'] ?? '') ?: null;
+        $tipoTreinador = trim($_POST['tipo_treinador'] ?? '') ?: null;
+        $idClube = !empty($_POST['id_clube']) ? (int)$_POST['id_clube'] : null;
+        $foto = (!empty($_FILES['foto_perfil']['tmp_name'])) ? file_get_contents($_FILES['foto_perfil']['tmp_name']) : null;
+
+        $stmt = $conn->prepare("INSERT INTO utilizador (nome_utilizador, email_utilizador, tipo_utilizador, primeiro_nome, `último_nome`, telefone_utilizador, data_nascimento, tipo_treinador, id_clube, foto_perfil, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, MD5('123456'))");
+        $stmt->bind_param("ssssssssis", $nome, $email, $tipo, $pNome, $uNome, $telefone, $dataNasc, $tipoTreinador, $idClube, $foto);
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Utilizador criado com sucesso (Pass: 123456)!";
-        else $_SESSION['flash_erro'] = "Erro ao criar utilizador.";
-        header("Location: index.php?view=utilizadores"); exit;
+        else $_SESSION['flash_erro'] = "Erro ao criar utilizador: " . $stmt->error;
+        header("Location: index-admin-sistema.php?view=utilizadores"); exit;
     }
+
+    if ($acao === 'editar_utilizador') {
+        $id = (int)($_POST['id_utilizador'] ?? 0);
+        $nome = trim($_POST['nome_utilizador'] ?? '');
+        $email = trim($_POST['email_utilizador'] ?? '');
+        $tipo = $_POST['tipo_utilizador'] ?? 'jogador';
+        $pNome = trim($_POST['primeiro_nome'] ?? '');
+        $uNome = trim($_POST['ultimo_nome'] ?? '');
+        $telefone = trim($_POST['telefone_utilizador'] ?? '') ?: null;
+        $dataNasc = trim($_POST['data_nascimento'] ?? '') ?: null;
+        $tipoTreinador = trim($_POST['tipo_treinador'] ?? '') ?: null;
+        $idClube = !empty($_POST['id_clube']) ? (int)$_POST['id_clube'] : null;
+
+        if (!empty($_FILES['foto_perfil']['tmp_name'])) {
+            $foto = file_get_contents($_FILES['foto_perfil']['tmp_name']);
+            $stmt = $conn->prepare("UPDATE utilizador SET nome_utilizador=?, email_utilizador=?, tipo_utilizador=?, primeiro_nome=?, `último_nome`=?, telefone_utilizador=?, data_nascimento=?, tipo_treinador=?, id_clube=?, foto_perfil=? WHERE id_utilizador=?");
+            $stmt->bind_param("ssssssssisi", $nome, $email, $tipo, $pNome, $uNome, $telefone, $dataNasc, $tipoTreinador, $idClube, $foto, $id);
+        } else {
+            $stmt = $conn->prepare("UPDATE utilizador SET nome_utilizador=?, email_utilizador=?, tipo_utilizador=?, primeiro_nome=?, `último_nome`=?, telefone_utilizador=?, data_nascimento=?, tipo_treinador=?, id_clube=? WHERE id_utilizador=?");
+            $stmt->bind_param("ssssssssii", $nome, $email, $tipo, $pNome, $uNome, $telefone, $dataNasc, $tipoTreinador, $idClube, $id);
+        }
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Utilizador atualizado!";
+        else $_SESSION['flash_erro'] = "Erro ao editar utilizador: " . $stmt->error;
+        header("Location: index-admin-sistema.php?view=utilizadores"); exit;
+}
     
     if ($acao === 'eliminar_utilizador') {
         $id = (int)($_POST['id_utilizador'] ?? 0);
@@ -99,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("ii", $id, $id_utilizador);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Utilizador eliminado!";
-        header("Location: index.php?view=utilizadores"); exit;
+        header("Location: index-admin-sistema.php?view=utilizadores"); exit;
     }
 
     // GESTÃO DE COMPETIÇÕES
@@ -112,7 +142,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("iii", $nomeCompId, $epoca, $fases);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Competição adicionada com sucesso!";
-        header("Location: index.php?view=competicoes"); exit;
+        header("Location: index-admin-sistema.php?view=competicoes"); exit;
+    }
+
+    // COMPETIÇÕES — editar
+    if ($acao === 'editar_competicao') {
+        $id = (int)($_POST['competicao_id'] ?? 0);
+        $idClube = (int)($_POST['id_clube'] ?? 0);
+        $nomeCompId = (int)($_POST['nome_competicao_id'] ?? 1);
+        $epoca = (int)($_POST['epoca'] ?? date('Y'));
+
+        $stmt = $conn->prepare("UPDATE competicoes_clube SET id_clube=?, nome_competicao_id=?, época=? WHERE id_competicao=?");
+        $stmt->bind_param("iiii", $idClube, $nomeCompId, $epoca, $id);
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Competição atualizada!";
+        else $_SESSION['flash_erro'] = "Erro ao editar competição: " . $stmt->error;
+        header("Location: index-admin-sistema.php?view=competicoes"); exit;
     }
 
     if ($acao === 'eliminar_competicao') {
@@ -121,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Competição eliminada!";
-        header("Location: index.php?view=competicoes"); exit;
+        header("Location: index-admin-sistema.php?view=competicoes"); exit;
     }
 
     // GESTÃO DE JOGADORES
@@ -135,7 +179,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("ssii", $nome, $pos, $num, $equipa);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Jogador registado com sucesso!";
-        header("Location: index.php?view=jogadores"); exit;
+        header("Location: index-admin-sistema.php?view=jogadores"); exit;
+    }
+
+    // JOGADORES — editar
+    if ($acao === 'editar_jogador') {
+        $id = (int)($_POST['jogador_id'] ?? 0);
+        $nome = trim($_POST['nome_completo'] ?? '');
+        $pos = $_POST['posicao_principal'] ?? 'Médio';
+        $num = (int)($_POST['numero_favorito'] ?? 0);
+        $equipa = (int)($_POST['equipa_id'] ?? 1);
+
+        $stmt = $conn->prepare("UPDATE jogadores SET nome_completo=?, posição_principal=?, número_favorito=?, id_equipa=? WHERE id_jogador=?");
+        $stmt->bind_param("ssiii", $nome, $pos, $num, $equipa, $id);
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Jogador atualizado!";
+        else $_SESSION['flash_erro'] = "Erro ao editar jogador: " . $stmt->error;
+        header("Location: index-admin-sistema.php?view=jogadores"); exit;
     }
 
     if ($acao === 'eliminar_jogador') {
@@ -144,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Jogador removido!";
-        header("Location: index.php?view=jogadores"); exit;
+        header("Location: index-admin-sistema.php?view=jogadores"); exit;
     }
 
     // GESTÃO DE CLUBES
@@ -157,7 +216,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("sss", $nome, $sigla, $cor);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Clube criado com sucesso!";
-        header("Location: index.php?view=clubes"); exit;
+        header("Location: index-admin-sistema.php?view=clubes"); exit;
+    }
+
+    if ($acao === 'editar_clube') {
+        $id = (int)($_POST['clube_id'] ?? 0);
+        $nome = trim($_POST['nome_clube'] ?? '');
+        $sigla = trim($_POST['sigla'] ?? '');
+        $cor = $_POST['cor'] ?? '#000000';
+
+        $stmt = $conn->prepare("UPDATE clube SET nome_clube=?, sigla=?, cor=? WHERE id_clube=?");
+        $stmt->bind_param("sssi", $nome, $sigla, $cor, $id);
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Clube atualizado!";
+        else $_SESSION['flash_erro'] = "Erro ao editar clube: " . $stmt->error;
+        header("Location: index-admin-sistema.php?view=clubes"); exit;
     }
 
     if ($acao === 'eliminar_clube') {
@@ -166,7 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Clube eliminado!";
-        header("Location: index.php?view=clubes"); exit;
+        header("Location: index-admin-sistema.php?view=clubes"); exit;
     }
 
     // GESTÃO DE NOTIFICAÇÕES (ADMIN SISTEMA)
@@ -179,7 +251,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("iss", $dest, $tit, $msg);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Notificação enviada!";
-        header("Location: index.php?view=notificacoes_gestao"); exit;
+        header("Location: index-admin-sistema.php?view=notificacoes_gestao"); exit;
+    }
+
+    if ($acao === 'editar_notificacao') {
+        $id = (int)($_POST['id_notificacao'] ?? 0);
+        $tit = trim($_POST['titulo'] ?? '');
+        $msg = trim($_POST['mensagem'] ?? '');
+
+        $stmt = $conn->prepare("UPDATE notificacao SET titulo=?, mensagem=? WHERE id_notificacao=?");
+        $stmt->bind_param("ssi", $tit, $msg, $id);
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Notificação atualizada!";
+        else $_SESSION['flash_erro'] = "Erro ao editar notificação: " . $stmt->error;
+        header("Location: index-admin-sistema.php?view=notificacoes_gestao"); exit;
+    }
+
+    if ($acao === 'eliminar_notificacao') {
+        $id = (int)($_POST['id_notificacao'] ?? 0);
+        $stmt = $conn->prepare("DELETE FROM notificacao WHERE id_notificacao = ?");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $_SESSION['flash_sucesso'] = "Notificação eliminada!";
+        header("Location: index-admin-sistema.php?view=notificacoes_gestao"); exit;
     }
 
     if ($acao === 'editar_perfil') {
@@ -320,6 +413,9 @@ $menusGestao = [
 
 /* ── Consultas Corrigidas para os Ecrãs da Plataforma Kroos ── */
 
+// Lista de equipas (para selects e para mostrar nome em vez de ID)
+$listaEquipas = $conn->query("SELECT id_equipa, escalão FROM equipa ORDER BY escalão ASC")->fetch_all(MYSQLI_ASSOC);
+
 // 1. Gestão de Utilizadores
 $listaUtilizadores = $conn->query("
     SELECT 
@@ -340,16 +436,10 @@ $listaUtilizadores = $conn->query("
 
 // 2. Lista de Competições (Junção entre 'competição' e o seu modelo 'competição_default')
 $listaCompeticoes = $conn->query("
-    SELECT 
-        c.id_competicao, 
-        c.id_clube, 
-        c.id_equipa, 
-        c.nome,
-        c.tipo,
-        c.epoca,
-        c.estado,
-        c.descricao
+    SELECT c.id_competicao, c.id_clube, c.id_equipa, c.nome, c.tipo, c.epoca, c.estado, c.descricao,
+           cl.nome_clube
     FROM competicoes_clube c 
+    LEFT JOIN clube cl ON c.id_clube = cl.id_clube
     ORDER BY c.id_competicao ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
@@ -406,21 +496,23 @@ $listaClubes = $conn->query("
 ")->fetch_all(MYSQLI_ASSOC);
 
 // 5. Notificações de Gestão / Sistema (Ajustado para o modelo de mensagens/notificações)
+// 5. Notificações — nome do destinatário + nome do clube
 $listaNotifGestao = $conn->query("
-    SELECT 
-        n.id_notificacao, 
-        n.id_clube,
-        u.id_utilizador, 
-        n.titulo, 
-        n.mensagem, 
-        n.tipo,
-        n.estado, 
-        n.criada_em,
-        n.lida_em
+    SELECT n.id_notificacao, n.id_clube, cl.nome_clube,
+           u.id_utilizador, u.nome_utilizador,
+           n.titulo, n.mensagem, n.tipo, n.estado, n.criada_em, n.lida_em
     FROM notificacao n 
     INNER JOIN utilizador u ON n.id_utilizador = u.id_utilizador 
+    LEFT JOIN clube cl ON n.id_clube = cl.id_clube
     ORDER BY n.criada_em ASC
 ")->fetch_all(MYSQLI_ASSOC);
+
+function formatarData($data, $comHora = false) {
+    if (empty($data) || $data === '0000-00-00' || $data === '0000-00-00 00:00:00') return '-';
+    $ts = strtotime($data);
+    if ($ts === false) return '-';
+    return $comHora ? date('d/m/Y H:i', $ts) : date('d/m/Y', $ts);
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -431,6 +523,30 @@ $listaNotifGestao = $conn->query("
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
+
+/* Modal de edição */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+    background: #fff; border-radius: 18px; padding: 26px; width: 100%; max-width: 520px;
+    max-height: 90vh; overflow-y: auto;
+}
+.modal-box h3 { margin-bottom: 16px; font-size: 18px; font-weight: 800; }
+.modal-box form { display: grid; gap: 10px; }
+.modal-box input, .modal-box select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; width: 100%; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.btn-cancel { background: #eee; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+.btn-save { background: #000; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+.btn-edit { background: #000; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 6px; }
+
+/* Pesquisa + ordenação */
+.table-search { padding: 9px 14px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; width: 260px; margin-bottom: 12px; }
+.kroos-table th { cursor: pointer; user-select: none; position: relative; }
+.kroos-table th.th-asc::after { content: ' ▲'; font-size: 10px; }
+.kroos-table th.th-desc::after { content: ' ▼'; font-size: 10px; }
 
 .kroos-table-wrap { width: 100%; overflow-x: auto; margin-top: 15px; }
 .kroos-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
@@ -1267,7 +1383,7 @@ body.layout-locked .main {
 
                             <div class="profile-field">
                                 <label>Data de Nascimento</label>
-                                <input class="profile-input" type="date" value="<?= htmlspecialchars($perfilUtilizador['data_nascimento'] ?? '') ?>" name="data_nascimento">
+                                <input class="profile-input" type="date" value="<?= formatarData($perfilUtilizador['data_nascimento'] ?? '') ?>" name="data_nascimento">
                             </div>
                         </div>
 
@@ -1455,21 +1571,31 @@ body.layout-locked .main {
                 </div>
             </div>
             
-            <form method="post" class="kroos-form-inline">
+            <form method="post" class="kroos-form-inline" enctype="multipart/form-data">
                 <input type="hidden" name="acao" value="criar_utilizador">
                 <input type="text" name="nome_utilizador" placeholder="Nome de Utilizador" required>
                 <input type="email" name="email_utilizador" placeholder="Email" required>
                 <input type="text" name="primeiro_nome" placeholder="Primeiro Nome" required>
                 <input type="text" name="ultimo_nome" placeholder="Último Nome" required>
+                <input type="tel" name="telefone_utilizador" placeholder="Telefone">
+                <input type="date" name="data_nascimento">
                 <select name="tipo_utilizador">
                     <option value="jogador">Jogador</option>
                     <option value="treinador">Treinador</option>
                     <option value="admin_clube">Admin Clube</option>
                     <option value="admin">Admin Sistema</option>
                 </select>
+                <input type="text" name="tipo_treinador" placeholder="Tipo de Treinador (opcional)">
+                <select name="id_clube">
+                    <option value="">Sem Clube</option>
+                    <?php foreach ($listaClubes as $cl): ?>
+                        <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="file" name="foto_perfil" accept="image/*">
                 <button type="submit" class="btn-create">+ Adicionar Utilizador</button>
             </form>
-
+            
             <div class="kroos-table-wrap">
                 <table class="kroos-table">
                     <thead>
@@ -1485,7 +1611,7 @@ body.layout-locked .main {
                                 <img src="caminho/para/pasta/<?= htmlspecialchars($c['foto_perfil']) ?>" alt="Foto de Perfil" style="width: 40px; height: 40px; object-fit: cover;">
                             </td>
                             <td><?= htmlspecialchars($u['telefone_utilizador']) ?></td>
-                            <td><?= htmlspecialchars($u['data_nascimento']) ?></td>
+                            <td><?= formatarData($u['data_nascimento']) ?></td>
                             <td><?= htmlspecialchars($u['email_utilizador']) ?></td>
                             <td><span class="badge"><?= htmlspecialchars($u['tipo_utilizador']) ?></span></td>
                             <td><span class="badge"><?= htmlspecialchars($u['tipo_treinador']) ?></span></td>
@@ -1589,7 +1715,7 @@ body.layout-locked .main {
                             <td>#<?= htmlspecialchars($j['número_favorito']) ?></td>
                             <td><?= htmlspecialchars($j['posição_principal']) ?></td>
                             <td><?= htmlspecialchars($j['posição_secundária']) ?></td>
-                            <td><?= htmlspecialchars($j['data_nascimento']) ?></td>
+                            <td><?= formatarData($j['data_nascimento']) ?></td>
                             <td><?= htmlspecialchars($j['local_nascimento']) ?></td>
                             <td><?= htmlspecialchars($j['nacionalidade']) ?></td>
                             <td><?= htmlspecialchars($j['nacionalidade']) ?></td>
@@ -1646,7 +1772,7 @@ body.layout-locked .main {
                                 <img src="caminho/para/pasta/<?= htmlspecialchars($cl['logotipo']) ?>" alt="Logótipo" style="width: 40px; height: 40px; object-fit: cover;">
                             </td>
                             <td><span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:<?= htmlspecialchars($cl['cor']) ?>"></span></td>
-                            <td><?= htmlspecialchars($cl['data_fundação']) ?></td>
+                            <td><?= formatarData($cl['data_fundação']) ?></td>
                             <td><?= htmlspecialchars($cl['sede_morada']) ?></td>
                             <td><?= htmlspecialchars($cl['país_clube']) ?></td>
                             <td><?= htmlspecialchars($cl['cidade_clube']) ?></td>
@@ -1709,8 +1835,8 @@ body.layout-locked .main {
                             <td><?= htmlspecialchars($ng['tipo']) ?></td>
                             <td><?= htmlspecialchars($ng['titulo']) ?></td>
                             <td><?= htmlspecialchars($ng['estado']) ?></td>
-                            <td><?= htmlspecialchars($ng['criada_em']) ?></td>
-                            <td><?= htmlspecialchars($ng['lida_em']) ?></td>
+                            <td><?= formatarData($ng['criada_em']) ?></td>
+                            <td><?= formatarData($ng['lida_em'], 'comHora=false') ?></td>
                             <td>
                                 <form method="post" onsubmit="return confirm('Eliminar notificação?');">
                                     <input type="hidden" name="acao" value="eliminar_notificacao">
@@ -2042,6 +2168,95 @@ document.addEventListener('DOMContentLoaded', function () {
     const initialView = <?= json_encode($viewMode) ?>;
     showScreen(initialView);
 });
+
+/* Modal genérico */
+function openModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.add('active');
+}
+function closeModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove('active');
+}
+
+/* Pesquisa em tabela */
+function filtrarTabela(tableId, termo) {
+    const tabela = document.getElementById(tableId);
+    if (!tabela) return;
+    const t = termo.trim().toLowerCase();
+    tabela.querySelectorAll('tbody tr').forEach(linha => {
+        linha.style.display = linha.textContent.toLowerCase().includes(t) ? '' : 'none';
+    });
+}
+
+/* Ordenação por coluna */
+const ordenacaoEstado = {};
+function ordenarTabela(tableId, colIndex) {
+    const tabela = document.getElementById(tableId);
+    if (!tabela) return;
+    const tbody = tabela.querySelector('tbody');
+    const linhas = Array.from(tbody.querySelectorAll('tr'));
+    const chave = tableId + '-' + colIndex;
+    const asc = ordenacaoEstado[chave] !== 'asc';
+    ordenacaoEstado[chave] = asc ? 'asc' : 'desc';
+
+    linhas.sort((a, b) => {
+        const aTxt = (a.children[colIndex]?.textContent || '').trim();
+        const bTxt = (b.children[colIndex]?.textContent || '').trim();
+        const aNum = parseFloat(aTxt.replace(',', '.'));
+        const bNum = parseFloat(bTxt.replace(',', '.'));
+        const r = (!isNaN(aNum) && !isNaN(bNum) && aTxt !== '' && bTxt !== '')
+            ? aNum - bNum
+            : aTxt.localeCompare(bTxt, 'pt');
+        return asc ? r : -r;
+    });
+
+    linhas.forEach(l => tbody.appendChild(l));
+    tabela.querySelectorAll('th').forEach(th => th.classList.remove('th-asc', 'th-desc'));
+    tabela.querySelectorAll('th')[colIndex]?.classList.add(asc ? 'th-asc' : 'th-desc');
+}
+
+/* Preencher e abrir modal de edição com os dados da linha */
+function editarUtilizador(d) {
+    document.getElementById('edit_u_id').value = d.id;
+    document.getElementById('edit_u_nome').value = d.nome;
+    document.getElementById('edit_u_email').value = d.email;
+    document.getElementById('edit_u_pnome').value = d.pnome;
+    document.getElementById('edit_u_unome').value = d.unome;
+    document.getElementById('edit_u_tipo').value = d.tipo;
+    document.getElementById('edit_u_telefone').value = d.telefone || '';
+    document.getElementById('edit_u_data').value = d.data || '';
+    openModal('modalEditarUtilizador');
+}
+function editarCompeticao(d) {
+    document.getElementById('edit_c_id').value = d.id;
+    document.getElementById('edit_c_clube').value = d.clube;
+    document.getElementById('edit_c_nome').value = d.nome;
+    document.getElementById('edit_c_epoca').value = d.epoca;
+    openModal('modalEditarCompeticao');
+}
+function editarJogador(d) {
+    document.getElementById('edit_j_id').value = d.id;
+    document.getElementById('edit_j_nome').value = d.nome;
+    document.getElementById('edit_j_num').value = d.num;
+    document.getElementById('edit_j_pos').value = d.pos;
+    document.getElementById('edit_j_equipa').value = d.equipa;
+    openModal('modalEditarJogador');
+}
+function editarClube(d) {
+    document.getElementById('edit_cl_id').value = d.id;
+    document.getElementById('edit_cl_nome').value = d.nome;
+    document.getElementById('edit_cl_sigla').value = d.sigla;
+    document.getElementById('edit_cl_cor').value = d.cor;
+    openModal('modalEditarClube');
+}
+function editarNotificacao(d) {
+    document.getElementById('edit_n_id').value = d.id;
+    document.getElementById('edit_n_titulo').value = d.titulo;
+    document.getElementById('edit_n_mensagem').value = d.mensagem;
+    openModal('modalEditarNotificacao');
+}
+
 </script>
 
 </body>
