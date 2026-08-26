@@ -47,6 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 }
 
+                if ($user['tipo_utilizador'] === 'admin') {
+                    header('Location: index-admin-sistema.php');
+                    exit;
+                }
+
                 $erro = 'Este tipo de utilizador ainda não tem área de acesso disponível.';
                 $_SESSION = [];
                 session_destroy();
