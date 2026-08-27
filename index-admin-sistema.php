@@ -4,9 +4,6 @@ require_once __DIR__ . '/basedados.h';
 
 /* ══════════════════════════════════
    Protecção da página
-   NOTA: assume-se um tipo_utilizador 'admin_sistema'.
-   Ajusta este bloco quando a autenticação de admin de sistema
-   estiver definida no resto do projecto.
 ══════════════════════════════════ */
 if (
     !isset($_SESSION['id_utilizador']) ||
@@ -23,7 +20,8 @@ if ($_SESSION['tipo_utilizador'] !== 'admin') {
 
 $id_utilizador = $_SESSION['id_utilizador'];
 
-/* ── View activa (menu escolhido na sidebar) ── */
+/* ── View activa (menu escolhido na sidebar) ──
+   Predefinido: Estatísticas, ao entrar sem parâmetro na URL ── */
 $viewsValidas = [
     'utilizadores',
     'competicoes',
@@ -33,9 +31,9 @@ $viewsValidas = [
     'definicoes',
     'estatisticas'
 ];
-$viewMode = $_GET['view'] ?? 'home';
+$viewMode = $_GET['view'] ?? 'estatisticas';
 if (!in_array($viewMode, $viewsValidas, true)) {
-    $viewMode = 'home';
+    $viewMode = 'estatisticas';
 }
 
 /* ── Formatação de datas para DD/MM/AAAA ── */
@@ -81,10 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
 
     /* ══════════════════════════════════
-       AÇÕES CRUD DA PLATAFORMA KROOS
+       GESTÃO DE UTILIZADORES — todos os campos
     ══════════════════════════════════ */
-
-    // GESTÃO DE UTILIZADORES — CRIAR (todos os campos)
     if ($acao === 'criar_utilizador') {
         $nome = trim($_POST['nome_utilizador'] ?? '');
         $email = trim($_POST['email_utilizador'] ?? '');
@@ -104,7 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: index-admin-sistema.php?view=utilizadores"); exit;
     }
 
-    // GESTÃO DE UTILIZADORES — EDITAR
     if ($acao === 'editar_utilizador') {
         $id = (int)($_POST['id_utilizador'] ?? 0);
         $nome = trim($_POST['nome_utilizador'] ?? '');
@@ -139,15 +134,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: index-admin-sistema.php?view=utilizadores"); exit;
     }
 
-    // GESTÃO DE COMPETIÇÕES
+    /* ══════════════════════════════════
+       GESTÃO DE COMPETIÇÕES — todos os campos
+    ══════════════════════════════════ */
     if ($acao === 'criar_competicao') {
         $idClube = (int)($_POST['id_clube'] ?? 0);
-        $nomeCompId = (int)($_POST['nome_competicao_id'] ?? 1);
+        $idEquipa = (int)($_POST['id_equipa'] ?? 0);
+        $nome = trim($_POST['nome'] ?? '');
+        $tipo = trim($_POST['tipo'] ?? '');
         $epoca = (int)($_POST['epoca'] ?? date('Y'));
-        $fases = (int)($_POST['numero_fases'] ?? 1);
+        $estado = trim($_POST['estado'] ?? 'Agendada');
+        $descricao = trim($_POST['descricao'] ?? '');
 
-        $stmt = $conn->prepare("INSERT INTO competicoes_clube (id_clube, nome_competicao_id, época, número_fases) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("iiii", $idClube, $nomeCompId, $epoca, $fases);
+        $stmt = $conn->prepare("INSERT INTO competicoes_clube (id_clube, id_equipa, nome, tipo, epoca, estado, descricao) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iississ", $idClube, $idEquipa, $nome, $tipo, $epoca, $estado, $descricao);
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Competição adicionada com sucesso!";
         else $_SESSION['flash_erro'] = "Erro ao adicionar competição: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=competicoes"); exit;
@@ -156,11 +156,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($acao === 'editar_competicao') {
         $id = (int)($_POST['competicao_id'] ?? 0);
         $idClube = (int)($_POST['id_clube'] ?? 0);
-        $nomeCompId = (int)($_POST['nome_competicao_id'] ?? 1);
+        $idEquipa = (int)($_POST['id_equipa'] ?? 0);
+        $nome = trim($_POST['nome'] ?? '');
+        $tipo = trim($_POST['tipo'] ?? '');
         $epoca = (int)($_POST['epoca'] ?? date('Y'));
+        $estado = trim($_POST['estado'] ?? 'Agendada');
+        $descricao = trim($_POST['descricao'] ?? '');
 
-        $stmt = $conn->prepare("UPDATE competicoes_clube SET id_clube=?, nome_competicao_id=?, época=? WHERE id_competicao=?");
-        $stmt->bind_param("iiii", $idClube, $nomeCompId, $epoca, $id);
+        $stmt = $conn->prepare("UPDATE competicoes_clube SET id_clube=?, id_equipa=?, nome=?, tipo=?, epoca=?, estado=?, descricao=? WHERE id_competicao=?");
+        $stmt->bind_param("iississi", $idClube, $idEquipa, $nome, $tipo, $epoca, $estado, $descricao, $id);
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Competição atualizada!";
         else $_SESSION['flash_erro'] = "Erro ao editar competição: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=competicoes"); exit;
@@ -175,15 +179,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: index-admin-sistema.php?view=competicoes"); exit;
     }
 
-    // GESTÃO DE JOGADORES
+    /* ══════════════════════════════════
+       GESTÃO DE JOGADORES — todos os campos
+    ══════════════════════════════════ */
     if ($acao === 'criar_jogador') {
-        $nome = trim($_POST['nome_completo'] ?? '');
-        $pos = $_POST['posicao_principal'] ?? 'Médio';
-        $num = (int)($_POST['numero_favorito'] ?? 0);
-        $equipa = (int)($_POST['equipa_id'] ?? 1);
+        $nomeCompleto = trim($_POST['nome_completo'] ?? '');
+        $alcunha = trim($_POST['alcunha_jogador'] ?? '') ?: null;
+        $posPrincipal = $_POST['posicao_principal'] ?? 'Médio';
+        $numFavorito = (int)($_POST['numero_favorito'] ?? 0);
+        $posSecundaria = trim($_POST['posicao_secundaria'] ?? '') ?: null;
+        $dataNasc = trim($_POST['data_nascimento'] ?? '') ?: null;
+        $localNasc = trim($_POST['local_nascimento'] ?? '') ?: null;
+        $nacionalidade = trim($_POST['nacionalidade'] ?? '') ?: null;
+        $pePreferencial = trim($_POST['pe_preferencial'] ?? '') ?: null;
+        $altura = !empty($_POST['altura']) ? (float)$_POST['altura'] : null;
+        $peso = !empty($_POST['peso']) ? (float)$_POST['peso'] : null;
+        $instagram = trim($_POST['instagram'] ?? '') ?: null;
+        $facebook = trim($_POST['facebook'] ?? '') ?: null;
+        $twitter = trim($_POST['twitter'] ?? '') ?: null;
+        $idEquipa = (int)($_POST['equipa_id'] ?? 1);
+        $foto = (!empty($_FILES['foto_jogador']['tmp_name'])) ? file_get_contents($_FILES['foto_jogador']['tmp_name']) : null;
 
-        $stmt = $conn->prepare("INSERT INTO jogadores (nome_completo, posição_principal, número_favorito, id_equipa) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("ssii", $nome, $pos, $num, $equipa);
+        $stmt = $conn->prepare("INSERT INTO jogadores (nome_completo, alcunha_jogador, posição_principal, número_favorito, posição_secundária, data_nascimento, local_nascimento, nacionalidade, pé_preferencial, altura, peso, instagram, facebook, twitter, id_equipa, foto_jogador) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssisssssddsssis", $nomeCompleto, $alcunha, $posPrincipal, $numFavorito, $posSecundaria, $dataNasc, $localNasc, $nacionalidade, $pePreferencial, $altura, $peso, $instagram, $facebook, $twitter, $idEquipa, $foto);
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Jogador registado com sucesso!";
         else $_SESSION['flash_erro'] = "Erro ao registar jogador: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=jogadores"); exit;
@@ -191,13 +209,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'editar_jogador') {
         $id = (int)($_POST['jogador_id'] ?? 0);
-        $nome = trim($_POST['nome_completo'] ?? '');
-        $pos = $_POST['posicao_principal'] ?? 'Médio';
-        $num = (int)($_POST['numero_favorito'] ?? 0);
-        $equipa = (int)($_POST['equipa_id'] ?? 1);
+        $nomeCompleto = trim($_POST['nome_completo'] ?? '');
+        $alcunha = trim($_POST['alcunha_jogador'] ?? '') ?: null;
+        $posPrincipal = $_POST['posicao_principal'] ?? 'Médio';
+        $numFavorito = (int)($_POST['numero_favorito'] ?? 0);
+        $posSecundaria = trim($_POST['posicao_secundaria'] ?? '') ?: null;
+        $dataNasc = trim($_POST['data_nascimento'] ?? '') ?: null;
+        $localNasc = trim($_POST['local_nascimento'] ?? '') ?: null;
+        $nacionalidade = trim($_POST['nacionalidade'] ?? '') ?: null;
+        $pePreferencial = trim($_POST['pe_preferencial'] ?? '') ?: null;
+        $altura = !empty($_POST['altura']) ? (float)$_POST['altura'] : null;
+        $peso = !empty($_POST['peso']) ? (float)$_POST['peso'] : null;
+        $instagram = trim($_POST['instagram'] ?? '') ?: null;
+        $facebook = trim($_POST['facebook'] ?? '') ?: null;
+        $twitter = trim($_POST['twitter'] ?? '') ?: null;
+        $idEquipa = (int)($_POST['equipa_id'] ?? 1);
 
-        $stmt = $conn->prepare("UPDATE jogadores SET nome_completo=?, posição_principal=?, número_favorito=?, id_equipa=? WHERE id_jogador=?");
-        $stmt->bind_param("ssiii", $nome, $pos, $num, $equipa, $id);
+        if (!empty($_FILES['foto_jogador']['tmp_name'])) {
+            $foto = file_get_contents($_FILES['foto_jogador']['tmp_name']);
+            $stmt = $conn->prepare("UPDATE jogadores SET nome_completo=?, alcunha_jogador=?, posição_principal=?, número_favorito=?, posição_secundária=?, data_nascimento=?, local_nascimento=?, nacionalidade=?, pé_preferencial=?, altura=?, peso=?, instagram=?, facebook=?, twitter=?, id_equipa=?, foto_jogador=? WHERE id_jogador=?");
+            $stmt->bind_param("sssisssssddsssisi", $nomeCompleto, $alcunha, $posPrincipal, $numFavorito, $posSecundaria, $dataNasc, $localNasc, $nacionalidade, $pePreferencial, $altura, $peso, $instagram, $facebook, $twitter, $idEquipa, $foto, $id);
+        } else {
+            $stmt = $conn->prepare("UPDATE jogadores SET nome_completo=?, alcunha_jogador=?, posição_principal=?, número_favorito=?, posição_secundária=?, data_nascimento=?, local_nascimento=?, nacionalidade=?, pé_preferencial=?, altura=?, peso=?, instagram=?, facebook=?, twitter=?, id_equipa=? WHERE id_jogador=?");
+            $stmt->bind_param("sssisssssddsssii", $nomeCompleto, $alcunha, $posPrincipal, $numFavorito, $posSecundaria, $dataNasc, $localNasc, $nacionalidade, $pePreferencial, $altura, $peso, $instagram, $facebook, $twitter, $idEquipa, $id);
+        }
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Jogador atualizado!";
         else $_SESSION['flash_erro'] = "Erro ao editar jogador: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=jogadores"); exit;
@@ -212,14 +247,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: index-admin-sistema.php?view=jogadores"); exit;
     }
 
-    // GESTÃO DE CLUBES
+    /* ══════════════════════════════════
+       GESTÃO DE CLUBES — todos os campos
+    ══════════════════════════════════ */
     if ($acao === 'criar_clube') {
         $nome = trim($_POST['nome_clube'] ?? '');
         $sigla = trim($_POST['sigla'] ?? '');
+        $dataFundacao = trim($_POST['data_fundacao'] ?? '') ?: null;
+        $sedeMorada = trim($_POST['sede_morada'] ?? '') ?: null;
+        $paisClube = trim($_POST['pais_clube'] ?? '') ?: null;
+        $cidadeClube = trim($_POST['cidade_clube'] ?? '') ?: null;
+        $telefoneClube = trim($_POST['telefone_clube'] ?? '') ?: null;
+        $emailClube = trim($_POST['email_clube'] ?? '') ?: null;
+        $websiteClube = trim($_POST['website_clube'] ?? '') ?: null;
+        $presidenteClube = trim($_POST['presidente_clube'] ?? '') ?: null;
+        $instagramClube = trim($_POST['instagram_clube'] ?? '') ?: null;
+        $facebookClube = trim($_POST['facebook_clube'] ?? '') ?: null;
+        $youtubeClube = trim($_POST['youtube_clube'] ?? '') ?: null;
+        $twitterClube = trim($_POST['twitter_clube'] ?? '') ?: null;
+        $tiktokClube = trim($_POST['tiktok_clube'] ?? '') ?: null;
+        $codigoClube = trim($_POST['codigo_clube'] ?? '') ?: null;
         $cor = $_POST['cor'] ?? '#000000';
+        $logotipo = (!empty($_FILES['logotipo']['tmp_name'])) ? file_get_contents($_FILES['logotipo']['tmp_name']) : null;
 
-        $stmt = $conn->prepare("INSERT INTO clube (nome_clube, sigla, cor) VALUES (?, ?, ?)");
-        $stmt->bind_param("sss", $nome, $sigla, $cor);
+        $stmt = $conn->prepare("INSERT INTO clube (nome_clube, sigla, `data_fundação`, sede_morada, país_clube, cidade_clube, telefone_clube, email_clube, website_clube, presidente_clube, instagram_clube, facebook_clube, youtube_clube, twitter_clube, tiktok_clube, `código_clube`, cor, logotipo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssssssssssssssss", $nome, $sigla, $dataFundacao, $sedeMorada, $paisClube, $cidadeClube, $telefoneClube, $emailClube, $websiteClube, $presidenteClube, $instagramClube, $facebookClube, $youtubeClube, $twitterClube, $tiktokClube, $codigoClube, $cor, $logotipo);
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Clube criado com sucesso!";
         else $_SESSION['flash_erro'] = "Erro ao criar clube: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=clubes"); exit;
@@ -229,10 +281,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)($_POST['clube_id'] ?? 0);
         $nome = trim($_POST['nome_clube'] ?? '');
         $sigla = trim($_POST['sigla'] ?? '');
+        $dataFundacao = trim($_POST['data_fundacao'] ?? '') ?: null;
+        $sedeMorada = trim($_POST['sede_morada'] ?? '') ?: null;
+        $paisClube = trim($_POST['pais_clube'] ?? '') ?: null;
+        $cidadeClube = trim($_POST['cidade_clube'] ?? '') ?: null;
+        $telefoneClube = trim($_POST['telefone_clube'] ?? '') ?: null;
+        $emailClube = trim($_POST['email_clube'] ?? '') ?: null;
+        $websiteClube = trim($_POST['website_clube'] ?? '') ?: null;
+        $presidenteClube = trim($_POST['presidente_clube'] ?? '') ?: null;
+        $instagramClube = trim($_POST['instagram_clube'] ?? '') ?: null;
+        $facebookClube = trim($_POST['facebook_clube'] ?? '') ?: null;
+        $youtubeClube = trim($_POST['youtube_clube'] ?? '') ?: null;
+        $twitterClube = trim($_POST['twitter_clube'] ?? '') ?: null;
+        $tiktokClube = trim($_POST['tiktok_clube'] ?? '') ?: null;
+        $codigoClube = trim($_POST['codigo_clube'] ?? '') ?: null;
         $cor = $_POST['cor'] ?? '#000000';
 
-        $stmt = $conn->prepare("UPDATE clube SET nome_clube=?, sigla=?, cor=? WHERE id_clube=?");
-        $stmt->bind_param("sssi", $nome, $sigla, $cor, $id);
+        if (!empty($_FILES['logotipo']['tmp_name'])) {
+            $logotipo = file_get_contents($_FILES['logotipo']['tmp_name']);
+            $stmt = $conn->prepare("UPDATE clube SET nome_clube=?, sigla=?, `data_fundação`=?, sede_morada=?, país_clube=?, cidade_clube=?, telefone_clube=?, email_clube=?, website_clube=?, presidente_clube=?, instagram_clube=?, facebook_clube=?, youtube_clube=?, twitter_clube=?, tiktok_clube=?, `código_clube`=?, cor=?, logotipo=? WHERE id_clube=?");
+            $stmt->bind_param("ssssssssssssssssssi", $nome, $sigla, $dataFundacao, $sedeMorada, $paisClube, $cidadeClube, $telefoneClube, $emailClube, $websiteClube, $presidenteClube, $instagramClube, $facebookClube, $youtubeClube, $twitterClube, $tiktokClube, $codigoClube, $cor, $logotipo, $id);
+        } else {
+            $stmt = $conn->prepare("UPDATE clube SET nome_clube=?, sigla=?, `data_fundação`=?, sede_morada=?, país_clube=?, cidade_clube=?, telefone_clube=?, email_clube=?, website_clube=?, presidente_clube=?, instagram_clube=?, facebook_clube=?, youtube_clube=?, twitter_clube=?, tiktok_clube=?, `código_clube`=?, cor=? WHERE id_clube=?");
+            $stmt->bind_param("sssssssssssssssssi", $nome, $sigla, $dataFundacao, $sedeMorada, $paisClube, $cidadeClube, $telefoneClube, $emailClube, $websiteClube, $presidenteClube, $instagramClube, $facebookClube, $youtubeClube, $twitterClube, $tiktokClube, $codigoClube, $cor, $id);
+        }
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Clube atualizado!";
         else $_SESSION['flash_erro'] = "Erro ao editar clube: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=clubes"); exit;
@@ -247,14 +319,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: index-admin-sistema.php?view=clubes"); exit;
     }
 
-    // GESTÃO DE NOTIFICAÇÕES (ADMIN SISTEMA)
+    /* ══════════════════════════════════
+       GESTÃO DE NOTIFICAÇÕES — todos os campos
+    ══════════════════════════════════ */
     if ($acao === 'criar_notificacao_sistema') {
         $dest = (int)($_POST['id_utilizador'] ?? 0);
+        $idClube = !empty($_POST['id_clube']) ? (int)$_POST['id_clube'] : null;
         $tit = trim($_POST['titulo'] ?? '');
         $msg = trim($_POST['mensagem'] ?? '');
+        $tipo = trim($_POST['tipo'] ?? 'sistema');
 
-        $stmt = $conn->prepare("INSERT INTO notificacao (id_utilizador, titulo, mensagem, tipo, estado) VALUES (?, ?, ?, 'sistema', 'Nao Lida')");
-        $stmt->bind_param("iss", $dest, $tit, $msg);
+        $stmt = $conn->prepare("INSERT INTO notificacao (id_utilizador, id_clube, titulo, mensagem, tipo, estado) VALUES (?, ?, ?, ?, ?, 'Nao Lida')");
+        $stmt->bind_param("iisss", $dest, $idClube, $tit, $msg, $tipo);
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Notificação enviada!";
         else $_SESSION['flash_erro'] = "Erro ao enviar notificação: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=notificacoes_gestao"); exit;
@@ -262,11 +338,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'editar_notificacao') {
         $id = (int)($_POST['id_notificacao'] ?? 0);
+        $dest = (int)($_POST['id_utilizador'] ?? 0);
+        $idClube = !empty($_POST['id_clube']) ? (int)$_POST['id_clube'] : null;
         $tit = trim($_POST['titulo'] ?? '');
         $msg = trim($_POST['mensagem'] ?? '');
+        $tipo = trim($_POST['tipo'] ?? 'sistema');
+        $estado = trim($_POST['estado'] ?? 'Nao Lida');
 
-        $stmt = $conn->prepare("UPDATE notificacao SET titulo=?, mensagem=? WHERE id_notificacao=?");
-        $stmt->bind_param("ssi", $tit, $msg, $id);
+        $stmt = $conn->prepare("UPDATE notificacao SET id_utilizador=?, id_clube=?, titulo=?, mensagem=?, tipo=?, estado=? WHERE id_notificacao=?");
+        $stmt->bind_param("iisssssi", $dest, $idClube, $tit, $msg, $tipo, $estado, $id);
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Notificação atualizada!";
         else $_SESSION['flash_erro'] = "Erro ao editar notificação: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=notificacoes_gestao"); exit;
@@ -444,7 +524,7 @@ $listaUtilizadores = $conn->query("
     ORDER BY u.id_utilizador ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
-// 2. Lista de Competições — agora com o nome do clube
+// 2. Lista de Competições — com o nome do clube
 $listaCompeticoes = $conn->query("
     SELECT 
         c.id_competicao, 
@@ -513,7 +593,7 @@ $listaClubes = $conn->query("
     ORDER BY c.id_clube ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
-// 5. Notificações de Gestão / Sistema — agora com nome do destinatário e do clube
+// 5. Notificações de Gestão / Sistema — com nome do destinatário e do clube
 $listaNotifGestao = $conn->query("
     SELECT 
         n.id_notificacao, 
@@ -550,7 +630,8 @@ $listaNotifGestao = $conn->query("
 .btn-delete { background: #b00020; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 .btn-edit { background: #228B22; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 6px; }
 .kroos-form-inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; background: #fafafa; padding: 16px; border-radius: 12px; border: 1px solid #eaeaea; }
-.kroos-form-inline input, .kroos-form-inline select { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
+.kroos-form-inline input, .kroos-form-inline select, .kroos-form-inline textarea { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; font-family: 'Inter', sans-serif; }
+.kroos-form-inline textarea { resize: vertical; min-height: 40px; grid-column: 1 / -1; }
 
 
 :root {
@@ -716,7 +797,7 @@ body.layout-locked { overflow: hidden; }
 }
 
 /* ══════════════════════════════════
-   SIDEBAR
+   SIDEBAR (tamanho e estilo inalterados)
 ══════════════════════════════════ */
 .sidebar {
     position: fixed;
@@ -786,16 +867,32 @@ body.layout-locked { overflow: hidden; }
     opacity: 1;
 }
 
+/* Rótulo da sidebar — mantém a mesma largura/estilo; texto cortado
+   ganha um efeito de deslize horizontal em vez de ficar cortado */
 .sidebar a span.side-label {
     opacity: 0;
     width: 0;
     overflow: hidden;
     transition: opacity .18s, width .22s;
+    display: inline-block;
+    white-space: nowrap;
+    vertical-align: bottom;
 }
 
 .sidebar:hover a span.side-label {
     opacity: 1;
     width: auto;
+    max-width: 150px;
+}
+
+.sidebar a span.side-label.marquee-active {
+    animation: sidebarLabelMarquee 3.2s ease-in-out infinite;
+}
+
+@keyframes sidebarLabelMarquee {
+    0%, 15%   { transform: translateX(0); }
+    45%, 60%  { transform: translateX(var(--marquee-distance, 0)); }
+    90%, 100% { transform: translateX(0); }
 }
 
 /* ══════════════════════════════════
@@ -1282,19 +1379,21 @@ body.layout-locked .main {
 ══════════════════════════════════ */
 .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.5);
-    display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+    display: none; align-items: flex-start; justify-content: center; z-index: 1000; padding: 40px 20px;
+    overflow-y: auto;
 }
 .modal-overlay.active { display: flex; }
 .modal-box {
-    background: #fff; border-radius: 18px; padding: 26px; width: 100%; max-width: 520px;
-    max-height: 90vh; overflow-y: auto;
+    background: #fff; border-radius: 18px; padding: 26px; width: 100%; max-width: 640px;
 }
 .modal-box h3 { margin-bottom: 16px; font-size: 18px; font-weight: 800; }
-.modal-box form { display: grid; gap: 10px; }
-.modal-box input, .modal-box select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; width: 100%; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.modal-box form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.modal-box input, .modal-box select, .modal-box textarea { padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; width: 100%; font-family: 'Inter', sans-serif; }
+.modal-box textarea { grid-column: 1 / -1; resize: vertical; min-height: 60px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; grid-column: 1 / -1; }
 .btn-cancel { background: #eee; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
 .btn-save { background: #000; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+.modal-field-full { grid-column: 1 / -1; }
 
 /* ══════════════════════════════════
    PESQUISA E ORDENAÇÃO DE TABELAS
@@ -1670,8 +1769,10 @@ body.layout-locked .main {
                                     "pnome" => $u['primeiro_nome'],
                                     "unome" => $u['último_nome'],
                                     "tipo" => $u['tipo_utilizador'],
+                                    "tipoTreinador" => $u['tipo_treinador'],
                                     "telefone" => $u['telefone_utilizador'],
-                                    "data" => $u['data_nascimento']
+                                    "data" => $u['data_nascimento'],
+                                    "idClube" => $u['id_clube']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
                                 <form method="post" style="display:inline" onsubmit="return confirm('Eliminar utilizador?');">
                                     <input type="hidden" name="acao" value="eliminar_utilizador">
@@ -1702,8 +1803,21 @@ body.layout-locked .main {
                         <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <input type="number" name="nome_competicao_id" placeholder="ID Modelo Competição" required>
+                <select name="id_equipa" required>
+                    <?php foreach ($listaEquipas as $eq): ?>
+                        <option value="<?= $eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="text" name="nome" placeholder="Nome da Competição" required>
+                <input type="text" name="tipo" placeholder="Tipo (ex: Liga, Torneio)">
                 <input type="number" name="epoca" placeholder="Época (Ano)" value="<?= date('Y') ?>" required>
+                <select name="estado">
+                    <option value="Agendada">Agendada</option>
+                    <option value="Em Curso">Em Curso</option>
+                    <option value="Terminada">Terminada</option>
+                    <option value="Cancelada">Cancelada</option>
+                </select>
+                <textarea name="descricao" placeholder="Descrição"></textarea>
                 <button type="submit" class="btn-create">+ Adicionar Competição</button>
             </form>
 
@@ -1737,8 +1851,12 @@ body.layout-locked .main {
                                 <button class="btn-edit" type="button" onclick='editarCompeticao(<?= json_encode([
                                     "id" => $c['id_competicao'],
                                     "clube" => $c['id_clube'],
+                                    "equipa" => $c['id_equipa'],
                                     "nome" => $c['nome'],
-                                    "epoca" => $c['epoca']
+                                    "tipo" => $c['tipo'],
+                                    "epoca" => $c['epoca'],
+                                    "estado" => $c['estado'],
+                                    "descricao" => $c['descricao']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
                                 <form method="post" style="display:inline" onsubmit="return confirm('Eliminar competição?');">
                                     <input type="hidden" name="acao" value="eliminar_competicao">
@@ -1762,9 +1880,10 @@ body.layout-locked .main {
                 </div>
             </div>
 
-            <form method="post" class="kroos-form-inline">
+            <form method="post" class="kroos-form-inline" enctype="multipart/form-data">
                 <input type="hidden" name="acao" value="criar_jogador">
                 <input type="text" name="nome_completo" placeholder="Nome Completo do Atleta" required>
+                <input type="text" name="alcunha_jogador" placeholder="Alcunha">
                 <input type="number" name="numero_favorito" placeholder="Dorsal" required>
                 <select name="posicao_principal">
                     <option value="Guarda-Redes">Guarda-Redes</option>
@@ -1772,11 +1891,33 @@ body.layout-locked .main {
                     <option value="Médio">Médio</option>
                     <option value="Avançado">Avançado</option>
                 </select>
+                <select name="posicao_secundaria">
+                    <option value="">Sem Posição Secundária</option>
+                    <option value="Guarda-Redes">Guarda-Redes</option>
+                    <option value="Defesa">Defesa</option>
+                    <option value="Médio">Médio</option>
+                    <option value="Avançado">Avançado</option>
+                </select>
+                <input type="date" name="data_nascimento">
+                <input type="text" name="local_nascimento" placeholder="Local de Nascimento">
+                <input type="text" name="nacionalidade" placeholder="Nacionalidade">
+                <select name="pe_preferencial">
+                    <option value="">Pé Preferencial</option>
+                    <option value="Direito">Direito</option>
+                    <option value="Esquerdo">Esquerdo</option>
+                    <option value="Ambidestro">Ambidestro</option>
+                </select>
+                <input type="number" step="0.01" name="altura" placeholder="Altura (m)">
+                <input type="number" step="0.1" name="peso" placeholder="Peso (kg)">
+                <input type="text" name="instagram" placeholder="Instagram">
+                <input type="text" name="facebook" placeholder="Facebook">
+                <input type="text" name="twitter" placeholder="Twitter">
                 <select name="equipa_id" required>
                     <?php foreach ($listaEquipas as $eq): ?>
                         <option value="<?= $eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <input type="file" name="foto_jogador" accept="image/*">
                 <button type="submit" class="btn-create">+ Adicionar Jogador</button>
             </form>
 
@@ -1832,8 +1973,19 @@ body.layout-locked .main {
                                 <button class="btn-edit" type="button" onclick='editarJogador(<?= json_encode([
                                     "id" => $j['id_jogador'],
                                     "nome" => $j['nome_completo'],
+                                    "alcunha" => $j['alcunha_jogador'],
                                     "num" => $j['número_favorito'],
                                     "pos" => $j['posição_principal'],
+                                    "posSec" => $j['posição_secundária'],
+                                    "data" => $j['data_nascimento'],
+                                    "local" => $j['local_nascimento'],
+                                    "nacionalidade" => $j['nacionalidade'],
+                                    "pe" => $j['pé_preferencial'],
+                                    "altura" => $j['altura'],
+                                    "peso" => $j['peso'],
+                                    "instagram" => $j['instagram'],
+                                    "facebook" => $j['facebook'],
+                                    "twitter" => $j['twitter'],
                                     "equipa" => $j['id_equipa']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
                                 <form method="post" style="display:inline" onsubmit="return confirm('Eliminar jogador?');">
@@ -1858,11 +2010,26 @@ body.layout-locked .main {
                 </div>
             </div>
 
-            <form method="post" class="kroos-form-inline">
+            <form method="post" class="kroos-form-inline" enctype="multipart/form-data">
                 <input type="hidden" name="acao" value="criar_clube">
                 <input type="text" name="nome_clube" placeholder="Nome do Clube" required>
                 <input type="text" name="sigla" placeholder="Sigla (ex: IPCB)" required>
+                <input type="date" name="data_fundacao" placeholder="Data de Fundação">
+                <input type="text" name="sede_morada" placeholder="Sede / Morada">
+                <input type="text" name="pais_clube" placeholder="País">
+                <input type="text" name="cidade_clube" placeholder="Cidade">
+                <input type="tel" name="telefone_clube" placeholder="Telefone">
+                <input type="email" name="email_clube" placeholder="Email">
+                <input type="text" name="website_clube" placeholder="Website">
+                <input type="text" name="presidente_clube" placeholder="Presidente">
+                <input type="text" name="instagram_clube" placeholder="Instagram">
+                <input type="text" name="facebook_clube" placeholder="Facebook">
+                <input type="text" name="youtube_clube" placeholder="Youtube">
+                <input type="text" name="twitter_clube" placeholder="Twitter">
+                <input type="text" name="tiktok_clube" placeholder="Tiktok">
+                <input type="text" name="codigo_clube" placeholder="Código do Clube">
                 <input type="color" name="cor" value="#000000">
+                <input type="file" name="logotipo" accept="image/*">
                 <button type="submit" class="btn-create">+ Adicionar Clube</button>
             </form>
 
@@ -1923,6 +2090,20 @@ body.layout-locked .main {
                                     "id" => $cl['id_clube'],
                                     "nome" => $cl['nome_clube'],
                                     "sigla" => $cl['sigla'],
+                                    "dataFundacao" => $cl['data_fundação'],
+                                    "sede" => $cl['sede_morada'],
+                                    "pais" => $cl['país_clube'],
+                                    "cidade" => $cl['cidade_clube'],
+                                    "telefone" => $cl['telefone_clube'],
+                                    "email" => $cl['email_clube'],
+                                    "website" => $cl['website_clube'],
+                                    "presidente" => $cl['presidente_clube'],
+                                    "instagram" => $cl['instagram_clube'],
+                                    "facebook" => $cl['facebook_clube'],
+                                    "youtube" => $cl['youtube_clube'],
+                                    "twitter" => $cl['twitter_clube'],
+                                    "tiktok" => $cl['tiktok_clube'],
+                                    "codigo" => $cl['código_clube'],
                                     "cor" => $cl['cor']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
                                 <form method="post" style="display:inline" onsubmit="return confirm('Eliminar clube?');">
@@ -1954,8 +2135,15 @@ body.layout-locked .main {
                         <option value="<?= $u['id_utilizador'] ?>"><?= htmlspecialchars($u['nome_utilizador']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <select name="id_clube">
+                    <option value="">Sem Clube</option>
+                    <?php foreach ($listaClubes as $cl): ?>
+                        <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="text" name="tipo" placeholder="Tipo (ex: sistema, aviso)" value="sistema">
                 <input type="text" name="titulo" placeholder="Título do aviso" required>
-                <input type="text" name="mensagem" placeholder="Mensagem completa..." required>
+                <textarea name="mensagem" placeholder="Mensagem completa..." required></textarea>
                 <button type="submit" class="btn-create">Enviar Notificação</button>
             </form>
 
@@ -1990,8 +2178,12 @@ body.layout-locked .main {
                             <td>
                                 <button class="btn-edit" type="button" onclick='editarNotificacao(<?= json_encode([
                                     "id" => $ng['id_notificacao'],
+                                    "destinatario" => $ng['id_utilizador'],
+                                    "clube" => $ng['id_clube'],
                                     "titulo" => $ng['titulo'],
-                                    "mensagem" => $ng['mensagem']
+                                    "mensagem" => $ng['mensagem'],
+                                    "tipo" => $ng['tipo'],
+                                    "estado" => $ng['estado']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
                                 <form method="post" style="display:inline" onsubmit="return confirm('Eliminar notificação?');">
                                     <input type="hidden" name="acao" value="eliminar_notificacao">
@@ -2024,14 +2216,14 @@ body.layout-locked .main {
 </div>
 
 <!-- ══════════════════════════════════
-     MODAIS DE EDIÇÃO
+     MODAIS DE EDIÇÃO — todos os campos
 ══════════════════════════════════ -->
 
 <!-- MODAL EDITAR UTILIZADOR -->
 <div class="modal-overlay" id="modalEditarUtilizador">
     <div class="modal-box">
         <h3>Editar Utilizador</h3>
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
             <input type="hidden" name="acao" value="editar_utilizador">
             <input type="hidden" id="edit_u_id" name="id_utilizador">
             <input type="text" id="edit_u_nome" name="nome_utilizador" placeholder="Nome de Utilizador" required>
@@ -2046,6 +2238,14 @@ body.layout-locked .main {
                 <option value="admin_clube">Admin Clube</option>
                 <option value="admin">Admin Sistema</option>
             </select>
+            <input type="text" id="edit_u_tipo_treinador" name="tipo_treinador" placeholder="Tipo de Treinador">
+            <select id="edit_u_clube" name="id_clube">
+                <option value="">Sem Clube</option>
+                <?php foreach ($listaClubes as $cl): ?>
+                    <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="file" name="foto_perfil" accept="image/*">
             <div class="modal-actions">
                 <button type="button" class="btn-cancel" onclick="closeModal('modalEditarUtilizador')">Cancelar</button>
                 <button type="submit" class="btn-save">Guardar</button>
@@ -2066,8 +2266,21 @@ body.layout-locked .main {
                     <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <input type="number" id="edit_c_nome" name="nome_competicao_id" placeholder="ID Modelo Competição" required>
+            <select id="edit_c_equipa" name="id_equipa" required>
+                <?php foreach ($listaEquipas as $eq): ?>
+                    <option value="<?= $eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="text" id="edit_c_nome" name="nome" placeholder="Nome da Competição" required>
+            <input type="text" id="edit_c_tipo" name="tipo" placeholder="Tipo">
             <input type="number" id="edit_c_epoca" name="epoca" placeholder="Época">
+            <select id="edit_c_estado" name="estado">
+                <option value="Agendada">Agendada</option>
+                <option value="Em Curso">Em Curso</option>
+                <option value="Terminada">Terminada</option>
+                <option value="Cancelada">Cancelada</option>
+            </select>
+            <textarea id="edit_c_descricao" name="descricao" placeholder="Descrição"></textarea>
             <div class="modal-actions">
                 <button type="button" class="btn-cancel" onclick="closeModal('modalEditarCompeticao')">Cancelar</button>
                 <button type="submit" class="btn-save">Guardar</button>
@@ -2080,10 +2293,11 @@ body.layout-locked .main {
 <div class="modal-overlay" id="modalEditarJogador">
     <div class="modal-box">
         <h3>Editar Jogador</h3>
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
             <input type="hidden" name="acao" value="editar_jogador">
             <input type="hidden" id="edit_j_id" name="jogador_id">
             <input type="text" id="edit_j_nome" name="nome_completo" placeholder="Nome Completo" required>
+            <input type="text" id="edit_j_alcunha" name="alcunha_jogador" placeholder="Alcunha">
             <input type="number" id="edit_j_num" name="numero_favorito" placeholder="Dorsal">
             <select id="edit_j_pos" name="posicao_principal">
                 <option value="Guarda-Redes">Guarda-Redes</option>
@@ -2091,11 +2305,33 @@ body.layout-locked .main {
                 <option value="Médio">Médio</option>
                 <option value="Avançado">Avançado</option>
             </select>
+            <select id="edit_j_pos_sec" name="posicao_secundaria">
+                <option value="">Sem Posição Secundária</option>
+                <option value="Guarda-Redes">Guarda-Redes</option>
+                <option value="Defesa">Defesa</option>
+                <option value="Médio">Médio</option>
+                <option value="Avançado">Avançado</option>
+            </select>
+            <input type="date" id="edit_j_data" name="data_nascimento">
+            <input type="text" id="edit_j_local" name="local_nascimento" placeholder="Local de Nascimento">
+            <input type="text" id="edit_j_nacionalidade" name="nacionalidade" placeholder="Nacionalidade">
+            <select id="edit_j_pe" name="pe_preferencial">
+                <option value="">Pé Preferencial</option>
+                <option value="Direito">Direito</option>
+                <option value="Esquerdo">Esquerdo</option>
+                <option value="Ambidestro">Ambidestro</option>
+            </select>
+            <input type="number" step="0.01" id="edit_j_altura" name="altura" placeholder="Altura (m)">
+            <input type="number" step="0.1" id="edit_j_peso" name="peso" placeholder="Peso (kg)">
+            <input type="text" id="edit_j_instagram" name="instagram" placeholder="Instagram">
+            <input type="text" id="edit_j_facebook" name="facebook" placeholder="Facebook">
+            <input type="text" id="edit_j_twitter" name="twitter" placeholder="Twitter">
             <select id="edit_j_equipa" name="equipa_id" required>
                 <?php foreach ($listaEquipas as $eq): ?>
                     <option value="<?= $eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão']) ?></option>
                 <?php endforeach; ?>
             </select>
+            <input type="file" name="foto_jogador" accept="image/*">
             <div class="modal-actions">
                 <button type="button" class="btn-cancel" onclick="closeModal('modalEditarJogador')">Cancelar</button>
                 <button type="submit" class="btn-save">Guardar</button>
@@ -2108,12 +2344,27 @@ body.layout-locked .main {
 <div class="modal-overlay" id="modalEditarClube">
     <div class="modal-box">
         <h3>Editar Clube</h3>
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
             <input type="hidden" name="acao" value="editar_clube">
             <input type="hidden" id="edit_cl_id" name="clube_id">
             <input type="text" id="edit_cl_nome" name="nome_clube" placeholder="Nome do Clube" required>
             <input type="text" id="edit_cl_sigla" name="sigla" placeholder="Sigla">
+            <input type="date" id="edit_cl_data_fundacao" name="data_fundacao">
+            <input type="text" id="edit_cl_sede" name="sede_morada" placeholder="Sede / Morada">
+            <input type="text" id="edit_cl_pais" name="pais_clube" placeholder="País">
+            <input type="text" id="edit_cl_cidade" name="cidade_clube" placeholder="Cidade">
+            <input type="tel" id="edit_cl_telefone" name="telefone_clube" placeholder="Telefone">
+            <input type="email" id="edit_cl_email" name="email_clube" placeholder="Email">
+            <input type="text" id="edit_cl_website" name="website_clube" placeholder="Website">
+            <input type="text" id="edit_cl_presidente" name="presidente_clube" placeholder="Presidente">
+            <input type="text" id="edit_cl_instagram" name="instagram_clube" placeholder="Instagram">
+            <input type="text" id="edit_cl_facebook" name="facebook_clube" placeholder="Facebook">
+            <input type="text" id="edit_cl_youtube" name="youtube_clube" placeholder="Youtube">
+            <input type="text" id="edit_cl_twitter" name="twitter_clube" placeholder="Twitter">
+            <input type="text" id="edit_cl_tiktok" name="tiktok_clube" placeholder="Tiktok">
+            <input type="text" id="edit_cl_codigo" name="codigo_clube" placeholder="Código do Clube">
             <input type="color" id="edit_cl_cor" name="cor">
+            <input type="file" name="logotipo" accept="image/*">
             <div class="modal-actions">
                 <button type="button" class="btn-cancel" onclick="closeModal('modalEditarClube')">Cancelar</button>
                 <button type="submit" class="btn-save">Guardar</button>
@@ -2129,8 +2380,24 @@ body.layout-locked .main {
         <form method="post">
             <input type="hidden" name="acao" value="editar_notificacao">
             <input type="hidden" id="edit_n_id" name="id_notificacao">
+            <select id="edit_n_destinatario" name="id_utilizador" required>
+                <?php foreach ($listaUtilizadores as $u): ?>
+                    <option value="<?= $u['id_utilizador'] ?>"><?= htmlspecialchars($u['nome_utilizador']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select id="edit_n_clube" name="id_clube">
+                <option value="">Sem Clube</option>
+                <?php foreach ($listaClubes as $cl): ?>
+                    <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="text" id="edit_n_tipo" name="tipo" placeholder="Tipo">
+            <select id="edit_n_estado" name="estado">
+                <option value="Nao Lida">Não Lida</option>
+                <option value="Lida">Lida</option>
+            </select>
             <input type="text" id="edit_n_titulo" name="titulo" placeholder="Título" required>
-            <input type="text" id="edit_n_mensagem" name="mensagem" placeholder="Mensagem" required>
+            <textarea id="edit_n_mensagem" name="mensagem" placeholder="Mensagem" required></textarea>
             <div class="modal-actions">
                 <button type="button" class="btn-cancel" onclick="closeModal('modalEditarNotificacao')">Cancelar</button>
                 <button type="submit" class="btn-save">Guardar</button>
@@ -2453,47 +2720,87 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
     });
 });
 
+function setValue(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = (val === null || val === undefined) ? '' : val;
+}
+
 function editarUtilizador(d) {
-    document.getElementById('edit_u_id').value = d.id;
-    document.getElementById('edit_u_nome').value = d.nome;
-    document.getElementById('edit_u_email').value = d.email;
-    document.getElementById('edit_u_pnome').value = d.pnome;
-    document.getElementById('edit_u_unome').value = d.unome;
-    document.getElementById('edit_u_tipo').value = d.tipo;
-    document.getElementById('edit_u_telefone').value = d.telefone || '';
-    document.getElementById('edit_u_data').value = d.data ? d.data.substring(0, 10) : '';
+    setValue('edit_u_id', d.id);
+    setValue('edit_u_nome', d.nome);
+    setValue('edit_u_email', d.email);
+    setValue('edit_u_pnome', d.pnome);
+    setValue('edit_u_unome', d.unome);
+    setValue('edit_u_tipo', d.tipo);
+    setValue('edit_u_tipo_treinador', d.tipoTreinador);
+    setValue('edit_u_telefone', d.telefone);
+    setValue('edit_u_data', d.data ? String(d.data).substring(0, 10) : '');
+    setValue('edit_u_clube', d.idClube);
     openModal('modalEditarUtilizador');
 }
 
 function editarCompeticao(d) {
-    document.getElementById('edit_c_id').value = d.id;
-    document.getElementById('edit_c_clube').value = d.clube;
-    document.getElementById('edit_c_nome').value = d.nome;
-    document.getElementById('edit_c_epoca').value = d.epoca;
+    setValue('edit_c_id', d.id);
+    setValue('edit_c_clube', d.clube);
+    setValue('edit_c_equipa', d.equipa);
+    setValue('edit_c_nome', d.nome);
+    setValue('edit_c_tipo', d.tipo);
+    setValue('edit_c_epoca', d.epoca);
+    setValue('edit_c_estado', d.estado);
+    setValue('edit_c_descricao', d.descricao);
     openModal('modalEditarCompeticao');
 }
 
 function editarJogador(d) {
-    document.getElementById('edit_j_id').value = d.id;
-    document.getElementById('edit_j_nome').value = d.nome;
-    document.getElementById('edit_j_num').value = d.num;
-    document.getElementById('edit_j_pos').value = d.pos;
-    document.getElementById('edit_j_equipa').value = d.equipa;
+    setValue('edit_j_id', d.id);
+    setValue('edit_j_nome', d.nome);
+    setValue('edit_j_alcunha', d.alcunha);
+    setValue('edit_j_num', d.num);
+    setValue('edit_j_pos', d.pos);
+    setValue('edit_j_pos_sec', d.posSec);
+    setValue('edit_j_data', d.data ? String(d.data).substring(0, 10) : '');
+    setValue('edit_j_local', d.local);
+    setValue('edit_j_nacionalidade', d.nacionalidade);
+    setValue('edit_j_pe', d.pe);
+    setValue('edit_j_altura', d.altura);
+    setValue('edit_j_peso', d.peso);
+    setValue('edit_j_instagram', d.instagram);
+    setValue('edit_j_facebook', d.facebook);
+    setValue('edit_j_twitter', d.twitter);
+    setValue('edit_j_equipa', d.equipa);
     openModal('modalEditarJogador');
 }
 
 function editarClube(d) {
-    document.getElementById('edit_cl_id').value = d.id;
-    document.getElementById('edit_cl_nome').value = d.nome;
-    document.getElementById('edit_cl_sigla').value = d.sigla;
-    document.getElementById('edit_cl_cor').value = d.cor;
+    setValue('edit_cl_id', d.id);
+    setValue('edit_cl_nome', d.nome);
+    setValue('edit_cl_sigla', d.sigla);
+    setValue('edit_cl_data_fundacao', d.dataFundacao ? String(d.dataFundacao).substring(0, 10) : '');
+    setValue('edit_cl_sede', d.sede);
+    setValue('edit_cl_pais', d.pais);
+    setValue('edit_cl_cidade', d.cidade);
+    setValue('edit_cl_telefone', d.telefone);
+    setValue('edit_cl_email', d.email);
+    setValue('edit_cl_website', d.website);
+    setValue('edit_cl_presidente', d.presidente);
+    setValue('edit_cl_instagram', d.instagram);
+    setValue('edit_cl_facebook', d.facebook);
+    setValue('edit_cl_youtube', d.youtube);
+    setValue('edit_cl_twitter', d.twitter);
+    setValue('edit_cl_tiktok', d.tiktok);
+    setValue('edit_cl_codigo', d.codigo);
+    setValue('edit_cl_cor', d.cor || '#000000');
     openModal('modalEditarClube');
 }
 
 function editarNotificacao(d) {
-    document.getElementById('edit_n_id').value = d.id;
-    document.getElementById('edit_n_titulo').value = d.titulo;
-    document.getElementById('edit_n_mensagem').value = d.mensagem;
+    setValue('edit_n_id', d.id);
+    setValue('edit_n_destinatario', d.destinatario);
+    setValue('edit_n_clube', d.clube);
+    setValue('edit_n_tipo', d.tipo);
+    setValue('edit_n_estado', d.estado);
+    setValue('edit_n_titulo', d.titulo);
+    setValue('edit_n_mensagem', d.mensagem);
     openModal('modalEditarNotificacao');
 }
 
@@ -2535,7 +2842,32 @@ function ordenarTabela(tableId, colIndex) {
     tabela.querySelectorAll('th')[colIndex]?.classList.add(asc ? 'th-asc' : 'th-desc');
 }
 
-/* Estado inicial conforme parâmetro ?view= */
+/* ══════════════════════════════════
+   SIDEBAR — efeito de deslize para títulos cortados
+   (não altera o tamanho nem o estilo da sidebar em si)
+══════════════════════════════════ */
+document.querySelectorAll('.sidebar a').forEach(a => {
+    const label = a.querySelector('.side-label');
+    if (!label) return;
+
+    label.addEventListener('transitionend', (event) => {
+        if (event.propertyName !== 'width') return;
+        const overflow = label.scrollWidth - label.clientWidth;
+        if (overflow > 2) {
+            label.style.setProperty('--marquee-distance', (-overflow - 4) + 'px');
+            label.classList.add('marquee-active');
+        } else {
+            label.classList.remove('marquee-active');
+            label.style.removeProperty('--marquee-distance');
+        }
+    });
+
+    a.addEventListener('mouseleave', () => {
+        label.classList.remove('marquee-active');
+    });
+});
+
+/* Estado inicial conforme parâmetro ?view= (predefinido: estatísticas) */
 document.addEventListener('DOMContentLoaded', function () {
     const initialView = <?= json_encode($viewMode) ?>;
     showScreen(initialView);
