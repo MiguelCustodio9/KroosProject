@@ -38,6 +38,14 @@ if (!in_array($viewMode, $viewsValidas, true)) {
     $viewMode = 'home';
 }
 
+/* ── Formatação de datas para DD/MM/AAAA ── */
+function formatarData($data, $comHora = false) {
+    if (empty($data) || $data === '0000-00-00' || $data === '0000-00-00 00:00:00') return '-';
+    $ts = strtotime($data);
+    if ($ts === false) return '-';
+    return $comHora ? date('d/m/Y H:i', $ts) : date('d/m/Y', $ts);
+}
+
 /* ── Buscar perfil do utilizador (admin de sistema) ── */
 $perfilUtilizador = [];
 $stmtPerfil = $conn->prepare("
@@ -67,9 +75,7 @@ if (isset($_SESSION['flash_erro'])) {
 }
 
 /* ══════════════════════════════════
-   AÇÕES POST (perfil / notificações)
-   Ainda sem outras funcionalidades — só o essencial partilhado
-   com o resto da plataforma.
+   AÇÕES POST (perfil / notificações / CRUD)
 ══════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
@@ -77,8 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     /* ══════════════════════════════════
        AÇÕES CRUD DA PLATAFORMA KROOS
     ══════════════════════════════════ */
-    
-    // GESTÃO DE UTILIZADORES
+
+    // GESTÃO DE UTILIZADORES — CRIAR (todos os campos)
     if ($acao === 'criar_utilizador') {
         $nome = trim($_POST['nome_utilizador'] ?? '');
         $email = trim($_POST['email_utilizador'] ?? '');
@@ -98,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: index-admin-sistema.php?view=utilizadores"); exit;
     }
 
+    // GESTÃO DE UTILIZADORES — EDITAR
     if ($acao === 'editar_utilizador') {
         $id = (int)($_POST['id_utilizador'] ?? 0);
         $nome = trim($_POST['nome_utilizador'] ?? '');
@@ -121,8 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Utilizador atualizado!";
         else $_SESSION['flash_erro'] = "Erro ao editar utilizador: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=utilizadores"); exit;
-}
-    
+    }
+
     if ($acao === 'eliminar_utilizador') {
         $id = (int)($_POST['id_utilizador'] ?? 0);
         $stmt = $conn->prepare("DELETE FROM utilizador WHERE id_utilizador = ? AND id_utilizador <> ?");
@@ -134,18 +141,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // GESTÃO DE COMPETIÇÕES
     if ($acao === 'criar_competicao') {
+        $idClube = (int)($_POST['id_clube'] ?? 0);
         $nomeCompId = (int)($_POST['nome_competicao_id'] ?? 1);
         $epoca = (int)($_POST['epoca'] ?? date('Y'));
         $fases = (int)($_POST['numero_fases'] ?? 1);
-        
-        $stmt = $conn->prepare("INSERT INTO competição (nome_competicao_id, época, número_fases) VALUES (?, ?, ?)");
-        $stmt->bind_param("iii", $nomeCompId, $epoca, $fases);
-        $stmt->execute();
-        $_SESSION['flash_sucesso'] = "Competição adicionada com sucesso!";
+
+        $stmt = $conn->prepare("INSERT INTO competicoes_clube (id_clube, nome_competicao_id, época, número_fases) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("iiii", $idClube, $nomeCompId, $epoca, $fases);
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Competição adicionada com sucesso!";
+        else $_SESSION['flash_erro'] = "Erro ao adicionar competição: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=competicoes"); exit;
     }
 
-    // COMPETIÇÕES — editar
     if ($acao === 'editar_competicao') {
         $id = (int)($_POST['competicao_id'] ?? 0);
         $idClube = (int)($_POST['id_clube'] ?? 0);
@@ -161,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'eliminar_competicao') {
         $id = (int)($_POST['competicao_id'] ?? 0);
-        $stmt = $conn->prepare("DELETE FROM competição WHERE competicao_id = ?");
+        $stmt = $conn->prepare("DELETE FROM competicoes_clube WHERE id_competicao = ?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Competição eliminada!";
@@ -174,15 +181,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pos = $_POST['posicao_principal'] ?? 'Médio';
         $num = (int)($_POST['numero_favorito'] ?? 0);
         $equipa = (int)($_POST['equipa_id'] ?? 1);
-        
-        $stmt = $conn->prepare("INSERT INTO jogadores (nome_completo, posição_principal, número_favorito, equipa_id) VALUES (?, ?, ?, ?)");
+
+        $stmt = $conn->prepare("INSERT INTO jogadores (nome_completo, posição_principal, número_favorito, id_equipa) VALUES (?, ?, ?, ?)");
         $stmt->bind_param("ssii", $nome, $pos, $num, $equipa);
-        $stmt->execute();
-        $_SESSION['flash_sucesso'] = "Jogador registado com sucesso!";
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Jogador registado com sucesso!";
+        else $_SESSION['flash_erro'] = "Erro ao registar jogador: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=jogadores"); exit;
     }
 
-    // JOGADORES — editar
     if ($acao === 'editar_jogador') {
         $id = (int)($_POST['jogador_id'] ?? 0);
         $nome = trim($_POST['nome_completo'] ?? '');
@@ -199,7 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'eliminar_jogador') {
         $id = (int)($_POST['jogador_id'] ?? 0);
-        $stmt = $conn->prepare("DELETE FROM jogadores WHERE jogador_id = ?");
+        $stmt = $conn->prepare("DELETE FROM jogadores WHERE id_jogador = ?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Jogador removido!";
@@ -211,11 +217,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nome = trim($_POST['nome_clube'] ?? '');
         $sigla = trim($_POST['sigla'] ?? '');
         $cor = $_POST['cor'] ?? '#000000';
-        
+
         $stmt = $conn->prepare("INSERT INTO clube (nome_clube, sigla, cor) VALUES (?, ?, ?)");
         $stmt->bind_param("sss", $nome, $sigla, $cor);
-        $stmt->execute();
-        $_SESSION['flash_sucesso'] = "Clube criado com sucesso!";
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Clube criado com sucesso!";
+        else $_SESSION['flash_erro'] = "Erro ao criar clube: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=clubes"); exit;
     }
 
@@ -234,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'eliminar_clube') {
         $id = (int)($_POST['clube_id'] ?? 0);
-        $stmt = $conn->prepare("DELETE FROM clube WHERE clube_id = ?");
+        $stmt = $conn->prepare("DELETE FROM clube WHERE id_clube = ?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
         $_SESSION['flash_sucesso'] = "Clube eliminado!";
@@ -246,11 +252,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dest = (int)($_POST['id_utilizador'] ?? 0);
         $tit = trim($_POST['titulo'] ?? '');
         $msg = trim($_POST['mensagem'] ?? '');
-        
+
         $stmt = $conn->prepare("INSERT INTO notificacao (id_utilizador, titulo, mensagem, tipo, estado) VALUES (?, ?, ?, 'sistema', 'Nao Lida')");
         $stmt->bind_param("iss", $dest, $tit, $msg);
-        $stmt->execute();
-        $_SESSION['flash_sucesso'] = "Notificação enviada!";
+        if ($stmt->execute()) $_SESSION['flash_sucesso'] = "Notificação enviada!";
+        else $_SESSION['flash_erro'] = "Erro ao enviar notificação: " . $stmt->error;
         header("Location: index-admin-sistema.php?view=notificacoes_gestao"); exit;
     }
 
@@ -411,10 +417,14 @@ $menusGestao = [
     'definicoes'             => ['label' => 'Definições Gerais',      'icon' => 'assets/settings.png'],
 ];
 
-/* ── Consultas Corrigidas para os Ecrãs da Plataforma Kroos ── */
+/* ── Consultas para os Ecrãs da Plataforma Kroos ── */
 
-// Lista de equipas (para selects e para mostrar nome em vez de ID)
-$listaEquipas = $conn->query("SELECT id_equipa, escalão FROM equipa ORDER BY escalão ASC")->fetch_all(MYSQLI_ASSOC);
+// 0. Lista de Equipas (para selects e para mostrar nome em vez de ID)
+$listaEquipas = $conn->query("
+    SELECT id_equipa, escalão
+    FROM equipa
+    ORDER BY escalão ASC
+")->fetch_all(MYSQLI_ASSOC);
 
 // 1. Gestão de Utilizadores
 $listaUtilizadores = $conn->query("
@@ -434,10 +444,18 @@ $listaUtilizadores = $conn->query("
     ORDER BY u.id_utilizador ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
-// 2. Lista de Competições (Junção entre 'competição' e o seu modelo 'competição_default')
+// 2. Lista de Competições — agora com o nome do clube
 $listaCompeticoes = $conn->query("
-    SELECT c.id_competicao, c.id_clube, c.id_equipa, c.nome, c.tipo, c.epoca, c.estado, c.descricao,
-           cl.nome_clube
+    SELECT 
+        c.id_competicao, 
+        c.id_clube, 
+        c.id_equipa, 
+        c.nome,
+        c.tipo,
+        c.epoca,
+        c.estado,
+        c.descricao,
+        cl.nome_clube
     FROM competicoes_clube c 
     LEFT JOIN clube cl ON c.id_clube = cl.id_clube
     ORDER BY c.id_competicao ASC
@@ -495,24 +513,25 @@ $listaClubes = $conn->query("
     ORDER BY c.id_clube ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
-// 5. Notificações de Gestão / Sistema (Ajustado para o modelo de mensagens/notificações)
-// 5. Notificações — nome do destinatário + nome do clube
+// 5. Notificações de Gestão / Sistema — agora com nome do destinatário e do clube
 $listaNotifGestao = $conn->query("
-    SELECT n.id_notificacao, n.id_clube, cl.nome_clube,
-           u.id_utilizador, u.nome_utilizador,
-           n.titulo, n.mensagem, n.tipo, n.estado, n.criada_em, n.lida_em
+    SELECT 
+        n.id_notificacao, 
+        n.id_clube,
+        cl.nome_clube,
+        u.id_utilizador, 
+        u.nome_utilizador,
+        n.titulo, 
+        n.mensagem, 
+        n.tipo,
+        n.estado, 
+        n.criada_em,
+        n.lida_em
     FROM notificacao n 
     INNER JOIN utilizador u ON n.id_utilizador = u.id_utilizador 
     LEFT JOIN clube cl ON n.id_clube = cl.id_clube
     ORDER BY n.criada_em ASC
 ")->fetch_all(MYSQLI_ASSOC);
-
-function formatarData($data, $comHora = false) {
-    if (empty($data) || $data === '0000-00-00' || $data === '0000-00-00 00:00:00') return '-';
-    $ts = strtotime($data);
-    if ($ts === false) return '-';
-    return $comHora ? date('d/m/Y H:i', $ts) : date('d/m/Y', $ts);
-}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -524,35 +543,12 @@ function formatarData($data, $comHora = false) {
 
 <style>
 
-/* Modal de edição */
-.modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,.5);
-    display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
-}
-.modal-overlay.active { display: flex; }
-.modal-box {
-    background: #fff; border-radius: 18px; padding: 26px; width: 100%; max-width: 520px;
-    max-height: 90vh; overflow-y: auto;
-}
-.modal-box h3 { margin-bottom: 16px; font-size: 18px; font-weight: 800; }
-.modal-box form { display: grid; gap: 10px; }
-.modal-box input, .modal-box select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; width: 100%; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
-.btn-cancel { background: #eee; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
-.btn-save { background: #000; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
-.btn-edit { background: #000; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 6px; }
-
-/* Pesquisa + ordenação */
-.table-search { padding: 9px 14px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; width: 260px; margin-bottom: 12px; }
-.kroos-table th { cursor: pointer; user-select: none; position: relative; }
-.kroos-table th.th-asc::after { content: ' ▲'; font-size: 10px; }
-.kroos-table th.th-desc::after { content: ' ▼'; font-size: 10px; }
-
 .kroos-table-wrap { width: 100%; overflow-x: auto; margin-top: 15px; }
 .kroos-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
 .kroos-table th, .kroos-table td { padding: 12px 16px; border-bottom: 1px solid #eaeaea; }
 .kroos-table th { background: #fafafa; font-weight: 700; text-transform: uppercase; font-size: 11px; }
 .btn-delete { background: #b00020; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.btn-edit { background: #228B22; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 6px; }
 .kroos-form-inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; background: #fafafa; padding: 16px; border-radius: 12px; border: 1px solid #eaeaea; }
 .kroos-form-inline input, .kroos-form-inline select { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
 
@@ -1097,7 +1093,7 @@ body.layout-locked .main {
 .notification-row.unread .notification-check { background: #fff; border-color: #000; color: #000; }
 
 /* ══════════════════════════════════
-   ECRÃS DE GESTÃO (vazios por agora)
+   ECRÃS DE GESTÃO
 ══════════════════════════════════ */
 .screen-shell {
     background: #fff;
@@ -1281,6 +1277,44 @@ body.layout-locked .main {
     .stat-card .stat-value { font-size: 24px; }
 }
 
+/* ══════════════════════════════════
+   MODAIS DE EDIÇÃO
+══════════════════════════════════ */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+    background: #fff; border-radius: 18px; padding: 26px; width: 100%; max-width: 520px;
+    max-height: 90vh; overflow-y: auto;
+}
+.modal-box h3 { margin-bottom: 16px; font-size: 18px; font-weight: 800; }
+.modal-box form { display: grid; gap: 10px; }
+.modal-box input, .modal-box select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; width: 100%; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.btn-cancel { background: #eee; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+.btn-save { background: #000; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+
+/* ══════════════════════════════════
+   PESQUISA E ORDENAÇÃO DE TABELAS
+══════════════════════════════════ */
+.table-search {
+    padding: 9px 14px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+    width: 260px;
+    margin-bottom: 12px;
+}
+.kroos-table th {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+.kroos-table th.th-asc::after { content: ' ▲'; font-size: 10px; }
+.kroos-table th.th-desc::after { content: ' ▼'; font-size: 10px; }
+
 </style>
 </head>
 <body>
@@ -1383,7 +1417,7 @@ body.layout-locked .main {
 
                             <div class="profile-field">
                                 <label>Data de Nascimento</label>
-                                <input class="profile-input" type="date" value="<?= formatarData($perfilUtilizador['data_nascimento'] ?? '') ?>" name="data_nascimento">
+                                <input class="profile-input" type="date" value="<?= htmlspecialchars($perfilUtilizador['data_nascimento'] ?? '') ?>" name="data_nascimento">
                             </div>
                         </div>
 
@@ -1570,7 +1604,7 @@ body.layout-locked .main {
                     <p class="trainer-page-subtitle">Visualiza e gere os utilizadores registados na plataforma Kroos.</p>
                 </div>
             </div>
-            
+
             <form method="post" class="kroos-form-inline" enctype="multipart/form-data">
                 <input type="hidden" name="acao" value="criar_utilizador">
                 <input type="text" name="nome_utilizador" placeholder="Nome de Utilizador" required>
@@ -1595,11 +1629,24 @@ body.layout-locked .main {
                 <input type="file" name="foto_perfil" accept="image/*">
                 <button type="submit" class="btn-create">+ Adicionar Utilizador</button>
             </form>
-            
+
+            <input type="search" class="table-search" placeholder="Pesquisar utilizadores..." oninput="filtrarTabela('tabela-utilizadores', this.value)">
+
             <div class="kroos-table-wrap">
-                <table class="kroos-table">
+                <table class="kroos-table" id="tabela-utilizadores">
                     <thead>
-                        <tr><th>ID</th><th>Utilizador</th><th>Nome Completo</th><th>Foto de Perfil</th><th>Telefone</th><th>Data de Nascimento</th><th>Email</th><th>Tipo de Utilizador</th><th>Tipo de Treinador</th><th>Ações</th></tr>
+                        <tr>
+                            <th onclick="ordenarTabela('tabela-utilizadores',0)">ID</th>
+                            <th onclick="ordenarTabela('tabela-utilizadores',1)">Utilizador</th>
+                            <th onclick="ordenarTabela('tabela-utilizadores',2)">Nome Completo</th>
+                            <th>Foto de Perfil</th>
+                            <th onclick="ordenarTabela('tabela-utilizadores',4)">Telefone</th>
+                            <th onclick="ordenarTabela('tabela-utilizadores',5)">Data de Nascimento</th>
+                            <th onclick="ordenarTabela('tabela-utilizadores',6)">Email</th>
+                            <th onclick="ordenarTabela('tabela-utilizadores',7)">Tipo de Utilizador</th>
+                            <th onclick="ordenarTabela('tabela-utilizadores',8)">Tipo de Treinador</th>
+                            <th>Ações</th>
+                        </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaUtilizadores as $u): ?>
@@ -1608,15 +1655,25 @@ body.layout-locked .main {
                             <td><strong><?= htmlspecialchars($u['nome_utilizador']) ?></strong></td>
                             <td><?= htmlspecialchars(($u['primeiro_nome'] ?? '').' '.($u['último_nome'] ?? '')) ?></td>
                             <td>
-                                <img src="caminho/para/pasta/<?= htmlspecialchars($c['foto_perfil']) ?>" alt="Foto de Perfil" style="width: 40px; height: 40px; object-fit: cover;">
+                                <img src="caminho/para/pasta/<?= htmlspecialchars($u['foto_perfil'] ?? '') ?>" alt="Foto de Perfil" style="width: 40px; height: 40px; object-fit: cover;">
                             </td>
-                            <td><?= htmlspecialchars($u['telefone_utilizador']) ?></td>
+                            <td><?= htmlspecialchars($u['telefone_utilizador'] ?? '') ?></td>
                             <td><?= formatarData($u['data_nascimento']) ?></td>
                             <td><?= htmlspecialchars($u['email_utilizador']) ?></td>
                             <td><span class="badge"><?= htmlspecialchars($u['tipo_utilizador']) ?></span></td>
-                            <td><span class="badge"><?= htmlspecialchars($u['tipo_treinador']) ?></span></td>
+                            <td><span class="badge"><?= htmlspecialchars($u['tipo_treinador'] ?? '') ?></span></td>
                             <td>
-                                <form method="post" onsubmit="return confirm('Eliminar utilizador?');">
+                                <button class="btn-edit" type="button" onclick='editarUtilizador(<?= json_encode([
+                                    "id" => $u['id_utilizador'],
+                                    "nome" => $u['nome_utilizador'],
+                                    "email" => $u['email_utilizador'],
+                                    "pnome" => $u['primeiro_nome'],
+                                    "unome" => $u['último_nome'],
+                                    "tipo" => $u['tipo_utilizador'],
+                                    "telefone" => $u['telefone_utilizador'],
+                                    "data" => $u['data_nascimento']
+                                ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
+                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar utilizador?');">
                                     <input type="hidden" name="acao" value="eliminar_utilizador">
                                     <input type="hidden" name="id_utilizador" value="<?= $u['id_utilizador'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -1640,16 +1697,31 @@ body.layout-locked .main {
 
             <form method="post" class="kroos-form-inline">
                 <input type="hidden" name="acao" value="criar_competicao">
+                <select name="id_clube" required>
+                    <?php foreach ($listaClubes as $cl): ?>
+                        <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
+                    <?php endforeach; ?>
+                </select>
                 <input type="number" name="nome_competicao_id" placeholder="ID Modelo Competição" required>
                 <input type="number" name="epoca" placeholder="Época (Ano)" value="<?= date('Y') ?>" required>
-                <input type="number" name="clube" placeholder= "Clube" required>
                 <button type="submit" class="btn-create">+ Adicionar Competição</button>
             </form>
 
+            <input type="search" class="table-search" placeholder="Pesquisar competições..." oninput="filtrarTabela('tabela-competicoes', this.value)">
+
             <div class="kroos-table-wrap">
-                <table class="kroos-table">
+                <table class="kroos-table" id="tabela-competicoes">
                     <thead>
-                        <tr><th>ID</th><th>Competição</th><th>Época</th><th>Clube</th><th>Tipo</th><th>Estado</th><th>Descrição</th><th>Ações</th></tr>
+                        <tr>
+                            <th onclick="ordenarTabela('tabela-competicoes',0)">ID</th>
+                            <th onclick="ordenarTabela('tabela-competicoes',1)">Competição</th>
+                            <th onclick="ordenarTabela('tabela-competicoes',2)">Época</th>
+                            <th onclick="ordenarTabela('tabela-competicoes',3)">Clube</th>
+                            <th onclick="ordenarTabela('tabela-competicoes',4)">Tipo</th>
+                            <th onclick="ordenarTabela('tabela-competicoes',5)">Estado</th>
+                            <th>Descrição</th>
+                            <th>Ações</th>
+                        </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaCompeticoes as $c): ?>
@@ -1657,12 +1729,18 @@ body.layout-locked .main {
                             <td><?= $c['id_competicao'] ?></td>
                             <td><strong><?= htmlspecialchars($c['nome']) ?></strong></td>
                             <td><?= htmlspecialchars($c['epoca']) ?></td>
-                            <td><?= htmlspecialchars($c['id_clube']) ?></td>
+                            <td><?= htmlspecialchars($c['nome_clube'] ?? $c['id_clube']) ?></td>
                             <td><?= htmlspecialchars($c['tipo']) ?></td>
                             <td><?= htmlspecialchars($c['estado']) ?></td>
                             <td><?= htmlspecialchars($c['descricao']) ?></td>
                             <td>
-                                <form method="post" onsubmit="return confirm('Eliminar competição?');">
+                                <button class="btn-edit" type="button" onclick='editarCompeticao(<?= json_encode([
+                                    "id" => $c['id_competicao'],
+                                    "clube" => $c['id_clube'],
+                                    "nome" => $c['nome'],
+                                    "epoca" => $c['epoca']
+                                ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
+                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar competição?');">
                                     <input type="hidden" name="acao" value="eliminar_competicao">
                                     <input type="hidden" name="competicao_id" value="<?= $c['id_competicao'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -1694,14 +1772,39 @@ body.layout-locked .main {
                     <option value="Médio">Médio</option>
                     <option value="Avançado">Avançado</option>
                 </select>
-                <input type="number" name="equipa_id" placeholder="ID Equipa" required>
+                <select name="equipa_id" required>
+                    <?php foreach ($listaEquipas as $eq): ?>
+                        <option value="<?= $eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão']) ?></option>
+                    <?php endforeach; ?>
+                </select>
                 <button type="submit" class="btn-create">+ Adicionar Jogador</button>
             </form>
 
+            <input type="search" class="table-search" placeholder="Pesquisar jogadores..." oninput="filtrarTabela('tabela-jogadores', this.value)">
+
             <div class="kroos-table-wrap">
-                <table class="kroos-table">
+                <table class="kroos-table" id="tabela-jogadores">
                     <thead>
-                        <tr><th>ID</th><th>Nome Completo</th><th>Alcunha</th><th>Foto de Jogador</th><th>Dorsal</th><th>Posição Principal</th><th>Posição Secundária</th><th>Data de Nascimento</th><th>Local de Nascimento</th><th>Nacionalidade</th><th>País de Nascimento</th><th>Pé Preferencial</th><th>Altura</th><th>Peso</th><th>Instagram</th><th>Facebook</th><th>Twitter</th><th>Equipa</th><th>Ações</th></tr>
+                        <tr>
+                            <th onclick="ordenarTabela('tabela-jogadores',0)">ID</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',1)">Nome Completo</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',2)">Alcunha</th>
+                            <th>Foto de Jogador</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',4)">Dorsal</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',5)">Posição Principal</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',6)">Posição Secundária</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',7)">Data de Nascimento</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',8)">Local de Nascimento</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',9)">Nacionalidade</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',10)">Pé Preferencial</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',11)">Altura</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',12)">Peso</th>
+                            <th>Instagram</th>
+                            <th>Facebook</th>
+                            <th>Twitter</th>
+                            <th onclick="ordenarTabela('tabela-jogadores',16)">Equipa</th>
+                            <th>Ações</th>
+                        </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaJogadores as $j): ?>
@@ -1718,18 +1821,24 @@ body.layout-locked .main {
                             <td><?= formatarData($j['data_nascimento']) ?></td>
                             <td><?= htmlspecialchars($j['local_nascimento']) ?></td>
                             <td><?= htmlspecialchars($j['nacionalidade']) ?></td>
-                            <td><?= htmlspecialchars($j['nacionalidade']) ?></td>
                             <td><?= htmlspecialchars($j['pé_preferencial']) ?></td>
                             <td><?= htmlspecialchars($j['altura']) ?> m</td>
                             <td><?= htmlspecialchars($j['peso']) ?> kg</td>
                             <td><?= htmlspecialchars($j['instagram']) ?></td>
                             <td><?= htmlspecialchars($j['facebook']) ?></td>
                             <td><?= htmlspecialchars($j['twitter']) ?></td>
-                            <td><?= htmlspecialchars($j['id_equipa']) ?></td>
+                            <td><?= htmlspecialchars($j['escalão'] ?? $j['id_equipa']) ?></td>
                             <td>
-                                <form method="post" onsubmit="return confirm('Eliminar jogador?');">
+                                <button class="btn-edit" type="button" onclick='editarJogador(<?= json_encode([
+                                    "id" => $j['id_jogador'],
+                                    "nome" => $j['nome_completo'],
+                                    "num" => $j['número_favorito'],
+                                    "pos" => $j['posição_principal'],
+                                    "equipa" => $j['id_equipa']
+                                ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
+                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar jogador?');">
                                     <input type="hidden" name="acao" value="eliminar_jogador">
-                                    <input type="hidden" name="id_jogador" value="<?= $j['id_jogador'] ?>">
+                                    <input type="hidden" name="jogador_id" value="<?= $j['id_jogador'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
                                 </form>
                             </td>
@@ -1757,10 +1866,33 @@ body.layout-locked .main {
                 <button type="submit" class="btn-create">+ Adicionar Clube</button>
             </form>
 
+            <input type="search" class="table-search" placeholder="Pesquisar clubes..." oninput="filtrarTabela('tabela-clubes', this.value)">
+
             <div class="kroos-table-wrap">
-                <table class="kroos-table">
+                <table class="kroos-table" id="tabela-clubes">
                     <thead>
-                        <tr><th>ID</th><th>Nome do Clube</th><th>Sigla</th><th>Logótipo</th><th>Cor</th><th>Data de Fundação</th><th>Sede</th><th>País</th><th>Cidade</th><th>Telefone</th><th>Email</th><th>Website</th><th>Presidente</th><th>Instagram</th><th>Facebook</th><th>Youtube</th><th>Twitter</th><th>Tiktok</th><th>Código</th><th>Ações</th></tr>
+                        <tr>
+                            <th onclick="ordenarTabela('tabela-clubes',0)">ID</th>
+                            <th onclick="ordenarTabela('tabela-clubes',1)">Nome do Clube</th>
+                            <th onclick="ordenarTabela('tabela-clubes',2)">Sigla</th>
+                            <th>Logótipo</th>
+                            <th>Cor</th>
+                            <th onclick="ordenarTabela('tabela-clubes',5)">Data de Fundação</th>
+                            <th onclick="ordenarTabela('tabela-clubes',6)">Sede</th>
+                            <th onclick="ordenarTabela('tabela-clubes',7)">País</th>
+                            <th onclick="ordenarTabela('tabela-clubes',8)">Cidade</th>
+                            <th>Telefone</th>
+                            <th>Email</th>
+                            <th>Website</th>
+                            <th>Presidente</th>
+                            <th>Instagram</th>
+                            <th>Facebook</th>
+                            <th>Youtube</th>
+                            <th>Twitter</th>
+                            <th>Tiktok</th>
+                            <th>Código</th>
+                            <th>Ações</th>
+                        </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaClubes as $cl): ?>
@@ -1787,7 +1919,13 @@ body.layout-locked .main {
                             <td><?= htmlspecialchars($cl['tiktok_clube']) ?></td>
                             <td><?= htmlspecialchars($cl['código_clube']) ?></td>
                             <td>
-                                <form method="post" onsubmit="return confirm('Eliminar clube?');">
+                                <button class="btn-edit" type="button" onclick='editarClube(<?= json_encode([
+                                    "id" => $cl['id_clube'],
+                                    "nome" => $cl['nome_clube'],
+                                    "sigla" => $cl['sigla'],
+                                    "cor" => $cl['cor']
+                                ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
+                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar clube?');">
                                     <input type="hidden" name="acao" value="eliminar_clube">
                                     <input type="hidden" name="clube_id" value="<?= $cl['id_clube'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -1821,24 +1959,41 @@ body.layout-locked .main {
                 <button type="submit" class="btn-create">Enviar Notificação</button>
             </form>
 
+            <input type="search" class="table-search" placeholder="Pesquisar notificações..." oninput="filtrarTabela('tabela-notificacoes', this.value)">
+
             <div class="kroos-table-wrap">
-                <table class="kroos-table">
+                <table class="kroos-table" id="tabela-notificacoes">
                     <thead>
-                        <tr><th>ID</th><th>Destinatário</th><th>Clube do Destinatário</th><th>Tipo</th><th>Título</th><th>Estado</th><th>Data de Criação</th><th>Data de Leitura</th><th>Ações</th></tr>
+                        <tr>
+                            <th onclick="ordenarTabela('tabela-notificacoes',0)">ID</th>
+                            <th onclick="ordenarTabela('tabela-notificacoes',1)">Destinatário</th>
+                            <th onclick="ordenarTabela('tabela-notificacoes',2)">Clube do Destinatário</th>
+                            <th onclick="ordenarTabela('tabela-notificacoes',3)">Tipo</th>
+                            <th onclick="ordenarTabela('tabela-notificacoes',4)">Título</th>
+                            <th onclick="ordenarTabela('tabela-notificacoes',5)">Estado</th>
+                            <th onclick="ordenarTabela('tabela-notificacoes',6)">Data de Criação</th>
+                            <th onclick="ordenarTabela('tabela-notificacoes',7)">Data de Leitura</th>
+                            <th>Ações</th>
+                        </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($listaNotifGestao as $ng): ?>
                         <tr>
                             <td><?= $ng['id_notificacao'] ?></td>
-                            <td><strong><?= htmlspecialchars($ng['id_utilizador']) ?></strong></td>
-                            <td><?= htmlspecialchars($ng['id_clube']) ?></td>
+                            <td><strong><?= htmlspecialchars($ng['nome_utilizador']) ?></strong></td>
+                            <td><?= htmlspecialchars($ng['nome_clube'] ?? '-') ?></td>
                             <td><?= htmlspecialchars($ng['tipo']) ?></td>
                             <td><?= htmlspecialchars($ng['titulo']) ?></td>
                             <td><?= htmlspecialchars($ng['estado']) ?></td>
-                            <td><?= formatarData($ng['criada_em']) ?></td>
-                            <td><?= formatarData($ng['lida_em'], 'comHora=false') ?></td>
+                            <td><?= formatarData($ng['criada_em'], true) ?></td>
+                            <td><?= formatarData($ng['lida_em'], true) ?></td>
                             <td>
-                                <form method="post" onsubmit="return confirm('Eliminar notificação?');">
+                                <button class="btn-edit" type="button" onclick='editarNotificacao(<?= json_encode([
+                                    "id" => $ng['id_notificacao'],
+                                    "titulo" => $ng['titulo'],
+                                    "mensagem" => $ng['mensagem']
+                                ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
+                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar notificação?');">
                                     <input type="hidden" name="acao" value="eliminar_notificacao">
                                     <input type="hidden" name="id_notificacao" value="<?= $ng['id_notificacao'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -1865,6 +2020,122 @@ body.layout-locked .main {
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAIS DE EDIÇÃO
+══════════════════════════════════ -->
+
+<!-- MODAL EDITAR UTILIZADOR -->
+<div class="modal-overlay" id="modalEditarUtilizador">
+    <div class="modal-box">
+        <h3>Editar Utilizador</h3>
+        <form method="post">
+            <input type="hidden" name="acao" value="editar_utilizador">
+            <input type="hidden" id="edit_u_id" name="id_utilizador">
+            <input type="text" id="edit_u_nome" name="nome_utilizador" placeholder="Nome de Utilizador" required>
+            <input type="email" id="edit_u_email" name="email_utilizador" placeholder="Email" required>
+            <input type="text" id="edit_u_pnome" name="primeiro_nome" placeholder="Primeiro Nome" required>
+            <input type="text" id="edit_u_unome" name="ultimo_nome" placeholder="Último Nome" required>
+            <input type="tel" id="edit_u_telefone" name="telefone_utilizador" placeholder="Telefone">
+            <input type="date" id="edit_u_data" name="data_nascimento">
+            <select id="edit_u_tipo" name="tipo_utilizador">
+                <option value="jogador">Jogador</option>
+                <option value="treinador">Treinador</option>
+                <option value="admin_clube">Admin Clube</option>
+                <option value="admin">Admin Sistema</option>
+            </select>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeModal('modalEditarUtilizador')">Cancelar</button>
+                <button type="submit" class="btn-save">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL EDITAR COMPETIÇÃO -->
+<div class="modal-overlay" id="modalEditarCompeticao">
+    <div class="modal-box">
+        <h3>Editar Competição</h3>
+        <form method="post">
+            <input type="hidden" name="acao" value="editar_competicao">
+            <input type="hidden" id="edit_c_id" name="competicao_id">
+            <select id="edit_c_clube" name="id_clube" required>
+                <?php foreach ($listaClubes as $cl): ?>
+                    <option value="<?= $cl['id_clube'] ?>"><?= htmlspecialchars($cl['nome_clube']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="number" id="edit_c_nome" name="nome_competicao_id" placeholder="ID Modelo Competição" required>
+            <input type="number" id="edit_c_epoca" name="epoca" placeholder="Época">
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeModal('modalEditarCompeticao')">Cancelar</button>
+                <button type="submit" class="btn-save">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL EDITAR JOGADOR -->
+<div class="modal-overlay" id="modalEditarJogador">
+    <div class="modal-box">
+        <h3>Editar Jogador</h3>
+        <form method="post">
+            <input type="hidden" name="acao" value="editar_jogador">
+            <input type="hidden" id="edit_j_id" name="jogador_id">
+            <input type="text" id="edit_j_nome" name="nome_completo" placeholder="Nome Completo" required>
+            <input type="number" id="edit_j_num" name="numero_favorito" placeholder="Dorsal">
+            <select id="edit_j_pos" name="posicao_principal">
+                <option value="Guarda-Redes">Guarda-Redes</option>
+                <option value="Defesa">Defesa</option>
+                <option value="Médio">Médio</option>
+                <option value="Avançado">Avançado</option>
+            </select>
+            <select id="edit_j_equipa" name="equipa_id" required>
+                <?php foreach ($listaEquipas as $eq): ?>
+                    <option value="<?= $eq['id_equipa'] ?>"><?= htmlspecialchars($eq['escalão']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeModal('modalEditarJogador')">Cancelar</button>
+                <button type="submit" class="btn-save">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL EDITAR CLUBE -->
+<div class="modal-overlay" id="modalEditarClube">
+    <div class="modal-box">
+        <h3>Editar Clube</h3>
+        <form method="post">
+            <input type="hidden" name="acao" value="editar_clube">
+            <input type="hidden" id="edit_cl_id" name="clube_id">
+            <input type="text" id="edit_cl_nome" name="nome_clube" placeholder="Nome do Clube" required>
+            <input type="text" id="edit_cl_sigla" name="sigla" placeholder="Sigla">
+            <input type="color" id="edit_cl_cor" name="cor">
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeModal('modalEditarClube')">Cancelar</button>
+                <button type="submit" class="btn-save">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL EDITAR NOTIFICAÇÃO -->
+<div class="modal-overlay" id="modalEditarNotificacao">
+    <div class="modal-box">
+        <h3>Editar Notificação</h3>
+        <form method="post">
+            <input type="hidden" name="acao" value="editar_notificacao">
+            <input type="hidden" id="edit_n_id" name="id_notificacao">
+            <input type="text" id="edit_n_titulo" name="titulo" placeholder="Título" required>
+            <input type="text" id="edit_n_mensagem" name="mensagem" placeholder="Mensagem" required>
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" onclick="closeModal('modalEditarNotificacao')">Cancelar</button>
+                <button type="submit" class="btn-save">Guardar</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -1899,6 +2170,7 @@ function closeAlert(buttonEl) {
 
 /* Gestão de ecrãs */
 const TODOS_OS_ECRAS = ['profileScreen', 'notificationsScreen', 'screen-home', 'screen-utilizadores', 'screen-competicoes', 'screen-jogadores', 'screen-clubes', 'screen-notificacoes_gestao', 'screen-definicoes', 'screen-estatisticas'];
+
 function hideAllScreens() {
     TODOS_OS_ECRAS.forEach(id => {
         const el = document.getElementById(id);
@@ -2163,13 +2435,9 @@ if (btnEditarFotoPerfil && fotoPerfilInput) {
     });
 });
 
-/* Estado inicial conforme parâmetro ?view= */
-document.addEventListener('DOMContentLoaded', function () {
-    const initialView = <?= json_encode($viewMode) ?>;
-    showScreen(initialView);
-});
-
-/* Modal genérico */
+/* ══════════════════════════════════
+   MODAIS DE EDIÇÃO
+══════════════════════════════════ */
 function openModal(id) {
     const m = document.getElementById(id);
     if (m) m.classList.add('active');
@@ -2179,7 +2447,59 @@ function closeModal(id) {
     if (m) m.classList.remove('active');
 }
 
-/* Pesquisa em tabela */
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) overlay.classList.remove('active');
+    });
+});
+
+function editarUtilizador(d) {
+    document.getElementById('edit_u_id').value = d.id;
+    document.getElementById('edit_u_nome').value = d.nome;
+    document.getElementById('edit_u_email').value = d.email;
+    document.getElementById('edit_u_pnome').value = d.pnome;
+    document.getElementById('edit_u_unome').value = d.unome;
+    document.getElementById('edit_u_tipo').value = d.tipo;
+    document.getElementById('edit_u_telefone').value = d.telefone || '';
+    document.getElementById('edit_u_data').value = d.data ? d.data.substring(0, 10) : '';
+    openModal('modalEditarUtilizador');
+}
+
+function editarCompeticao(d) {
+    document.getElementById('edit_c_id').value = d.id;
+    document.getElementById('edit_c_clube').value = d.clube;
+    document.getElementById('edit_c_nome').value = d.nome;
+    document.getElementById('edit_c_epoca').value = d.epoca;
+    openModal('modalEditarCompeticao');
+}
+
+function editarJogador(d) {
+    document.getElementById('edit_j_id').value = d.id;
+    document.getElementById('edit_j_nome').value = d.nome;
+    document.getElementById('edit_j_num').value = d.num;
+    document.getElementById('edit_j_pos').value = d.pos;
+    document.getElementById('edit_j_equipa').value = d.equipa;
+    openModal('modalEditarJogador');
+}
+
+function editarClube(d) {
+    document.getElementById('edit_cl_id').value = d.id;
+    document.getElementById('edit_cl_nome').value = d.nome;
+    document.getElementById('edit_cl_sigla').value = d.sigla;
+    document.getElementById('edit_cl_cor').value = d.cor;
+    openModal('modalEditarClube');
+}
+
+function editarNotificacao(d) {
+    document.getElementById('edit_n_id').value = d.id;
+    document.getElementById('edit_n_titulo').value = d.titulo;
+    document.getElementById('edit_n_mensagem').value = d.mensagem;
+    openModal('modalEditarNotificacao');
+}
+
+/* ══════════════════════════════════
+   PESQUISA E ORDENAÇÃO DE TABELAS
+══════════════════════════════════ */
 function filtrarTabela(tableId, termo) {
     const tabela = document.getElementById(tableId);
     if (!tabela) return;
@@ -2189,7 +2509,6 @@ function filtrarTabela(tableId, termo) {
     });
 }
 
-/* Ordenação por coluna */
 const ordenacaoEstado = {};
 function ordenarTabela(tableId, colIndex) {
     const tabela = document.getElementById(tableId);
@@ -2216,47 +2535,11 @@ function ordenarTabela(tableId, colIndex) {
     tabela.querySelectorAll('th')[colIndex]?.classList.add(asc ? 'th-asc' : 'th-desc');
 }
 
-/* Preencher e abrir modal de edição com os dados da linha */
-function editarUtilizador(d) {
-    document.getElementById('edit_u_id').value = d.id;
-    document.getElementById('edit_u_nome').value = d.nome;
-    document.getElementById('edit_u_email').value = d.email;
-    document.getElementById('edit_u_pnome').value = d.pnome;
-    document.getElementById('edit_u_unome').value = d.unome;
-    document.getElementById('edit_u_tipo').value = d.tipo;
-    document.getElementById('edit_u_telefone').value = d.telefone || '';
-    document.getElementById('edit_u_data').value = d.data || '';
-    openModal('modalEditarUtilizador');
-}
-function editarCompeticao(d) {
-    document.getElementById('edit_c_id').value = d.id;
-    document.getElementById('edit_c_clube').value = d.clube;
-    document.getElementById('edit_c_nome').value = d.nome;
-    document.getElementById('edit_c_epoca').value = d.epoca;
-    openModal('modalEditarCompeticao');
-}
-function editarJogador(d) {
-    document.getElementById('edit_j_id').value = d.id;
-    document.getElementById('edit_j_nome').value = d.nome;
-    document.getElementById('edit_j_num').value = d.num;
-    document.getElementById('edit_j_pos').value = d.pos;
-    document.getElementById('edit_j_equipa').value = d.equipa;
-    openModal('modalEditarJogador');
-}
-function editarClube(d) {
-    document.getElementById('edit_cl_id').value = d.id;
-    document.getElementById('edit_cl_nome').value = d.nome;
-    document.getElementById('edit_cl_sigla').value = d.sigla;
-    document.getElementById('edit_cl_cor').value = d.cor;
-    openModal('modalEditarClube');
-}
-function editarNotificacao(d) {
-    document.getElementById('edit_n_id').value = d.id;
-    document.getElementById('edit_n_titulo').value = d.titulo;
-    document.getElementById('edit_n_mensagem').value = d.mensagem;
-    openModal('modalEditarNotificacao');
-}
-
+/* Estado inicial conforme parâmetro ?view= */
+document.addEventListener('DOMContentLoaded', function () {
+    const initialView = <?= json_encode($viewMode) ?>;
+    showScreen(initialView);
+});
 </script>
 
 </body>
