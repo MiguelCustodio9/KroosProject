@@ -653,6 +653,23 @@ body { background: #ffffff; color: #000000; }
 
 body.layout-locked { overflow: hidden; }
 
+
+.td-acoes {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+.td-acoes .btn-edit,
+.td-acoes .btn-delete {
+    margin-right: 0;
+    width: 100%;
+    text-align: center;
+}
+.td-acoes form {
+    width: 100%;
+}
+
 /* ══════════════════════════════════
    TOP BAR
 ══════════════════════════════════ */
@@ -1761,7 +1778,7 @@ body.layout-locked .main {
                             <td><?= htmlspecialchars($u['email_utilizador']) ?></td>
                             <td><span class="badge"><?= htmlspecialchars($u['tipo_utilizador']) ?></span></td>
                             <td><span class="badge"><?= htmlspecialchars($u['tipo_treinador'] ?? '') ?></span></td>
-                            <td>
+                            <td class="td-acoes">
                                 <button class="btn-edit" type="button" onclick='editarUtilizador(<?= json_encode([
                                     "id" => $u['id_utilizador'],
                                     "nome" => $u['nome_utilizador'],
@@ -1774,7 +1791,7 @@ body.layout-locked .main {
                                     "data" => $u['data_nascimento'],
                                     "idClube" => $u['id_clube']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
-                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar utilizador?');">
+                                <form method="post" onsubmit="return confirm('Eliminar utilizador?');">
                                     <input type="hidden" name="acao" value="eliminar_utilizador">
                                     <input type="hidden" name="id_utilizador" value="<?= $u['id_utilizador'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -1847,7 +1864,7 @@ body.layout-locked .main {
                             <td><?= htmlspecialchars($c['tipo']) ?></td>
                             <td><?= htmlspecialchars($c['estado']) ?></td>
                             <td><?= htmlspecialchars($c['descricao']) ?></td>
-                            <td>
+                            <td class="td-acoes">
                                 <button class="btn-edit" type="button" onclick='editarCompeticao(<?= json_encode([
                                     "id" => $c['id_competicao'],
                                     "clube" => $c['id_clube'],
@@ -1858,7 +1875,7 @@ body.layout-locked .main {
                                     "estado" => $c['estado'],
                                     "descricao" => $c['descricao']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
-                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar competição?');">
+                                <form method="post" onsubmit="return confirm('Eliminar competição?');">
                                     <input type="hidden" name="acao" value="eliminar_competicao">
                                     <input type="hidden" name="competicao_id" value="<?= $c['id_competicao'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -1969,7 +1986,7 @@ body.layout-locked .main {
                             <td><?= htmlspecialchars($j['facebook']) ?></td>
                             <td><?= htmlspecialchars($j['twitter']) ?></td>
                             <td><?= htmlspecialchars($j['escalão'] ?? $j['id_equipa']) ?></td>
-                            <td>
+                            <td class="td-acoes">
                                 <button class="btn-edit" type="button" onclick='editarJogador(<?= json_encode([
                                     "id" => $j['id_jogador'],
                                     "nome" => $j['nome_completo'],
@@ -1988,7 +2005,7 @@ body.layout-locked .main {
                                     "twitter" => $j['twitter'],
                                     "equipa" => $j['id_equipa']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
-                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar jogador?');">
+                                <form method="post" onsubmit="return confirm('Eliminar jogador?');">
                                     <input type="hidden" name="acao" value="eliminar_jogador">
                                     <input type="hidden" name="jogador_id" value="<?= $j['id_jogador'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -2085,7 +2102,7 @@ body.layout-locked .main {
                             <td><?= htmlspecialchars($cl['twitter_clube']) ?></td>
                             <td><?= htmlspecialchars($cl['tiktok_clube']) ?></td>
                             <td><?= htmlspecialchars($cl['código_clube']) ?></td>
-                            <td>
+                            <td class="td-acoes">
                                 <button class="btn-edit" type="button" onclick='editarClube(<?= json_encode([
                                     "id" => $cl['id_clube'],
                                     "nome" => $cl['nome_clube'],
@@ -2106,7 +2123,7 @@ body.layout-locked .main {
                                     "codigo" => $cl['código_clube'],
                                     "cor" => $cl['cor']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
-                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar clube?');">
+                                <form method="post" onsubmit="return confirm('Eliminar clube?');">
                                     <input type="hidden" name="acao" value="eliminar_clube">
                                     <input type="hidden" name="clube_id" value="<?= $cl['id_clube'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
@@ -2175,7 +2192,7 @@ body.layout-locked .main {
                             <td><?= htmlspecialchars($ng['estado']) ?></td>
                             <td><?= formatarData($ng['criada_em'], true) ?></td>
                             <td><?= formatarData($ng['lida_em'], true) ?></td>
-                            <td>
+                            <td class="td-acoes">
                                 <button class="btn-edit" type="button" onclick='editarNotificacao(<?= json_encode([
                                     "id" => $ng['id_notificacao'],
                                     "destinatario" => $ng['id_utilizador'],
@@ -2185,7 +2202,7 @@ body.layout-locked .main {
                                     "tipo" => $ng['tipo'],
                                     "estado" => $ng['estado']
                                 ], JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>Editar</button>
-                                <form method="post" style="display:inline" onsubmit="return confirm('Eliminar notificação?');">
+                                <form method="post" onsubmit="return confirm('Eliminar notificação?');">
                                     <input type="hidden" name="acao" value="eliminar_notificacao">
                                     <input type="hidden" name="id_notificacao" value="<?= $ng['id_notificacao'] ?>">
                                     <button class="btn-delete" type="submit">Eliminar</button>
