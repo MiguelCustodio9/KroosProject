@@ -52,6 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 }
 
+                if ($user['tipo_utilizador'] === 'jogador') {
+                    header('Location: index-jogador.php');
+                    exit;
+                }
+
                 $erro = 'Este tipo de utilizador ainda não tem área de acesso disponível.';
                 $_SESSION = [];
                 session_destroy();
