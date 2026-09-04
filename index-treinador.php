@@ -114,6 +114,17 @@ if ($checkTreinoEquipaIndex && $checkTreinoEquipaIndex->num_rows === 0) {
     $conn->query("ALTER TABLE treino ADD KEY idx_treino_equipa (id_equipa)");
 }
 
+/* ── Ligação dos treinos ao calendário ── */
+$checkTreinoEvento = $conn->query("SHOW COLUMNS FROM treino LIKE 'id_evento_clube'");
+if ($checkTreinoEvento && $checkTreinoEvento->num_rows === 0) {
+    $conn->query("ALTER TABLE treino ADD COLUMN id_evento_clube INT DEFAULT NULL AFTER id_plano");
+}
+
+$checkTreinoEventoIndex = $conn->query("SHOW INDEX FROM treino WHERE Key_name = 'idx_treino_evento_clube'");
+if ($checkTreinoEventoIndex && $checkTreinoEventoIndex->num_rows === 0) {
+    $conn->query("ALTER TABLE treino ADD KEY idx_treino_evento_clube (id_evento_clube)");
+}
+
 function diaSemanaPt(string $data): string
 {
     $dias = [
@@ -128,6 +139,155 @@ function diaSemanaPt(string $data): string
 
     $n = (int)date('N', strtotime($data));
     return $dias[$n] ?? 'Segunda-feira';
+}
+
+function estadoEventoTreinoCalendario(string $dataTreino): string
+{
+    return $dataTreino < date('Y-m-d') ? 'Realizado' : 'Por realizar';
+}
+
+function descricaoEventoTreinoCalendario(int $numeroTreino, string $conteudoTreino): string
+{
+    $conteudoTreino = trim($conteudoTreino);
+    $descricao = 'Treino ' . $numeroTreino;
+
+    if ($conteudoTreino !== '') {
+        $descricao .= ' — ' . $conteudoTreino;
+    }
+
+    return substr($descricao, 0, 500);
+}
+
+function sincronizarEventoTreinoCalendario(
+    mysqli $conn,
+    int $idTreino,
+    int $idEquipa,
+    int $numeroTreino,
+    string $dataTreino,
+    string $horaTreino,
+    string $conteudoTreino
+): void {
+    if ($idTreino <= 0 || $idEquipa <= 0 || $dataTreino === '') {
+        return;
+    }
+
+    $tipoEvento = 'Treino';
+    $descricaoEvento = descricaoEventoTreinoCalendario($numeroTreino, $conteudoTreino);
+    $estadoEvento = estadoEventoTreinoCalendario($dataTreino);
+    $localEvento = null;
+    $idEventoAtual = 0;
+
+    $stmtGetEvento = $conn->prepare("SELECT id_evento_clube FROM treino WHERE id_treino = ? LIMIT 1");
+    if ($stmtGetEvento) {
+        $stmtGetEvento->bind_param("i", $idTreino);
+        $stmtGetEvento->execute();
+        $rowEvento = $stmtGetEvento->get_result()->fetch_assoc();
+        $idEventoAtual = (int)($rowEvento['id_evento_clube'] ?? 0);
+    }
+
+    if ($idEventoAtual > 0) {
+        $stmtUpdateEvento = $conn->prepare("
+            UPDATE eventos_clube
+            SET id_equipa = ?,
+                tipo_evento = ?,
+                `descrição_evento` = ?,
+                estado_evento = ?,
+                data_evento = ?,
+                hora_evento = ?,
+                local_evento = ?
+            WHERE id_evento = ?
+        ");
+
+        if ($stmtUpdateEvento) {
+            $stmtUpdateEvento->bind_param(
+                "issssssi",
+                $idEquipa,
+                $tipoEvento,
+                $descricaoEvento,
+                $estadoEvento,
+                $dataTreino,
+                $horaTreino,
+                $localEvento,
+                $idEventoAtual
+            );
+            $stmtUpdateEvento->execute();
+
+            if ($stmtUpdateEvento->affected_rows >= 0) {
+                return;
+            }
+        }
+    }
+
+    $stmtInsertEvento = $conn->prepare("
+        INSERT INTO eventos_clube
+        (id_equipa, tipo_evento, `descrição_evento`, estado_evento, data_evento, hora_evento, local_evento)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ");
+
+    if (!$stmtInsertEvento) {
+        return;
+    }
+
+    $stmtInsertEvento->bind_param(
+        "issssss",
+        $idEquipa,
+        $tipoEvento,
+        $descricaoEvento,
+        $estadoEvento,
+        $dataTreino,
+        $horaTreino,
+        $localEvento
+    );
+
+    if ($stmtInsertEvento->execute()) {
+        $idNovoEvento = (int)$stmtInsertEvento->insert_id;
+        $stmtLinkEvento = $conn->prepare("UPDATE treino SET id_evento_clube = ? WHERE id_treino = ?");
+        if ($stmtLinkEvento) {
+            $stmtLinkEvento->bind_param("ii", $idNovoEvento, $idTreino);
+            $stmtLinkEvento->execute();
+        }
+    }
+}
+
+function sincronizarTreinosAntigosCalendarioTreinador(mysqli $conn, int $idUtilizador, int $idClube): void
+{
+    $stmtTreinosSemEvento = $conn->prepare("
+        SELECT DISTINCT
+            t.id_treino,
+            t.id_equipa,
+            t.`número_treino` AS numero_treino,
+            t.`data` AS data_treino,
+            t.hora AS hora_treino,
+            t.`conteúdo` AS conteudo_treino
+        FROM treino t
+        INNER JOIN equipa eq ON eq.id_equipa = t.id_equipa
+        INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+        WHERE ae.id_utilizador = ?
+          AND eq.id_clube = ?
+          AND (t.id_evento_clube IS NULL OR t.id_evento_clube = 0)
+        ORDER BY t.`data` DESC, t.hora DESC
+        LIMIT 200
+    ");
+
+    if (!$stmtTreinosSemEvento) {
+        return;
+    }
+
+    $stmtTreinosSemEvento->bind_param("ii", $idUtilizador, $idClube);
+    $stmtTreinosSemEvento->execute();
+    $resTreinosSemEvento = $stmtTreinosSemEvento->get_result();
+
+    while ($treino = $resTreinosSemEvento->fetch_assoc()) {
+        sincronizarEventoTreinoCalendario(
+            $conn,
+            (int)$treino['id_treino'],
+            (int)$treino['id_equipa'],
+            (int)$treino['numero_treino'],
+            (string)$treino['data_treino'],
+            (string)$treino['hora_treino'],
+            (string)$treino['conteudo_treino']
+        );
+    }
 }
 
 /* ── Equipas atribuídas ao treinador ── */
@@ -210,6 +370,9 @@ if (isset($_SESSION['flash_erro'])) {
     $erro = $_SESSION['flash_erro'];
     unset($_SESSION['flash_erro']);
 }
+
+/* ── Garantir que treinos antigos aparecem no calendário ── */
+sincronizarTreinosAntigosCalendarioTreinador($conn, (int)$id_utilizador, (int)$id_clube);
 
 /* ══════════════════════════════════
    AÇÕES POST
@@ -298,6 +461,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
 
                 if ($stmtCriarTreino->execute()) {
+                    $idTreinoCriado = (int)$stmtCriarTreino->insert_id;
+                    sincronizarEventoTreinoCalendario(
+                        $conn,
+                        $idTreinoCriado,
+                        $idEquipaTreino,
+                        $numeroTreino,
+                        $dataTreino,
+                        $horaTreino,
+                        $conteudoTreino
+                    );
                     $sucesso = 'Treino criado com sucesso.';
                 } else {
                     $erro = 'Erro ao criar treino.';
@@ -377,6 +550,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
 
                 if ($stmtEditarTreino->execute()) {
+                    sincronizarEventoTreinoCalendario(
+                        $conn,
+                        $idTreino,
+                        $idEquipaTreino,
+                        $numeroTreino,
+                        $dataTreino,
+                        $horaTreino,
+                        $conteudoTreino
+                    );
                     $sucesso = 'Treino atualizado com sucesso.';
                 } else {
                     $erro = 'Erro ao atualizar treino.';
@@ -393,6 +575,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($idTreino <= 0) {
             $erro = 'Treino inválido.';
         } else {
+            $stmtEventoTreinoRemover = $conn->prepare("
+                SELECT t.id_evento_clube
+                FROM treino t
+                INNER JOIN equipa eq ON eq.id_equipa = t.id_equipa
+                INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+                WHERE t.id_treino = ?
+                  AND ae.id_utilizador = ?
+                  AND eq.id_clube = ?
+                LIMIT 1
+            ");
+            $stmtEventoTreinoRemover->bind_param("iii", $idTreino, $id_utilizador, $id_clube);
+            $stmtEventoTreinoRemover->execute();
+            $eventoTreinoRemover = $stmtEventoTreinoRemover->get_result()->fetch_assoc();
+
+            if (!empty($eventoTreinoRemover['id_evento_clube'])) {
+                $idEventoTreinoRemover = (int)$eventoTreinoRemover['id_evento_clube'];
+                $stmtDeleteEventoTreino = $conn->prepare("DELETE FROM eventos_clube WHERE id_evento = ?");
+                $stmtDeleteEventoTreino->bind_param("i", $idEventoTreinoRemover);
+                $stmtDeleteEventoTreino->execute();
+            }
+
             $stmtApagarExerciciosTreino = $conn->prepare("
                 DELETE te
                 FROM treino_exercicio te
@@ -535,6 +738,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmtDeleteExercicios->bind_param("i", $idTreinoPlano);
                         $stmtDeleteExercicios->execute();
                     }
+
+                    sincronizarEventoTreinoCalendario(
+                        $conn,
+                        $idTreinoPlano,
+                        $idEquipaTreino,
+                        $numeroTreino,
+                        $dataTreino,
+                        $horaTreino,
+                        $conteudoTreino
+                    );
 
                     $stmtInsertExercicio = $conn->prepare("
                         INSERT INTO treino_exercicio
@@ -4679,6 +4892,217 @@ body.layout-locked #dashboardCard {
     display: block;
 }
 
+
+
+/* ══════════════════════════════════
+   PLANO VISUAL V4 — paleta fechada + resize direto no canvas
+══════════════════════════════════ */
+.plano-bottom-toolbar {
+    min-height: 56px;
+    padding: 9px 12px;
+}
+
+.plano-flyout-menu.plano-color-menu.plano-color-palette {
+    display: none !important;
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 12px);
+    transform: translateX(-50%);
+    z-index: 120;
+    width: 244px;
+}
+
+.plano-color-flyout:hover .plano-color-menu,
+.plano-color-flyout:focus-within .plano-color-menu {
+    display: grid !important;
+}
+
+.plano-line-menu {
+    display: none !important;
+}
+
+.plano-tool-flyout:hover .plano-line-menu,
+.plano-tool-flyout:focus-within .plano-line-menu {
+    display: flex !important;
+}
+
+.plano-color-main {
+    width: auto;
+    padding: 0 12px;
+    background: #fff;
+    border-color: #d8e1ee;
+    box-shadow: 0 4px 12px rgba(15,23,42,.08);
+}
+
+.plano-color-flyout:not(:hover):not(:focus-within) .plano-color-menu {
+    pointer-events: none;
+}
+
+.plano-resize-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: #eef4fb;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+
+/* ══════════════════════════════════
+   PLANO VISUAL V5 — equipamento agrupado + ícones vetoriais
+══════════════════════════════════ */
+.plano-equipment-flyout {
+    position: relative;
+}
+
+.plano-equipment-menu {
+    display: none !important;
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 0;
+    z-index: 140;
+    min-width: 52px;
+    padding: 7px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #d9e3f0;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, .18);
+    flex-direction: column;
+    gap: 6px;
+}
+
+.plano-equipment-flyout:hover .plano-equipment-menu,
+.plano-equipment-flyout:focus-within .plano-equipment-menu {
+    display: flex !important;
+}
+
+.plano-equipment-option {
+    width: 40px;
+    height: 38px;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f172a;
+}
+
+.plano-equipment-option:hover,
+.plano-equipment-option.active {
+    background: #fff;
+    border-color: var(--club);
+    box-shadow: inset 0 0 0 1px var(--club);
+}
+
+.plano-equipment-option svg,
+.plano-equipment-main svg {
+    width: 27px;
+    height: 27px;
+    display: block;
+}
+
+.plano-equipment-main.active::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 2px solid var(--club);
+    border-radius: 7px;
+    pointer-events: none;
+}
+
+.plano-equipment-menu::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 0;
+    width: 10px;
+    height: 100%;
+}
+
+.plano-color-flyout .plano-color-menu {
+    display: none !important;
+}
+
+.plano-color-flyout:hover .plano-color-menu,
+.plano-color-flyout:focus-within .plano-color-menu {
+    display: grid !important;
+}
+
+.plano-color-swatch-main {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(15, 23, 42, .35);
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: -2px;
+}
+
+
+
+/* ══════════════════════════════════
+   PLANO VISUAL V6 — templates limpos, palete perto, rotação
+══════════════════════════════════ */
+.plano-template-strip .template-btn[data-template="meio_campo"] {
+    display: none !important;
+}
+
+.plano-color-flyout {
+    position: relative;
+}
+
+.plano-color-flyout::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    right: -16px;
+    bottom: 100%;
+    height: 14px;
+    z-index: 119;
+}
+
+.plano-flyout-menu.plano-color-menu.plano-color-palette {
+    bottom: calc(100% + 2px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 240 !important;
+}
+
+.plano-color-flyout:hover .plano-color-menu,
+.plano-color-flyout:focus-within .plano-color-menu,
+.plano-color-menu:hover {
+    display: grid !important;
+    pointer-events: auto !important;
+}
+
+.plano-rotate-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.plano-rotate-actions button {
+    border: none;
+    border-radius: 12px;
+    background: #e9eef7;
+    color: #182033;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.plano-rotate-actions button:hover {
+    background: #dbe5f3;
+}
+
 </style>
 </head>
 <body>
@@ -6517,7 +6941,6 @@ body.layout-locked #dashboardCard {
                 <section class="plano-canvas-panel">
                     <div class="plano-template-strip">
                         <button class="template-btn active" type="button" data-template="campo_inteiro" title="Campo inteiro" onclick="selecionarTemplatePlano('campo_inteiro', this)"></button>
-                        <button class="template-btn template-meio" type="button" data-template="meio_campo" title="Meio campo" onclick="selecionarTemplatePlano('meio_campo', this)"></button>
                         <button class="template-btn template-area" type="button" data-template="area" title="Zona da área" onclick="selecionarTemplatePlano('area', this)"></button>
                         <button class="template-btn template-futsal" type="button" data-template="futsal" title="Futsal" onclick="selecionarTemplatePlano('futsal', this)"></button>
                     </div>
@@ -8479,6 +8902,1515 @@ function openEditCompeticao(idComp) {
     document.getElementById('editCompDesc').value   = comp.descricao || '';
     openModal('modalEditarCompeticao');
 }
+
+
+/* ══════════════════════════════════
+   PLANO VISUAL V4 — correções: paleta hover e resize no canvas
+══════════════════════════════════ */
+const PLANO_HANDLE_SIZE = 10;
+
+function setupPlanoCanvasOnce() {
+    planoCanvas = document.getElementById('planoCanvas');
+    if (!planoCanvas || planoCanvas.dataset.v4Ready === '1') return;
+    planoCanvas.dataset.v4Ready = '1';
+    planoCanvas.addEventListener('mousedown', planoCanvasMouseDown);
+    planoCanvas.addEventListener('mousemove', planoCanvasMouseMove);
+    planoCanvas.addEventListener('mouseup', planoCanvasMouseUp);
+    planoCanvas.addEventListener('mouseleave', planoCanvasMouseUp);
+    planoCanvas.addEventListener('dblclick', planoCanvasDoubleClick);
+    planoCanvas.addEventListener('wheel', planoCanvasWheel, {passive:false});
+    planoCanvas.addEventListener('contextmenu', ev => ev.preventDefault());
+    initPlanoToolIcons();
+    initPlanoPropertyPanel();
+    atualizarCursorPlano();
+}
+
+function initPlanoColorPalette() {
+    const palette = document.getElementById('planoColorPalette');
+    if (!palette) return;
+    palette.dataset.ready = '1';
+    palette.innerHTML = '<div class="plano-flyout-label">Escolher cor</div>' + planoColors.map((c) => `
+        <button type="button" class="plano-color-choice ${c === planoColor ? 'active' : ''}"
+                style="background:${c};${c === '#ffffff' ? 'box-shadow:inset 0 0 0 2px #cbd5e1;' : ''}"
+                onclick="setPlanoColor('${c}', this)" title="${c}"></button>`).join('');
+    atualizarPlanoColorButton();
+}
+
+function setPlanoColor(color, btn) {
+    planoColor = color;
+    document.querySelectorAll('.plano-color-choice').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    atualizarPlanoColorButton();
+
+    if (planoSelectedIndex >= 0 && planoObjects[planoSelectedIndex]) {
+        const o = planoObjects[planoSelectedIndex];
+        if (o.type !== 'ball') {
+            o.color = color;
+            desenharPlano();
+            persistirExercicioAtualPlano(false);
+        }
+    }
+
+    const colorMain = document.getElementById('planoColorMainBtn');
+    if (colorMain) colorMain.blur();
+    if (btn) btn.blur();
+}
+
+function criarShapePlano(tool, start, end) {
+    if (tool === 'rect') {
+        const x = (start.x + end.x) / 2;
+        const y = (start.y + end.y) / 2;
+        return {
+            type:'rect',
+            x,
+            y,
+            w:Math.max(18, Math.abs(end.x - start.x)),
+            h:Math.max(18, Math.abs(end.y - start.y)),
+            color:planoColor,
+            scale:1,
+            strokeWidth:4
+        };
+    }
+
+    if (tool === 'circle') {
+        return {
+            type:'circle',
+            x:start.x,
+            y:start.y,
+            r:Math.max(12, Math.hypot(end.x - start.x, end.y - start.y)),
+            color:planoColor,
+            scale:1,
+            strokeWidth:4
+        };
+    }
+
+    return null;
+}
+
+function planoCanvasMouseDown(ev) {
+    if (!planoCanvas) return;
+    planoIsPointerDown = true;
+    const p = normalizarPontoCanvas(ev);
+
+    if (planoTool === 'select') {
+        const resizeHit = encontrarHandleResizePlano(p.x, p.y);
+        if (resizeHit) {
+            const obj = planoObjects[resizeHit.idx];
+            planoDragging = {
+                mode:'resize',
+                idx:resizeHit.idx,
+                handle:resizeHit.handle,
+                start:p,
+                original:JSON.parse(JSON.stringify(obj))
+            };
+            selecionarObjetoPlano(resizeHit.idx);
+            return;
+        }
+
+        const idx = encontrarObjetoPlano(p.x, p.y);
+        selecionarObjetoPlano(idx);
+        if (idx >= 0) {
+            const obj = planoObjects[idx];
+            planoDragging = {mode:'move', idx, start:p, original:JSON.parse(JSON.stringify(obj))};
+        }
+        return;
+    }
+
+    if (planoTool === 'eraser') {
+        const idx = encontrarObjetoPlano(p.x, p.y);
+        if (idx >= 0) {
+            planoObjects.splice(idx, 1);
+            selecionarObjetoPlano(-1);
+            desenharPlano();
+            persistirExercicioAtualPlano(false);
+        }
+        return;
+    }
+
+    if (['line','arrow','run','dash'].includes(planoTool)) {
+        planoDragging = {mode:'draw-line', tool:planoTool, start:p};
+        planoPreviewObject = {type:'line',mode:planoTool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,color:planoColor,w:4};
+        desenharPlano();
+        return;
+    }
+
+    if (['rect','circle'].includes(planoTool)) {
+        planoDragging = {mode:'draw-shape', tool:planoTool, start:p};
+        planoPreviewObject = criarShapePlano(planoTool, p, p);
+        desenharPlano();
+        return;
+    }
+
+    if (planoTool === 'text') {
+        const txt = prompt('Texto a adicionar:', 'Texto');
+        if (txt === null || txt.trim() === '') return;
+        const obj = {type:'text',x:p.x,y:p.y,text:txt.trim(),color:planoColor,size:24,scale:1,strokeWidth:4};
+        planoObjects.push(obj);
+        selecionarObjetoPlano(planoObjects.length - 1);
+        setPlanoTool('select', document.querySelector('.plano-tool-btn[data-tool="select"]'));
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+        return;
+    }
+
+    const obj = criarObjetoPontualPlano(planoTool, p);
+    if (obj) {
+        planoObjects.push(obj);
+        selecionarObjetoPlano(planoObjects.length - 1);
+        setPlanoTool('select', document.querySelector('.plano-tool-btn[data-tool="select"]'));
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+    }
+}
+
+function planoCanvasMouseMove(ev) {
+    if (!planoCanvas) return;
+    const p = normalizarPontoCanvas(ev);
+
+    if (!planoDragging) {
+        if (planoTool === 'select') {
+            const hit = encontrarHandleResizePlano(p.x, p.y);
+            if (hit) {
+                planoCanvas.style.cursor = cursorResizePlano(hit.handle);
+            } else {
+                const idx = encontrarObjetoPlano(p.x, p.y);
+                planoCanvas.style.cursor = idx >= 0 ? 'move' : 'default';
+            }
+        }
+        return;
+    }
+
+    if (planoDragging.mode === 'move') {
+        const obj = planoObjects[planoDragging.idx];
+        const original = planoDragging.original;
+        if (!obj || !original) return;
+        const dx = p.x - planoDragging.start.x;
+        const dy = p.y - planoDragging.start.y;
+        if (obj.type === 'line') {
+            obj.x1 = original.x1 + dx; obj.y1 = original.y1 + dy;
+            obj.x2 = original.x2 + dx; obj.y2 = original.y2 + dy;
+        } else {
+            obj.x = original.x + dx; obj.y = original.y + dy;
+        }
+        desenharPlano();
+        return;
+    }
+
+    if (planoDragging.mode === 'resize') {
+        redimensionarObjetoPlanoComRato(p);
+        atualizarPainelObjetoPlano();
+        desenharPlano();
+        return;
+    }
+
+    if (planoDragging.mode === 'draw-line') {
+        planoPreviewObject = {
+            type:'line', mode:planoDragging.tool,
+            x1:planoDragging.start.x, y1:planoDragging.start.y,
+            x2:p.x, y2:p.y, color:planoColor, w:4
+        };
+        desenharPlano();
+        return;
+    }
+
+    if (planoDragging.mode === 'draw-shape') {
+        planoPreviewObject = criarShapePlano(planoDragging.tool, planoDragging.start, p);
+        desenharPlano();
+    }
+}
+
+function planoCanvasMouseUp(ev) {
+    if (!planoCanvas || !planoDragging) {
+        planoIsPointerDown = false;
+        atualizarCursorPlano();
+        return;
+    }
+    const p = normalizarPontoCanvas(ev);
+
+    if (planoDragging.mode === 'move' || planoDragging.mode === 'resize') {
+        planoDragging = null;
+        planoIsPointerDown = false;
+        atualizarCursorPlano();
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+        return;
+    }
+
+    if (planoDragging.mode === 'draw-line') {
+        const start = planoDragging.start;
+        if (Math.hypot(p.x - start.x, p.y - start.y) > 8) {
+            const obj = {type:'line',mode:planoDragging.tool,x1:start.x,y1:start.y,x2:p.x,y2:p.y,color:planoColor,w:4};
+            planoObjects.push(obj);
+            selecionarObjetoPlano(planoObjects.length - 1);
+            setPlanoTool('select', document.querySelector('.plano-tool-btn[data-tool="select"]'));
+        }
+        planoDragging = null;
+        planoPreviewObject = null;
+        planoIsPointerDown = false;
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+        return;
+    }
+
+    if (planoDragging.mode === 'draw-shape') {
+        const obj = criarShapePlano(planoDragging.tool, planoDragging.start, p);
+        if (obj && ((obj.type === 'rect' && Math.abs(obj.w) > 10 && Math.abs(obj.h) > 10) || (obj.type === 'circle' && obj.r > 6))) {
+            planoObjects.push(obj);
+            selecionarObjetoPlano(planoObjects.length - 1);
+            setPlanoTool('select', document.querySelector('.plano-tool-btn[data-tool="select"]'));
+        }
+        planoDragging = null;
+        planoPreviewObject = null;
+        planoIsPointerDown = false;
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+    }
+}
+
+function encontrarHandleResizePlano(x, y) {
+    if (planoSelectedIndex < 0 || !planoObjects[planoSelectedIndex]) return null;
+    const handles = pontosResizePlano(planoObjects[planoSelectedIndex]);
+    for (const h of handles) {
+        if (Math.abs(x - h.x) <= PLANO_HANDLE_SIZE && Math.abs(y - h.y) <= PLANO_HANDLE_SIZE) {
+            return {idx: planoSelectedIndex, handle: h.handle};
+        }
+    }
+    return null;
+}
+
+function pontosResizePlano(o) {
+    if (!o) return [];
+    if (o.type === 'line') {
+        return [
+            {handle:'start', x:o.x1, y:o.y1},
+            {handle:'end', x:o.x2, y:o.y2}
+        ];
+    }
+    const b = boundsObjetoPlano(o);
+    return [
+        {handle:'nw', x:b.x, y:b.y},
+        {handle:'ne', x:b.x + b.w, y:b.y},
+        {handle:'sw', x:b.x, y:b.y + b.h},
+        {handle:'se', x:b.x + b.w, y:b.y + b.h}
+    ];
+}
+
+function cursorResizePlano(handle) {
+    if (handle === 'nw' || handle === 'se') return 'nwse-resize';
+    if (handle === 'ne' || handle === 'sw') return 'nesw-resize';
+    if (handle === 'start' || handle === 'end') return 'crosshair';
+    return 'grab';
+}
+
+function redimensionarObjetoPlanoComRato(p) {
+    const obj = planoObjects[planoDragging.idx];
+    const original = planoDragging.original;
+    const handle = planoDragging.handle;
+    if (!obj || !original) return;
+
+    if (obj.type === 'line') {
+        if (handle === 'start') {
+            obj.x1 = p.x; obj.y1 = p.y;
+        } else {
+            obj.x2 = p.x; obj.y2 = p.y;
+        }
+        return;
+    }
+
+    if (obj.type === 'rect') {
+        const b = boundsObjetoPlano(original);
+        let left = b.x, right = b.x + b.w, top = b.y, bottom = b.y + b.h;
+        if (handle.includes('w')) left = p.x;
+        if (handle.includes('e')) right = p.x;
+        if (handle.includes('n')) top = p.y;
+        if (handle.includes('s')) bottom = p.y;
+        obj.x = (left + right) / 2;
+        obj.y = (top + bottom) / 2;
+        obj.w = Math.max(12, Math.abs(right - left));
+        obj.h = Math.max(12, Math.abs(bottom - top));
+        obj.scale = 1;
+        return;
+    }
+
+    if (obj.type === 'circle') {
+        obj.r = Math.max(8, Math.hypot(p.x - original.x, p.y - original.y));
+        obj.scale = 1;
+        return;
+    }
+
+    const b = boundsObjetoPlano(original);
+    const cx = original.x ?? (b.x + b.w / 2);
+    const cy = original.y ?? (b.y + b.h / 2);
+    const startHandle = pontosResizePlano(original).find(h => h.handle === handle) || {x:b.x+b.w, y:b.y+b.h};
+    const d0 = Math.max(10, Math.hypot(startHandle.x - cx, startHandle.y - cy));
+    const d1 = Math.max(10, Math.hypot(p.x - cx, p.y - cy));
+    obj.scale = Math.max(0.25, Math.min(5, (Number(original.scale) || 1) * (d1 / d0)));
+}
+
+function boundsObjetoPlano(o) {
+    const s = Number(o.scale || 1);
+
+    if (o.type === 'rect') {
+        const w = (o.w || 120) * s;
+        const h = (o.h || 72) * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'circle') {
+        const r = (o.r || 42) * s;
+        return {x:o.x - r, y:o.y - r, w:r*2, h:r*2};
+    }
+
+    if (o.type === 'text') {
+        const fontSize = Math.max(10, (o.size || 24) * s);
+        const width = Math.max(44, String(o.text || 'Texto').length * fontSize * 0.62);
+        const height = fontSize * 1.35;
+        return {x:o.x - width/2, y:o.y - height/2, w:width, h:height};
+    }
+
+    if (o.type === 'goal') {
+        const w = 84 * s, h = 40 * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'barrier') {
+        const w = 74 * s, h = 62 * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'cone') {
+        const w = 52 * s, h = 58 * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'ball') {
+        const r = 18 * s;
+        return {x:o.x - r, y:o.y - r, w:r*2, h:r*2};
+    }
+
+    if (o.type === 'player') {
+        const r = 22 * s;
+        return {x:o.x - r, y:o.y - r, w:r*2, h:r*2};
+    }
+
+    const r = raioHitObjetoPlano(o);
+    return {x:(o.x||0)-r, y:(o.y||0)-r, w:r*2, h:r*2};
+}
+
+function encontrarObjetoPlano(x, y) {
+    for (let i = planoObjects.length - 1; i >= 0; i--) {
+        const o = planoObjects[i];
+        if (o.type === 'line') {
+            if (distanciaPontoLinha(x, y, o.x1, o.y1, o.x2, o.y2) < Math.max(12, (o.w || 4) + 8)) return i;
+            continue;
+        }
+        const b = boundsObjetoPlano(o);
+        if (x >= b.x - 8 && x <= b.x + b.w + 8 && y >= b.y - 8 && y <= b.y + b.h + 8) return i;
+    }
+    return -1;
+}
+
+function desenharSelecaoObjetoPlano(ctx, o) {
+    ctx.save();
+    ctx.strokeStyle = '#0ea5e9';
+    ctx.fillStyle = '#0ea5e9';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,5]);
+
+    if (o.type === 'line') {
+        ctx.strokeRect(
+            Math.min(o.x1,o.x2)-8,
+            Math.min(o.y1,o.y2)-8,
+            Math.abs(o.x2-o.x1)+16,
+            Math.abs(o.y2-o.y1)+16
+        );
+    } else {
+        const b = boundsObjetoPlano(o);
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+    }
+
+    ctx.setLineDash([]);
+    const handles = pontosResizePlano(o);
+    handles.forEach(h => {
+        ctx.beginPath();
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 2;
+        ctx.rect(h.x - 5, h.y - 5, 10, 10);
+        ctx.fill();
+        ctx.stroke();
+    });
+    ctx.restore();
+}
+
+function atualizarPainelObjetoPlano() {
+    const panel = document.getElementById('planoSelectedPanel');
+    if (!panel) return;
+    const obj = planoSelectedIndex >= 0 ? planoObjects[planoSelectedIndex] : null;
+    if (!obj) {
+        panel.classList.remove('visible');
+        return;
+    }
+    panel.classList.add('visible');
+    const nomes = {line:'Linha',player:'Jogador',cone:'Cone',ball:'Bola',barrier:'Barreira',goal:'Baliza',rect:'Retângulo',circle:'Círculo',text:'Texto'};
+    document.getElementById('planoSelectedName').textContent = nomes[obj.type] || 'Objeto';
+    document.getElementById('planoSelectedType').textContent = obj.type === 'line' ? (obj.mode || 'linha') : obj.type;
+    const size = document.getElementById('planoSizeRange');
+    const stroke = document.getElementById('planoStrokeRange');
+    if (size) {
+        size.value = String(Number(obj.scale || 1).toFixed(2));
+        size.parentElement.style.display = obj.type === 'line' ? 'none' : '';
+    }
+    if (stroke) {
+        stroke.value = String(obj.type === 'line' ? (obj.w || 4) : (obj.strokeWidth || 4));
+        stroke.parentElement.style.display = ['line','rect','circle','goal'].includes(obj.type) ? '' : 'none';
+    }
+}
+
+function planoCanvasWheel(ev) {
+    if (planoSelectedIndex < 0 || !planoObjects[planoSelectedIndex]) return;
+    ev.preventDefault();
+    const obj = planoObjects[planoSelectedIndex];
+    if (obj.type === 'line') {
+        obj.w = Math.max(1, Math.min(18, (Number(obj.w) || 4) + (ev.deltaY < 0 ? 1 : -1)));
+    } else if (obj.type === 'rect') {
+        const f = ev.deltaY < 0 ? 1.08 : 0.92;
+        obj.w = Math.max(12, (obj.w || 120) * f);
+        obj.h = Math.max(12, (obj.h || 72) * f);
+        obj.scale = 1;
+    } else if (obj.type === 'circle') {
+        obj.r = Math.max(8, (obj.r || 42) * (ev.deltaY < 0 ? 1.08 : 0.92));
+        obj.scale = 1;
+    } else {
+        obj.scale = Math.max(0.25, Math.min(5, (Number(obj.scale) || 1) + (ev.deltaY < 0 ? 0.08 : -0.08)));
+    }
+    atualizarPainelObjetoPlano();
+    desenharPlano();
+    persistirExercicioAtualPlano(false);
+}
+
+function alterarTamanhoObjetoPlano(value) {
+    const obj = planoObjects[planoSelectedIndex];
+    if (!obj) return;
+    const v = Math.max(0.25, Math.min(5, parseFloat(value) || 1));
+    obj.scale = v;
+    desenharPlano();
+    persistirExercicioAtualPlano(false);
+}
+
+function planoCanvasDoubleClick(ev) {
+    const p = normalizarPontoCanvas(ev);
+    const idx = encontrarObjetoPlano(p.x, p.y);
+    if (idx < 0) return;
+    const obj = planoObjects[idx];
+    selecionarObjetoPlano(idx);
+    if (obj.type === 'text') {
+        const txt = prompt('Editar texto:', obj.text || 'Texto');
+        if (txt !== null && txt.trim() !== '') obj.text = txt.trim();
+    } else if (obj.type === 'player') {
+        const n = prompt('Número / texto do jogador:', String(obj.n ?? ''));
+        if (n !== null && n.trim() !== '') obj.n = n.trim();
+    }
+    desenharPlano();
+    persistirExercicioAtualPlano(false);
+}
+
+
+/* ══════════════════════════════════
+   PLANO VISUAL V5 — cones/barreiras/escada agrupados e recoloríveis
+══════════════════════════════════ */
+let planoConeTool = 'cone';
+let planoBarrierTool = 'barrier';
+
+function planoEquipmentIcon(tool) {
+    const icons = {
+        cone: `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 5 9 31h22L20 5z" fill="currentColor" stroke="#111827" stroke-width="2" stroke-linejoin="round"/><path d="M14 20h12M12 27h16" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M9 32h22" stroke="#111827" stroke-width="3" stroke-linecap="round"/></svg>`,
+        lowcone: `<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="13" fill="currentColor" stroke="#111827" stroke-width="2"/><circle cx="20" cy="20" r="5.5" fill="#fff" stroke="#111827" stroke-width="2"/></svg>`,
+        barrier: `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M7 12h26" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M11 12v22M29 12v22" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M8 34h6M26 34h6" fill="none" stroke="#111827" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+        ladder: `<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M13 5v30M27 5v30" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/><path d="M13 11h14M13 17h14M13 23h14M13 29h14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>`
+    };
+    return icons[tool] || icons.cone;
+}
+
+function initPlanoEquipmentFlyouts() {
+    const toolCol = document.querySelector('.plano-tool-column');
+    if (!toolCol) return;
+
+    const coneBtn = toolCol.querySelector(':scope > .plano-tool-btn[data-tool="cone"]');
+    if (coneBtn && !document.getElementById('planoConeFlyout')) {
+        coneBtn.outerHTML = `
+            <div class="plano-tool-flyout plano-equipment-flyout" id="planoConeFlyout" title="Cones">
+                <button class="plano-tool-btn plano-equipment-main" id="planoConeMainBtn" type="button" data-tool="cone" onclick="setPlanoConeTool(planoConeTool || 'cone')" title="Cones">${planoEquipmentIcon(planoConeTool)}</button>
+                <div class="plano-flyout-menu plano-equipment-menu" aria-label="Tipos de cones">
+                    <button class="plano-equipment-option active" type="button" data-equip-tool="cone" onclick="setPlanoConeTool('cone', this)" title="Cone alto">${planoEquipmentIcon('cone')}</button>
+                    <button class="plano-equipment-option" type="button" data-equip-tool="lowcone" onclick="setPlanoConeTool('lowcone', this)" title="Cone baixo / marcador">${planoEquipmentIcon('lowcone')}</button>
+                </div>
+            </div>`;
+    }
+
+    const barrierBtn = toolCol.querySelector(':scope > .plano-tool-btn[data-tool="barrier"]');
+    if (barrierBtn && !document.getElementById('planoBarrierFlyout')) {
+        barrierBtn.outerHTML = `
+            <div class="plano-tool-flyout plano-equipment-flyout" id="planoBarrierFlyout" title="Material de treino">
+                <button class="plano-tool-btn plano-equipment-main" id="planoBarrierMainBtn" type="button" data-tool="barrier" onclick="setPlanoBarrierTool(planoBarrierTool || 'barrier')" title="Barreira / escada">${planoEquipmentIcon(planoBarrierTool)}</button>
+                <div class="plano-flyout-menu plano-equipment-menu" aria-label="Material de treino">
+                    <button class="plano-equipment-option active" type="button" data-equip-tool="barrier" onclick="setPlanoBarrierTool('barrier', this)" title="Barreira">${planoEquipmentIcon('barrier')}</button>
+                    <button class="plano-equipment-option" type="button" data-equip-tool="ladder" onclick="setPlanoBarrierTool('ladder', this)" title="Escada de coordenação">${planoEquipmentIcon('ladder')}</button>
+                </div>
+            </div>`;
+    }
+
+    atualizarPlanoConeButton();
+    atualizarPlanoBarrierButton();
+    normalizarMenuCoresPlanoV5();
+
+    const sizeRange = document.getElementById('planoSizeRange');
+    if (sizeRange) {
+        sizeRange.min = '0.25';
+        sizeRange.max = '5';
+        sizeRange.step = '0.05';
+    }
+}
+
+function normalizarMenuCoresPlanoV5() {
+    const palette = document.getElementById('planoColorPalette');
+    if (palette) {
+        palette.style.removeProperty('display');
+    }
+}
+
+function atualizarPlanoConeButton() {
+    const main = document.getElementById('planoConeMainBtn');
+    if (main) {
+        main.innerHTML = planoEquipmentIcon(planoConeTool || 'cone');
+        main.dataset.tool = planoConeTool || 'cone';
+        main.classList.toggle('active', planoTool === planoConeTool);
+    }
+    document.querySelectorAll('#planoConeFlyout .plano-equipment-option').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.equipTool === planoConeTool);
+    });
+}
+
+function atualizarPlanoBarrierButton() {
+    const main = document.getElementById('planoBarrierMainBtn');
+    if (main) {
+        main.innerHTML = planoEquipmentIcon(planoBarrierTool || 'barrier');
+        main.dataset.tool = planoBarrierTool || 'barrier';
+        main.classList.toggle('active', planoTool === planoBarrierTool);
+    }
+    document.querySelectorAll('#planoBarrierFlyout .plano-equipment-option').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.equipTool === planoBarrierTool);
+    });
+}
+
+function setPlanoConeTool(tool, btn = null) {
+    planoConeTool = tool || 'cone';
+    atualizarPlanoConeButton();
+    setPlanoTool(planoConeTool, document.getElementById('planoConeMainBtn'));
+}
+
+function setPlanoBarrierTool(tool, btn = null) {
+    planoBarrierTool = tool || 'barrier';
+    atualizarPlanoBarrierButton();
+    setPlanoTool(planoBarrierTool, document.getElementById('planoBarrierMainBtn'));
+}
+
+const setPlanoToolV4 = typeof setPlanoTool === 'function' ? setPlanoTool : null;
+setPlanoTool = function(tool, btn) {
+    if (setPlanoToolV4) {
+        setPlanoToolV4(tool, btn);
+    } else {
+        planoTool = tool;
+    }
+    atualizarPlanoConeButton();
+    atualizarPlanoBarrierButton();
+};
+
+const abrirModalPlanoBaseV4 = typeof abrirModalPlanoBase === 'function' ? abrirModalPlanoBase : null;
+if (abrirModalPlanoBaseV4) {
+    abrirModalPlanoBase = function() {
+        abrirModalPlanoBaseV4();
+        setTimeout(() => {
+            initPlanoEquipmentFlyouts();
+            atualizarPlanoConeButton();
+            atualizarPlanoBarrierButton();
+            desenharPlano();
+        }, 0);
+    };
+}
+
+document.addEventListener('DOMContentLoaded', initPlanoEquipmentFlyouts);
+
+criarObjetoPontualPlano = function(tool, p) {
+    if (tool === 'player') return {type:'player',x:p.x,y:p.y,n:planoPlayerCounter++,color:'#3b82f6',scale:1};
+    if (tool === 'opponent') return {type:'player',x:p.x,y:p.y,n:planoOpponentCounter++,color:'#ef4444',scale:1};
+    if (tool === 'gk') return {type:'player',x:p.x,y:p.y,n:'GK',color:'#111827',scale:1};
+    if (tool === 'cone') return {type:'cone',variant:'tall',x:p.x,y:p.y,color:(planoColor === '#000000' ? '#f97316' : planoColor),scale:1};
+    if (tool === 'lowcone') return {type:'cone',variant:'flat',x:p.x,y:p.y,color:(planoColor === '#000000' ? '#f97316' : planoColor),scale:1};
+    if (tool === 'ball') return {type:'ball',x:p.x,y:p.y,color:'#111827',scale:1};
+    if (tool === 'barrier') return {type:'barrier',variant:'hurdle',x:p.x,y:p.y,color:(planoColor === '#000000' ? '#f97316' : planoColor),scale:1,strokeWidth:4};
+    if (tool === 'ladder') return {type:'ladder',x:p.x,y:p.y,color:(planoColor === '#000000' ? '#facc15' : planoColor),scale:1,strokeWidth:4};
+    if (tool === 'goal') return {type:'goal',x:p.x,y:p.y,color:planoColor,scale:1,strokeWidth:4};
+    return null;
+};
+
+const desenharObjetoPlanoV4 = typeof desenharObjetoPlano === 'function' ? desenharObjetoPlano : null;
+desenharObjetoPlano = function(ctx, o, selected = false, preview = false) {
+    ctx.save();
+    ctx.globalAlpha = preview ? .62 : 1;
+    ctx.strokeStyle = o.color || '#000';
+    ctx.fillStyle = o.color || '#000';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (o.type === 'line') desenharLinhaPlano(ctx, o);
+    else if (o.type === 'player') desenharJogadorPlano(ctx, o);
+    else if (o.type === 'cone') desenharConePlano(ctx, o);
+    else if (o.type === 'ball') desenharBolaPlano(ctx, o);
+    else if (o.type === 'barrier') desenharBarreiraPlano(ctx, o);
+    else if (o.type === 'ladder') desenharEscadaPlano(ctx, o);
+    else if (o.type === 'goal') desenharBalizaPlano(ctx, o);
+    else if (o.type === 'rect') desenharRetanguloPlano(ctx, o);
+    else if (o.type === 'circle') desenharCirculoPlano(ctx, o);
+    else if (o.type === 'text') desenharTextoPlano(ctx, o);
+    else if (desenharObjetoPlanoV4) desenharObjetoPlanoV4(ctx, o, false, preview);
+
+    if (selected) desenharSelecaoObjetoPlano(ctx, o);
+    ctx.restore();
+};
+
+function desenharConePlano(ctx, o) {
+    if ((o.variant || 'tall') === 'flat') {
+        desenharConeBaixoPlano(ctx, o);
+        return;
+    }
+
+    const s = Number(o.scale || 1), x = o.x, y = o.y, c = o.color || '#f97316';
+    ctx.save();
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2 * s;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y - 27*s);
+    ctx.lineTo(x - 16*s, y + 13*s);
+    ctx.quadraticCurveTo(x, y + 20*s, x + 16*s, y + 13*s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3.2*s;
+    ctx.beginPath();
+    ctx.moveTo(x - 8*s, y - 5*s); ctx.lineTo(x + 8*s, y - 5*s);
+    ctx.moveTo(x - 12*s, y + 7*s); ctx.lineTo(x + 12*s, y + 7*s);
+    ctx.stroke();
+
+    ctx.fillStyle = '#111827';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 21*s, 23*s, 5*s, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 19*s, 19*s, 3*s, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+}
+
+function desenharConeBaixoPlano(ctx, o) {
+    const s = Number(o.scale || 1), x = o.x, y = o.y, c = o.color || '#f97316';
+    ctx.save();
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2.4*s;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 18*s, 0, Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x, y, 7*s, 0, Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,255,255,.7)';
+    ctx.lineWidth = 1.5*s;
+    ctx.beginPath();
+    ctx.arc(x, y, 12*s, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function desenharBarreiraPlano(ctx, o) {
+    const s = Number(o.scale || 1), x = o.x, y = o.y, c = o.color || '#f97316';
+    const sw = Number(o.strokeWidth || 4);
+    ctx.save();
+    ctx.strokeStyle = c;
+    ctx.lineWidth = sw * s;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(x - 30*s, y - 18*s);
+    ctx.lineTo(x + 30*s, y - 18*s);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x - 22*s, y - 18*s);
+    ctx.lineTo(x - 22*s, y + 28*s);
+    ctx.moveTo(x + 22*s, y - 18*s);
+    ctx.lineTo(x + 22*s, y + 28*s);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = Math.max(1.8, 2.2*s);
+    ctx.beginPath();
+    ctx.moveTo(x - 32*s, y + 29*s);
+    ctx.lineTo(x - 12*s, y + 29*s);
+    ctx.moveTo(x + 12*s, y + 29*s);
+    ctx.lineTo(x + 32*s, y + 29*s);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function desenharEscadaPlano(ctx, o) {
+    const s = Number(o.scale || 1), x = o.x, y = o.y, c = o.color || '#facc15';
+    const sw = Number(o.strokeWidth || 4);
+    const w = 46*s, h = 110*s;
+    const left = x - w/2, right = x + w/2, top = y - h/2, bottom = y + h/2;
+    ctx.save();
+    ctx.strokeStyle = c;
+    ctx.lineWidth = sw * s;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(left, top); ctx.lineTo(left, bottom);
+    ctx.moveTo(right, top); ctx.lineTo(right, bottom);
+    ctx.stroke();
+
+    const rungs = 6;
+    for (let i = 1; i < rungs; i++) {
+        const yy = top + (h / rungs) * i;
+        ctx.beginPath();
+        ctx.moveTo(left, yy);
+        ctx.lineTo(right, yy);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+boundsObjetoPlano = function(o) {
+    const s = Number(o.scale || 1);
+
+    if (o.type === 'line') {
+        const x = Math.min(o.x1, o.x2), y = Math.min(o.y1, o.y2);
+        return {x, y, w:Math.abs(o.x2-o.x1), h:Math.abs(o.y2-o.y1)};
+    }
+
+    if (o.type === 'rect') {
+        const w = (o.w || 120) * s;
+        const h = (o.h || 72) * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'circle') {
+        const r = (o.r || 42) * s;
+        return {x:o.x - r, y:o.y - r, w:r*2, h:r*2};
+    }
+
+    if (o.type === 'text') {
+        const fontSize = Math.max(10, (o.size || 24) * s);
+        const width = Math.max(44, String(o.text || 'Texto').length * fontSize * 0.62);
+        const height = fontSize * 1.35;
+        return {x:o.x - width/2, y:o.y - height/2, w:width, h:height};
+    }
+
+    if (o.type === 'goal') {
+        const w = 84 * s, h = 40 * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'barrier') {
+        const w = 76 * s, h = 70 * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'ladder') {
+        const w = 58 * s, h = 122 * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'cone') {
+        if ((o.variant || 'tall') === 'flat') {
+            const w = 46 * s, h = 46 * s;
+            return {x:o.x - w/2, y:o.y - h/2, w, h};
+        }
+        const w = 52 * s, h = 60 * s;
+        return {x:o.x - w/2, y:o.y - h/2, w, h};
+    }
+
+    if (o.type === 'ball') {
+        const r = 18 * s;
+        return {x:o.x - r, y:o.y - r, w:r*2, h:r*2};
+    }
+
+    if (o.type === 'player') {
+        const r = 22 * s;
+        return {x:o.x - r, y:o.y - r, w:r*2, h:r*2};
+    }
+
+    const r = raioHitObjetoPlano(o);
+    return {x:(o.x||0)-r, y:(o.y||0)-r, w:r*2, h:r*2};
+};
+
+raioHitObjetoPlano = function(o) {
+    const s = Number(o.scale || 1);
+    if (o.type === 'text') return Math.max(38, String(o.text || 'Texto').length * 8 * s);
+    if (o.type === 'goal') return 52 * s;
+    if (o.type === 'barrier') return 42 * s;
+    if (o.type === 'ladder') return 66 * s;
+    if (o.type === 'cone') return ((o.variant || 'tall') === 'flat' ? 26 : 32) * s;
+    if (o.type === 'ball') return 26 * s;
+    return 30 * s;
+};
+
+atualizarPainelObjetoPlano = function() {
+    const panel = document.getElementById('planoSelectedPanel');
+    if (!panel) return;
+    const obj = planoSelectedIndex >= 0 ? planoObjects[planoSelectedIndex] : null;
+    if (!obj) {
+        panel.classList.remove('visible');
+        return;
+    }
+    panel.classList.add('visible');
+
+    const nomes = {
+        line:'Linha', player:'Jogador', cone:((obj.variant || 'tall') === 'flat' ? 'Cone baixo' : 'Cone'),
+        ball:'Bola', barrier:'Barreira', ladder:'Escada', goal:'Baliza', rect:'Retângulo', circle:'Círculo', text:'Texto'
+    };
+    const nameEl = document.getElementById('planoSelectedName');
+    const typeEl = document.getElementById('planoSelectedType');
+    if (nameEl) nameEl.textContent = nomes[obj.type] || 'Objeto';
+    if (typeEl) typeEl.textContent = obj.type === 'line' ? (obj.mode || 'linha') : (obj.variant || obj.type);
+
+    const size = document.getElementById('planoSizeRange');
+    const stroke = document.getElementById('planoStrokeRange');
+    if (size) {
+        size.min = '0.25'; size.max = '5'; size.step = '0.05';
+        size.value = String(Number(obj.scale || 1).toFixed(2));
+        size.parentElement.style.display = obj.type === 'line' ? 'none' : '';
+    }
+    if (stroke) {
+        stroke.value = String(obj.type === 'line' ? (obj.w || 4) : (obj.strokeWidth || 4));
+        stroke.parentElement.style.display = ['line','rect','circle','goal','barrier','ladder'].includes(obj.type) ? '' : 'none';
+    }
+};
+
+alterarEspessuraObjetoPlano = function(value) {
+    const obj = planoObjects[planoSelectedIndex];
+    if (!obj) return;
+    const v = Math.max(1, Math.min(18, parseInt(value, 10) || 4));
+    if (obj.type === 'line') obj.w = v;
+    else obj.strokeWidth = v;
+    desenharPlano();
+    persistirExercicioAtualPlano(false);
+};
+
+alterarTamanhoObjetoPlano = function(value) {
+    const obj = planoObjects[planoSelectedIndex];
+    if (!obj) return;
+    const v = Math.max(0.25, Math.min(5, parseFloat(value) || 1));
+    obj.scale = v;
+    desenharPlano();
+    persistirExercicioAtualPlano(false);
+};
+
+const planoCanvasWheelV4 = typeof planoCanvasWheel === 'function' ? planoCanvasWheel : null;
+planoCanvasWheel = function(ev) {
+    if (planoSelectedIndex < 0 || !planoObjects[planoSelectedIndex]) return;
+    ev.preventDefault();
+    const obj = planoObjects[planoSelectedIndex];
+    if (obj.type === 'line') {
+        obj.w = Math.max(1, Math.min(18, (Number(obj.w) || 4) + (ev.deltaY < 0 ? 1 : -1)));
+    } else if (obj.type === 'rect') {
+        const f = ev.deltaY < 0 ? 1.08 : 0.92;
+        obj.w = Math.max(12, (obj.w || 120) * f);
+        obj.h = Math.max(12, (obj.h || 72) * f);
+        obj.scale = 1;
+    } else if (obj.type === 'circle') {
+        obj.r = Math.max(8, (obj.r || 42) * (ev.deltaY < 0 ? 1.08 : 0.92));
+        obj.scale = 1;
+    } else {
+        obj.scale = Math.max(0.25, Math.min(5, (Number(obj.scale) || 1) + (ev.deltaY < 0 ? 0.08 : -0.08)));
+    }
+    atualizarPainelObjetoPlano();
+    desenharPlano();
+    persistirExercicioAtualPlano(false);
+};
+
+
+
+/* ══════════════════════════════════
+   PLANO VISUAL V6 — remover template extra, rotação e ferramenta contínua
+══════════════════════════════════ */
+(function planoVisualV6(){
+    function normalizarAnguloPlano(deg) {
+        const n = Number(deg) || 0;
+        return ((n % 360) + 360) % 360;
+    }
+
+    function ensureTemplateV6() {
+        const meio = document.querySelector('.plano-template-strip .template-btn[data-template="meio_campo"]');
+        if (meio) meio.remove();
+    }
+
+    const initPropertyPanelBaseV6 = typeof initPlanoPropertyPanel === 'function' ? initPlanoPropertyPanel : null;
+    if (initPropertyPanelBaseV6) {
+        initPlanoPropertyPanel = function() {
+            initPropertyPanelBaseV6();
+            ensurePlanoRotationControl();
+        };
+    }
+
+    window.ensurePlanoRotationControl = function ensurePlanoRotationControl() {
+        const panel = document.getElementById('planoSelectedPanel');
+        if (!panel || document.getElementById('planoRotationRow')) return;
+
+        const strokeRow = document.getElementById('planoStrokeRange')?.closest('.plano-prop-row');
+        const miniActions = panel.querySelector('.plano-mini-actions');
+        const row = document.createElement('div');
+        row.className = 'plano-prop-row';
+        row.id = 'planoRotationRow';
+        row.innerHTML = `
+            <label for="planoRotationRange">Rotação</label>
+            <input id="planoRotationRange" type="range" min="0" max="359" step="1" value="0">
+            <div class="plano-rotate-actions">
+                <button type="button" onclick="rodarObjetoPlano(-15)">↺ -15°</button>
+                <button type="button" onclick="rodarObjetoPlano(15)">↻ +15°</button>
+            </div>
+        `;
+
+        if (strokeRow) strokeRow.insertAdjacentElement('afterend', row);
+        else if (miniActions) miniActions.insertAdjacentElement('beforebegin', row);
+        else panel.appendChild(row);
+
+        document.getElementById('planoRotationRange').addEventListener('input', ev => alterarRotacaoObjetoPlano(ev.target.value));
+    };
+
+    window.alterarRotacaoObjetoPlano = function alterarRotacaoObjetoPlano(value) {
+        const obj = planoObjects?.[planoSelectedIndex];
+        if (!obj || obj.type === 'line') return;
+        obj.rotation = normalizarAnguloPlano(value);
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+    };
+
+    window.rodarObjetoPlano = function rodarObjetoPlano(delta) {
+        const obj = planoObjects?.[planoSelectedIndex];
+        if (!obj || obj.type === 'line') return;
+        obj.rotation = normalizarAnguloPlano((Number(obj.rotation) || 0) + Number(delta || 0));
+        const range = document.getElementById('planoRotationRange');
+        if (range) range.value = String(obj.rotation);
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+    };
+
+    const atualizarPainelObjetoBaseV6 = typeof atualizarPainelObjetoPlano === 'function' ? atualizarPainelObjetoPlano : null;
+    if (atualizarPainelObjetoBaseV6) {
+        atualizarPainelObjetoPlano = function() {
+            ensurePlanoRotationControl();
+            atualizarPainelObjetoBaseV6();
+
+            const row = document.getElementById('planoRotationRow');
+            const range = document.getElementById('planoRotationRange');
+            const obj = planoSelectedIndex >= 0 ? planoObjects[planoSelectedIndex] : null;
+
+            if (!row || !range) return;
+
+            if (!obj || obj.type === 'line') {
+                row.style.display = 'none';
+                return;
+            }
+
+            row.style.display = '';
+            range.value = String(Math.round(normalizarAnguloPlano(obj.rotation || 0)));
+        };
+    }
+
+    const boundsObjetoBaseV6 = typeof boundsObjetoPlano === 'function' ? boundsObjetoPlano : null;
+    if (boundsObjetoBaseV6) {
+        boundsObjetoPlano = function(o) {
+            const b = boundsObjetoBaseV6(o);
+            const angle = normalizarAnguloPlano(o?.rotation || 0);
+            if (!o || !angle || o.type === 'line') return b;
+
+            const cx = o.x ?? (b.x + b.w / 2);
+            const cy = o.y ?? (b.y + b.h / 2);
+            const rad = angle * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const corners = [
+                [b.x, b.y], [b.x + b.w, b.y],
+                [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]
+            ].map(([x, y]) => {
+                const dx = x - cx;
+                const dy = y - cy;
+                return {
+                    x: cx + dx * cos - dy * sin,
+                    y: cy + dx * sin + dy * cos
+                };
+            });
+            const xs = corners.map(p => p.x);
+            const ys = corners.map(p => p.y);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+            return {x:minX, y:minY, w:maxX-minX, h:maxY-minY};
+        };
+    }
+
+    const desenharObjetoBaseV6 = typeof desenharObjetoPlano === 'function' ? desenharObjetoPlano : null;
+    if (desenharObjetoBaseV6) {
+        desenharObjetoPlano = function(ctx, o, selected = false, preview = false) {
+            const angle = normalizarAnguloPlano(o?.rotation || 0);
+            if (!o || !angle || o.type === 'line') {
+                desenharObjetoBaseV6(ctx, o, selected, preview);
+                return;
+            }
+
+            ctx.save();
+            const cx = o.x || 0;
+            const cy = o.y || 0;
+            ctx.translate(cx, cy);
+            ctx.rotate(angle * Math.PI / 180);
+            const local = {...o, x:0, y:0};
+            desenharObjetoBaseV6(ctx, local, false, preview);
+            ctx.restore();
+
+            if (selected) desenharSelecaoObjetoPlano(ctx, o);
+        };
+    }
+
+    const criarObjetoPontualBaseV6 = typeof criarObjetoPontualPlano === 'function' ? criarObjetoPontualPlano : null;
+    if (criarObjetoPontualBaseV6) {
+        criarObjetoPontualPlano = function(tool, p) {
+            const obj = criarObjetoPontualBaseV6(tool, p);
+            if (obj && obj.type !== 'line' && obj.rotation === undefined) obj.rotation = 0;
+            return obj;
+        };
+    }
+
+    const criarShapeBaseV6 = typeof criarShapePlano === 'function' ? criarShapePlano : null;
+    if (criarShapeBaseV6) {
+        criarShapePlano = function(tool, start, end) {
+            const obj = criarShapeBaseV6(tool, start, end);
+            if (obj && obj.type !== 'line' && obj.rotation === undefined) obj.rotation = 0;
+            return obj;
+        };
+    }
+
+    const setPlanoToolBaseV6 = typeof setPlanoTool === 'function' ? setPlanoTool : null;
+    if (setPlanoToolBaseV6) {
+        setPlanoTool = function(tool, btn) {
+            setPlanoToolBaseV6(tool, btn);
+            ensureTemplateV6();
+        };
+    }
+
+    const setPlanoLineToolBaseV6 = typeof setPlanoLineTool === 'function' ? setPlanoLineTool : null;
+    if (setPlanoLineToolBaseV6) {
+        setPlanoLineTool = function(tool, btn = null) {
+            setPlanoLineToolBaseV6(tool, btn);
+            ensureTemplateV6();
+        };
+    }
+
+    const abrirModalPlanoBasePrevV6 = typeof abrirModalPlanoBase === 'function' ? abrirModalPlanoBase : null;
+    if (abrirModalPlanoBasePrevV6) {
+        abrirModalPlanoBase = function() {
+            ensureTemplateV6();
+            abrirModalPlanoBasePrevV6();
+            setTimeout(() => {
+                ensureTemplateV6();
+                ensurePlanoRotationControl();
+                atualizarPainelObjetoPlano();
+                desenharPlano();
+            }, 0);
+        };
+    }
+
+    function criarTextoPlanoContinuo(p) {
+        const txt = prompt('Texto a adicionar:', 'Texto');
+        if (txt === null || txt.trim() === '') return;
+        const obj = {
+            type:'text',
+            x:p.x,
+            y:p.y,
+            text:txt.trim(),
+            color:planoColor,
+            size:24,
+            scale:1,
+            strokeWidth:4,
+            rotation:0
+        };
+        planoObjects.push(obj);
+        selecionarObjetoPlano(planoObjects.length - 1);
+        desenharPlano();
+        persistirExercicioAtualPlano(false);
+    }
+
+    planoCanvasMouseDown = function(ev) {
+        if (!planoCanvas) return;
+        planoIsPointerDown = true;
+        const p = normalizarPontoCanvas(ev);
+
+        if (planoTool === 'select') {
+            const resizeHit = encontrarHandleResizePlano(p.x, p.y);
+            if (resizeHit) {
+                const obj = planoObjects[resizeHit.idx];
+                planoDragging = {
+                    mode:'resize',
+                    idx:resizeHit.idx,
+                    handle:resizeHit.handle,
+                    start:p,
+                    original:JSON.parse(JSON.stringify(obj))
+                };
+                selecionarObjetoPlano(resizeHit.idx);
+                return;
+            }
+
+            const idx = encontrarObjetoPlano(p.x, p.y);
+            selecionarObjetoPlano(idx);
+            if (idx >= 0) {
+                const obj = planoObjects[idx];
+                planoDragging = {mode:'move', idx, start:p, original:JSON.parse(JSON.stringify(obj))};
+            }
+            return;
+        }
+
+        if (planoTool === 'eraser') {
+            const idx = encontrarObjetoPlano(p.x, p.y);
+            if (idx >= 0) {
+                planoObjects.splice(idx, 1);
+                selecionarObjetoPlano(-1);
+                desenharPlano();
+                persistirExercicioAtualPlano(false);
+            }
+            return;
+        }
+
+        if (['line','arrow','run','dash'].includes(planoTool)) {
+            planoDragging = {mode:'draw-line', tool:planoTool, start:p};
+            planoPreviewObject = {type:'line',mode:planoTool,x1:p.x,y1:p.y,x2:p.x,y2:p.y,color:planoColor,w:4};
+            desenharPlano();
+            return;
+        }
+
+        if (['rect','circle'].includes(planoTool)) {
+            planoDragging = {mode:'draw-shape', tool:planoTool, start:p};
+            planoPreviewObject = criarShapePlano(planoTool, p, p);
+            desenharPlano();
+            return;
+        }
+
+        if (planoTool === 'text') {
+            criarTextoPlanoContinuo(p);
+            return;
+        }
+
+        const obj = criarObjetoPontualPlano(planoTool, p);
+        if (obj) {
+            if (obj.rotation === undefined) obj.rotation = 0;
+            planoObjects.push(obj);
+            selecionarObjetoPlano(planoObjects.length - 1);
+            desenharPlano();
+            persistirExercicioAtualPlano(false);
+        }
+    };
+
+    planoCanvasMouseUp = function(ev) {
+        if (!planoCanvas || !planoDragging) {
+            planoIsPointerDown = false;
+            atualizarCursorPlano();
+            return;
+        }
+        const p = normalizarPontoCanvas(ev);
+
+        if (planoDragging.mode === 'move' || planoDragging.mode === 'resize') {
+            planoDragging = null;
+            planoIsPointerDown = false;
+            atualizarCursorPlano();
+            desenharPlano();
+            persistirExercicioAtualPlano(false);
+            return;
+        }
+
+        if (planoDragging.mode === 'draw-line') {
+            const start = planoDragging.start;
+            if (Math.hypot(p.x - start.x, p.y - start.y) > 8) {
+                const obj = {type:'line',mode:planoDragging.tool,x1:start.x,y1:start.y,x2:p.x,y2:p.y,color:planoColor,w:4};
+                planoObjects.push(obj);
+                selecionarObjetoPlano(planoObjects.length - 1);
+            }
+            planoDragging = null;
+            planoPreviewObject = null;
+            planoIsPointerDown = false;
+            desenharPlano();
+            persistirExercicioAtualPlano(false);
+            return;
+        }
+
+        if (planoDragging.mode === 'draw-shape') {
+            const obj = criarShapePlano(planoDragging.tool, planoDragging.start, p);
+            if (obj && ((obj.type === 'rect' && Math.abs(obj.w) > 10 && Math.abs(obj.h) > 10) || (obj.type === 'circle' && obj.r > 6))) {
+                if (obj.rotation === undefined) obj.rotation = 0;
+                planoObjects.push(obj);
+                selecionarObjetoPlano(planoObjects.length - 1);
+            }
+            planoDragging = null;
+            planoPreviewObject = null;
+            planoIsPointerDown = false;
+            desenharPlano();
+            persistirExercicioAtualPlano(false);
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        ensureTemplateV6();
+        ensurePlanoRotationControl();
+    });
+})();
+
+
+/* ══════════════════════════════════
+   PLANO VISUAL V7 — rotação pelo seletor azul + calendário dos treinos
+══════════════════════════════════ */
+(function planoVisualV7(){
+    const ROTATE_HANDLE_GAP = 26;
+    const ROTATE_HANDLE_RADIUS = 8;
+
+    function normalizarAnguloPlanoV7(deg) {
+        const n = Number(deg) || 0;
+        return ((n % 360) + 360) % 360;
+    }
+
+    function centroObjetoPlanoV7(o) {
+        if (!o) return {x:0, y:0};
+        if (o.type === 'line') {
+            return {x:(Number(o.x1) + Number(o.x2)) / 2, y:(Number(o.y1) + Number(o.y2)) / 2};
+        }
+        if (typeof o.x === 'number' && typeof o.y === 'number') {
+            return {x:o.x, y:o.y};
+        }
+        const b = boundsObjetoPlano(o);
+        return {x:b.x + b.w / 2, y:b.y + b.h / 2};
+    }
+
+    function pontoRotacaoPlanoV7(o) {
+        if (!o) return null;
+        const b = boundsObjetoPlano(o);
+        return {
+            x: b.x + b.w / 2,
+            y: b.y - ROTATE_HANDLE_GAP
+        };
+    }
+
+    function desenharIconRotacaoPlanoV7(ctx, x, y) {
+        ctx.save();
+        ctx.strokeStyle = '#0f172a';
+        ctx.fillStyle = '#0f172a';
+        ctx.lineWidth = 1.8;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.arc(x, y, 3.8, Math.PI * 0.2, Math.PI * 1.75);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + 3.3, y - 4.7);
+        ctx.lineTo(x + 7.3, y - 4.3);
+        ctx.lineTo(x + 5.4, y - 0.9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    window.encontrarHandleRotacaoPlano = function encontrarHandleRotacaoPlano(x, y) {
+        if (planoSelectedIndex < 0 || !planoObjects[planoSelectedIndex]) return null;
+        const p = pontoRotacaoPlanoV7(planoObjects[planoSelectedIndex]);
+        if (!p) return null;
+        if (Math.hypot(x - p.x, y - p.y) <= ROTATE_HANDLE_RADIUS + 7) {
+            return {idx: planoSelectedIndex, handle: 'rotate'};
+        }
+        return null;
+    };
+
+    const desenharSelecaoObjetoBaseV7 = typeof desenharSelecaoObjetoPlano === 'function' ? desenharSelecaoObjetoPlano : null;
+    window.desenharSelecaoObjetoPlano = function desenharSelecaoObjetoPlano(ctx, o) {
+        ctx.save();
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.fillStyle = '#0ea5e9';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6,5]);
+
+        const b = boundsObjetoPlano(o);
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+
+        ctx.setLineDash([]);
+        const handles = pontosResizePlano(o);
+        handles.forEach(h => {
+            ctx.beginPath();
+            ctx.fillStyle = '#fff';
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.rect(h.x - 5, h.y - 5, 10, 10);
+            ctx.fill();
+            ctx.stroke();
+        });
+
+        const rot = pontoRotacaoPlanoV7(o);
+        if (rot) {
+            const anchorX = b.x + b.w / 2;
+            const anchorY = b.y;
+            ctx.beginPath();
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.moveTo(anchorX, anchorY);
+            ctx.lineTo(rot.x, rot.y + ROTATE_HANDLE_RADIUS);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.fillStyle = '#fff';
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.arc(rot.x, rot.y, ROTATE_HANDLE_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            desenharIconRotacaoPlanoV7(ctx, rot.x, rot.y);
+        }
+        ctx.restore();
+    };
+
+    function rotacionarPontoPlanoV7(px, py, cx, cy, rad) {
+        const dx = px - cx;
+        const dy = py - cy;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        return {
+            x: cx + dx * cos - dy * sin,
+            y: cy + dx * sin + dy * cos
+        };
+    }
+
+    const mouseDownBaseV7 = typeof planoCanvasMouseDown === 'function' ? planoCanvasMouseDown : null;
+    planoCanvasMouseDown = function(ev) {
+        if (!planoCanvas) return;
+        const p = normalizarPontoCanvas(ev);
+
+        if (planoTool === 'select') {
+            const rotateHit = encontrarHandleRotacaoPlano(p.x, p.y);
+            if (rotateHit) {
+                const obj = planoObjects[rotateHit.idx];
+                const center = centroObjetoPlanoV7(obj);
+                planoIsPointerDown = true;
+                planoDragging = {
+                    mode: 'rotate',
+                    idx: rotateHit.idx,
+                    start: p,
+                    center,
+                    startAngle: Math.atan2(p.y - center.y, p.x - center.x) * 180 / Math.PI,
+                    originalRotation: Number(obj.rotation || 0),
+                    original: JSON.parse(JSON.stringify(obj))
+                };
+                selecionarObjetoPlano(rotateHit.idx);
+                planoCanvas.style.cursor = 'grabbing';
+                return;
+            }
+        }
+
+        if (mouseDownBaseV7) {
+            mouseDownBaseV7(ev);
+        }
+    };
+
+    const mouseMoveBaseV7 = typeof planoCanvasMouseMove === 'function' ? planoCanvasMouseMove : null;
+    planoCanvasMouseMove = function(ev) {
+        if (!planoCanvas) return;
+        const p = normalizarPontoCanvas(ev);
+
+        if (!planoDragging && planoTool === 'select') {
+            if (encontrarHandleRotacaoPlano(p.x, p.y)) {
+                planoCanvas.style.cursor = 'grab';
+                return;
+            }
+        }
+
+        if (planoDragging && planoDragging.mode === 'rotate') {
+            const obj = planoObjects[planoDragging.idx];
+            const original = planoDragging.original;
+            const center = planoDragging.center;
+            if (!obj || !original || !center) return;
+
+            const currentAngle = Math.atan2(p.y - center.y, p.x - center.x) * 180 / Math.PI;
+            const deltaDeg = currentAngle - planoDragging.startAngle;
+
+            if (obj.type === 'line') {
+                const rad = deltaDeg * Math.PI / 180;
+                const p1 = rotacionarPontoPlanoV7(original.x1, original.y1, center.x, center.y, rad);
+                const p2 = rotacionarPontoPlanoV7(original.x2, original.y2, center.x, center.y, rad);
+                obj.x1 = p1.x;
+                obj.y1 = p1.y;
+                obj.x2 = p2.x;
+                obj.y2 = p2.y;
+            } else {
+                obj.rotation = normalizarAnguloPlanoV7((Number(planoDragging.originalRotation) || 0) + deltaDeg);
+                const range = document.getElementById('planoRotationRange');
+                if (range) range.value = String(Math.round(obj.rotation));
+            }
+
+            atualizarPainelObjetoPlano();
+            desenharPlano();
+            return;
+        }
+
+        if (mouseMoveBaseV7) {
+            mouseMoveBaseV7(ev);
+        }
+    };
+
+    const mouseUpBaseV7 = typeof planoCanvasMouseUp === 'function' ? planoCanvasMouseUp : null;
+    planoCanvasMouseUp = function(ev) {
+        if (planoDragging && planoDragging.mode === 'rotate') {
+            planoDragging = null;
+            planoIsPointerDown = false;
+            atualizarCursorPlano();
+            desenharPlano();
+            persistirExercicioAtualPlano(false);
+            return;
+        }
+
+        if (mouseUpBaseV7) {
+            mouseUpBaseV7(ev);
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const palette = document.getElementById('planoColorPalette');
+        const colorFlyout = document.querySelector('.plano-color-flyout');
+        if (palette) {
+            palette.style.marginTop = '4px';
+            palette.style.transform = 'translateY(-2px)';
+        }
+        if (colorFlyout) {
+            colorFlyout.style.gap = '2px';
+            colorFlyout.style.paddingTop = '0';
+        }
+    });
+})();
+
 </script>
 
 </body>

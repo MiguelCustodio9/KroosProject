@@ -42,6 +42,7 @@ $activeSidebarView = match ($viewMode) {
     'jogos' => 'jogos',
     'campeonato' => 'campeonato',
     'calendario' => 'calendario',
+    'treino' => 'calendario',
     'mensagens' => 'mensagens',
     default => 'home',
 };
@@ -91,6 +92,30 @@ $conn->query("CREATE TABLE IF NOT EXISTS `jogos_clube` (
     `resultado_adv` INT DEFAULT NULL,
     `estado` ENUM('Agendado','Realizado','Cancelado','Adiado') NOT NULL DEFAULT 'Agendado',
     `id_evento_clube` INT DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$checkTreinoEquipa = $conn->query("SHOW COLUMNS FROM treino LIKE 'id_equipa'");
+if ($checkTreinoEquipa && $checkTreinoEquipa->num_rows === 0) {
+    $conn->query("ALTER TABLE treino ADD COLUMN id_equipa INT DEFAULT NULL AFTER id_treino");
+}
+
+$checkTreinoEvento = $conn->query("SHOW COLUMNS FROM treino LIKE 'id_evento_clube'");
+if ($checkTreinoEvento && $checkTreinoEvento->num_rows === 0) {
+    $conn->query("ALTER TABLE treino ADD COLUMN id_evento_clube INT DEFAULT NULL AFTER id_plano");
+}
+
+$conn->query("CREATE TABLE IF NOT EXISTS `treino_exercicio` (
+    `id_exercicio` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_treino` INT NOT NULL,
+    `ordem` INT NOT NULL DEFAULT 1,
+    `titulo` VARCHAR(120) NOT NULL,
+    `desenho_json` LONGTEXT DEFAULT NULL,
+    `descricao` TEXT DEFAULT NULL,
+    `objetivos` TEXT DEFAULT NULL,
+    `criado_em` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `atualizado_em` DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    KEY `idx_treino_exercicio_treino` (`id_treino`),
+    KEY `idx_treino_exercicio_ordem` (`id_treino`, `ordem`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 /* ── Flash messages ── */
@@ -367,11 +392,33 @@ if ($id_equipa > 0) {
 $eventosEquipa = [];
 if ($id_equipa > 0) {
     $stmtEventos = $conn->prepare(" 
-        SELECT id_evento, tipo_evento, `descrição_evento` AS descricao_evento,
-               estado_evento, data_evento, hora_evento, local_evento
-        FROM eventos_clube
-        WHERE id_equipa = ?
-        ORDER BY data_evento ASC, hora_evento ASC
+        SELECT
+            ec.id_evento,
+            ec.tipo_evento,
+            ec.`descrição_evento` AS descricao_evento,
+            ec.estado_evento,
+            ec.data_evento,
+            ec.hora_evento,
+            ec.local_evento,
+            t.id_treino,
+            t.`número_treino` AS numero_treino,
+            t.`conteúdo` AS conteudo_treino
+        FROM eventos_clube ec
+        LEFT JOIN treino t
+          ON t.id_equipa = ec.id_equipa
+         AND (
+                t.id_evento_clube = ec.id_evento
+             OR (
+                    ec.tipo_evento = 'Treino'
+                AND t.`data` = ec.data_evento
+                AND (
+                        t.hora = ec.hora_evento
+                     OR (t.hora IS NULL AND ec.hora_evento IS NULL)
+                    )
+                )
+             )
+        WHERE ec.id_equipa = ?
+        ORDER BY ec.data_evento ASC, ec.hora_evento ASC, ec.id_evento ASC
     ");
     $stmtEventos->bind_param("i", $id_equipa);
     $stmtEventos->execute();
@@ -594,6 +641,69 @@ if ($chatSelecionado) {
     $resConversa = $stmtConversa->get_result();
     while ($row = $resConversa->fetch_assoc()) {
         $mensagensConversa[] = $row;
+    }
+}
+
+/* ── Treino selecionado pelo jogador, aberto a partir do calendário ── */
+$idTreinoSelecionado = (int)($_GET['id'] ?? $_GET['treino'] ?? 0);
+$treinoSelecionado = null;
+$exerciciosTreinoSelecionado = [];
+
+if ($id_equipa > 0 && $idTreinoSelecionado > 0) {
+    $stmtTreinoSelecionado = $conn->prepare(" 
+        SELECT
+            t.id_treino,
+            t.id_equipa,
+            t.`número_treino` AS numero_treino,
+            t.`data` AS data_treino,
+            t.hora AS hora_treino,
+            t.`conteúdo` AS conteudo_treino,
+            t.`observações` AS observacoes_treino,
+            t.dia_da_semana,
+            eq.`escalão`,
+            eq.hierarquia,
+            ep.`época` AS epoca
+        FROM treino t
+        JOIN equipa eq ON eq.id_equipa = t.id_equipa
+        LEFT JOIN `época` ep ON ep.`id_época` = eq.`id_época`
+        WHERE t.id_treino = ?
+          AND t.id_equipa = ?
+          AND eq.id_clube = ?
+        LIMIT 1
+    ");
+    $stmtTreinoSelecionado->bind_param("iii", $idTreinoSelecionado, $id_equipa, $id_clube);
+    $stmtTreinoSelecionado->execute();
+    $treinoSelecionado = $stmtTreinoSelecionado->get_result()->fetch_assoc() ?: null;
+
+    if ($treinoSelecionado) {
+        $stmtExerciciosTreino = $conn->prepare(" 
+            SELECT id_exercicio, ordem, titulo, desenho_json, descricao, objetivos
+            FROM treino_exercicio
+            WHERE id_treino = ?
+            ORDER BY ordem ASC, id_exercicio ASC
+        ");
+        $stmtExerciciosTreino->bind_param("i", $idTreinoSelecionado);
+        $stmtExerciciosTreino->execute();
+        $resExerciciosTreino = $stmtExerciciosTreino->get_result();
+
+        while ($row = $resExerciciosTreino->fetch_assoc()) {
+            $canvas = json_decode($row['desenho_json'] ?? '', true);
+            if (!is_array($canvas)) {
+                $canvas = ['template' => 'campo_inteiro', 'objects' => []];
+            }
+            if (!isset($canvas['objects']) || !is_array($canvas['objects'])) {
+                $canvas['objects'] = [];
+            }
+
+            $exerciciosTreinoSelecionado[] = [
+                'id_exercicio' => (int)$row['id_exercicio'],
+                'ordem' => (int)$row['ordem'],
+                'titulo' => $row['titulo'] ?: ('Exercício ' . (int)$row['ordem']),
+                'descricao' => $row['descricao'] ?? '',
+                'objetivos' => $row['objetivos'] ?? '',
+                'canvas' => $canvas,
+            ];
+        }
     }
 }
 
@@ -955,6 +1065,134 @@ body.layout-locked { overflow: hidden; }
 .event-date { color: var(--club); font-weight: 800; font-size: 13px; }
 .event-main strong { display: block; color: #1f2b3d; margin-bottom: 3px; }
 .event-main span { color: #6b7280; font-size: 13px; }
+
+.event-card-link {
+    text-decoration: none;
+    color: inherit;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.event-card-link:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, .08);
+    border-color: var(--club);
+}
+.event-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: var(--club);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.btn-soft-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 10px 16px;
+    background: #eef2f7;
+    color: #1f2b3d;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 800;
+}
+.btn-soft-link:hover { background: #e2e8f0; }
+.treino-view-header {
+    border-bottom: 3px solid #111827;
+    padding-bottom: 14px;
+    margin-bottom: 20px;
+}
+.treino-view-title {
+    font-size: 24px;
+    font-weight: 900;
+    color: #0f172a;
+    margin-bottom: 6px;
+}
+.treino-view-meta {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 700;
+}
+.treino-info-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 22px;
+}
+.treino-info-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 14px 16px;
+}
+.treino-info-box span {
+    display: block;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 6px;
+}
+.treino-info-box strong {
+    display: block;
+    color: #1f2b3d;
+    font-size: 15px;
+}
+.treino-exercicio-view {
+    border-top: 3px solid #111827;
+    padding-top: 12px;
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: 48% 52%;
+    min-height: 300px;
+    break-inside: avoid;
+}
+.treino-exercicio-visual {
+    padding: 14px 18px 14px 0;
+    border-right: 1px solid #cbd5e1;
+}
+.treino-exercicio-desc {
+    padding: 14px 0 14px 18px;
+}
+.treino-print-label {
+    font-size: 13px;
+    font-weight: 900;
+    color: #0f172a;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #d4d4d8;
+    margin-bottom: 10px;
+}
+.treino-view-canvas {
+    width: 100%;
+    height: 240px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    display: block;
+}
+.treino-desc-block,
+.treino-objetivo-block {
+    font-size: 14px;
+    line-height: 1.45;
+    color: #111827;
+    white-space: pre-wrap;
+}
+.treino-desc-block {
+    min-height: 95px;
+    padding-bottom: 12px;
+}
+.treino-objetivo-block { padding-top: 4px; }
+@media (max-width: 900px) {
+    .treino-info-grid { grid-template-columns: 1fr 1fr; }
+    .treino-exercicio-view { grid-template-columns: 1fr; }
+    .treino-exercicio-visual { border-right: none; padding-right: 0; }
+    .treino-exercicio-desc { padding-left: 0; }
+}
 
 .messages-shell {
     display: grid;
@@ -1414,6 +1652,73 @@ body.layout-locked { overflow: hidden; }
                 </div>
             <?php endif; ?>
         </div>
+    <?php elseif ($viewMode === 'treino'): ?>
+        <div class="screen-shell visible">
+            <?php if (!$treinoSelecionado): ?>
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title">Treino não encontrado</h2>
+                        <p class="section-subtitle">Este treino não existe ou não pertence à tua equipa.</p>
+                    </div>
+                    <a href="index-jogador.php?view=calendario" class="btn-soft-link">← Voltar ao calendário</a>
+                </div>
+                <div class="empty-state">Não tens acesso a este plano de treino.</div>
+            <?php else: ?>
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title">Plano de treino</h2>
+                        <p class="section-subtitle">Consulta apenas. Só o treinador pode editar.</p>
+                    </div>
+                    <a href="index-jogador.php?view=calendario" class="btn-soft-link">← Voltar ao calendário</a>
+                </div>
+
+                <div class="treino-view-header">
+                    <div class="treino-view-title">
+                        Treino #<?= h($treinoSelecionado['numero_treino']) ?> — <?= h($treinoSelecionado['conteudo_treino'] ?: 'Plano de treino') ?>
+                    </div>
+                    <div class="treino-view-meta">
+                        <?= h($treinoSelecionado['escalão'] . ' ' . $treinoSelecionado['hierarquia']) ?>
+                        <?= $treinoSelecionado['epoca'] ? ' · ' . h($treinoSelecionado['epoca']) : '' ?>
+                        · <?= h(formatDatePt($treinoSelecionado['data_treino'])) ?>
+                        <?= $treinoSelecionado['hora_treino'] ? ' · ' . h(formatTimePt($treinoSelecionado['hora_treino'])) : '' ?>
+                        <?= $treinoSelecionado['dia_da_semana'] ? ' · ' . h($treinoSelecionado['dia_da_semana']) : '' ?>
+                    </div>
+                </div>
+
+                <div class="treino-info-grid">
+                    <div class="treino-info-box"><span>Data</span><strong><?= h(formatDatePt($treinoSelecionado['data_treino'])) ?></strong></div>
+                    <div class="treino-info-box"><span>Hora</span><strong><?= h(formatTimePt($treinoSelecionado['hora_treino']) ?: '—') ?></strong></div>
+                    <div class="treino-info-box"><span>Equipa</span><strong><?= h($treinoSelecionado['escalão'] . ' ' . $treinoSelecionado['hierarquia']) ?></strong></div>
+                    <div class="treino-info-box"><span>Observações</span><strong><?= h($treinoSelecionado['observacoes_treino'] ?: '—') ?></strong></div>
+                </div>
+
+                <?php if (empty($exerciciosTreinoSelecionado)): ?>
+                    <div class="empty-state">Este treino ainda não tem plano visual associado.</div>
+                <?php else: ?>
+                    <?php foreach ($exerciciosTreinoSelecionado as $idx => $exercicio): ?>
+                        <section class="treino-exercicio-view">
+                            <div class="treino-exercicio-visual">
+                                <div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:13px;">
+                                    <strong>Atividade: <?= h($exercicio['titulo'] ?: ('Exercício ' . ($idx + 1))) ?></strong>
+                                    <strong>Duração:</strong>
+                                </div>
+                                <div class="treino-print-label">Representação visual</div>
+                                <canvas class="treino-view-canvas" width="520" height="330" data-treino-exercicio="<?= (int)$idx ?>"></canvas>
+                            </div>
+
+                            <div class="treino-exercicio-desc">
+                                <div class="treino-print-label">Descrição</div>
+                                <div class="treino-desc-block"><?= nl2br(h($exercicio['descricao'] ?: 'Sem descrição definida.')) ?></div>
+
+                                <div class="treino-print-label">Objetivos / Indicações / Regras</div>
+                                <div class="treino-objetivo-block"><?= nl2br(h($exercicio['objetivos'] ?: 'Sem objetivos definidos.')) ?></div>
+                            </div>
+                        </section>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            <?php endif; ?>
+        </div>
+
     <?php elseif ($viewMode === 'calendario'): ?>
         <div class="screen-shell visible">
             <div class="section-header">
@@ -1435,20 +1740,29 @@ body.layout-locked { overflow: hidden; }
                                 default => 'blue',
                             };
                         ?>
-                        <div class="event-card">
+                        <?php
+                            $isTreinoCalendario = ($evento['tipo_evento'] === 'Treino' && !empty($evento['id_treino']));
+                            $eventTag = $isTreinoCalendario ? 'a' : 'div';
+                            $eventHref = $isTreinoCalendario ? ' href="index-jogador.php?view=treino&id=' . (int)$evento['id_treino'] . '"' : '';
+                        ?>
+                        <<?= $eventTag ?> class="event-card <?= $isTreinoCalendario ? 'event-card-link' : '' ?>"<?= $eventHref ?>>
                             <div class="event-date">
                                 <?= h(formatDatePt($evento['data_evento'])) ?>
                                 <?= $evento['hora_evento'] ? '<br>' . h(formatTimePt($evento['hora_evento'])) : '' ?>
                             </div>
                             <div class="event-main">
                                 <strong><?= h($evento['tipo_evento']) ?></strong>
-                                <span><?= h($evento['descricao_evento'] ?: 'Sem descrição') ?></span>
+                                <span><?= h($evento['descricao_evento'] ?: ($isTreinoCalendario ? ('Treino #' . $evento['numero_treino']) : 'Sem descrição')) ?></span>
                                 <?php if ($evento['local_evento']): ?>
                                     <br><span><?= h($evento['local_evento']) ?></span>
                                 <?php endif; ?>
                             </div>
-                            <span class="badge <?= $estadoEvClass ?>"><?= h($evento['estado_evento']) ?></span>
-                        </div>
+                            <?php if ($isTreinoCalendario): ?>
+                                <span class="event-action">Ver treino</span>
+                            <?php else: ?>
+                                <span class="badge <?= $estadoEvClass ?>"><?= h($evento['estado_evento']) ?></span>
+                            <?php endif; ?>
+                        </<?= $eventTag ?>>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -1622,6 +1936,207 @@ const thread = document.getElementById('messagesThread');
 if (thread) {
     setTimeout(() => { thread.scrollTop = thread.scrollHeight; }, 50);
 }
+
+
+/* ── Renderização readonly dos planos visuais no jogador ── */
+const treinoPlanoExercicios = <?= json_encode($exerciciosTreinoSelecionado, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const TREINO_PLANO_BASE_W = 980;
+const TREINO_PLANO_BASE_H = 610;
+
+function drawTreinoPlano(canvas, data) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const state = data || {template:'campo_inteiro', objects:[]};
+    ctx.save();
+    ctx.scale(canvas.width / TREINO_PLANO_BASE_W, canvas.height / TREINO_PLANO_BASE_H);
+    drawTreinoCampo(ctx, TREINO_PLANO_BASE_W, TREINO_PLANO_BASE_H, state.template || 'campo_inteiro');
+    (state.objects || []).forEach(obj => drawTreinoObjeto(ctx, normalizarTreinoObjeto(obj)));
+    ctx.restore();
+}
+
+function normalizarTreinoObjeto(o) {
+    const n = Object.assign({}, o || {});
+    if (n.scale == null) n.scale = 1;
+    if (n.type === 'circle' && !n.r) n.r = 42;
+    if (n.type === 'rect') { if (!n.w) n.w = 120; if (!n.h) n.h = 72; }
+    if (n.type === 'line' && !n.w) n.w = 4;
+    if (n.rotation == null) n.rotation = 0;
+    return n;
+}
+
+function drawTreinoCampo(ctx, w, h, template) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#111';
+    ctx.lineCap = 'square';
+    ctx.lineJoin = 'miter';
+    ctx.lineWidth = 4;
+
+    const left = w * .04, right = w * .96, top = h * .08, bottom = h * .92, mid = w / 2, cy = (top + bottom) / 2;
+
+    if (template === 'area') {
+        const fieldW = right - left, fieldH = bottom - top;
+        ctx.strokeRect(left, top, fieldW, fieldH);
+        const boxW = fieldW * .50, boxH = fieldH * .38, boxX = mid - boxW / 2;
+        ctx.strokeRect(boxX, top, boxW, boxH);
+        ctx.strokeRect(mid - boxW * .22, top, boxW * .44, boxH * .48);
+        ctx.beginPath(); ctx.arc(mid, top + boxH, boxW * .16, 0, Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(mid, top + boxH * .58, 4, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill();
+        return;
+    }
+
+    if (template === 'futsal') {
+        roundRectTreinoPath(ctx, left, top, right - left, bottom - top, 16); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(mid, top); ctx.lineTo(mid, bottom); ctx.stroke();
+        ctx.beginPath(); ctx.arc(mid, cy, (bottom - top) * .12, 0, Math.PI * 2); ctx.stroke();
+        drawTreinoAreaFutsal(ctx, left, cy, 1, top, bottom);
+        drawTreinoAreaFutsal(ctx, right, cy, -1, top, bottom);
+        return;
+    }
+
+    ctx.strokeRect(left, top, right - left, bottom - top);
+    ctx.beginPath(); ctx.moveTo(mid, top); ctx.lineTo(mid, bottom); ctx.stroke();
+    ctx.beginPath(); ctx.arc(mid, cy, (bottom - top) * .13, 0, Math.PI * 2); ctx.stroke();
+
+    const bw = (right - left) * .17, bh = (bottom - top) * .48, sw = (right - left) * .06, sh = (bottom - top) * .22;
+    const yb = cy - bh / 2, ys = cy - sh / 2;
+    ctx.strokeRect(left, yb, bw, bh); ctx.strokeRect(left, ys, sw, sh);
+    ctx.beginPath(); ctx.arc(left + bw, cy, bh * .19, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(left + bw * .55, cy, 4, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill();
+    ctx.strokeRect(right - bw, yb, bw, bh); ctx.strokeRect(right - sw, ys, sw, sh);
+    ctx.beginPath(); ctx.arc(right - bw, cy, bh * .19, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+    ctx.beginPath(); ctx.arc(right - bw * .55, cy, 4, 0, Math.PI * 2); ctx.fillStyle = '#111'; ctx.fill();
+}
+
+function roundRectTreinoPath(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+}
+function drawTreinoAreaFutsal(ctx, x, cy, dir, top, bottom) {
+    const h = (bottom - top) * .34;
+    ctx.beginPath(); ctx.arc(x, cy, h / 2, dir > 0 ? -Math.PI / 2 : Math.PI / 2, dir > 0 ? Math.PI / 2 : Math.PI * 1.5); ctx.stroke();
+    ctx.strokeRect(x + (dir > 0 ? 0 : -42), cy - 35, 42, 70);
+}
+
+function drawTreinoObjeto(ctx, o) {
+    ctx.save();
+    if (o.type !== 'line' && Number(o.rotation || 0)) {
+        ctx.translate(o.x || 0, o.y || 0);
+        ctx.rotate(Number(o.rotation || 0) * Math.PI / 180);
+        o = Object.assign({}, o, {x:0, y:0});
+    }
+
+    if (o.type === 'line') drawTreinoLinha(ctx, o);
+    else if (o.type === 'player') drawTreinoJogador(ctx, o);
+    else if (o.type === 'cone') drawTreinoCone(ctx, o);
+    else if (o.type === 'ball') drawTreinoBola(ctx, o);
+    else if (o.type === 'barrier') drawTreinoBarreira(ctx, o);
+    else if (o.type === 'ladder') drawTreinoEscada(ctx, o);
+    else if (o.type === 'goal') drawTreinoBaliza(ctx, o);
+    else if (o.type === 'rect') drawTreinoRetangulo(ctx, o);
+    else if (o.type === 'circle') drawTreinoCirculo(ctx, o);
+    else if (o.type === 'text') drawTreinoTexto(ctx, o);
+    ctx.restore();
+}
+
+function drawTreinoLinha(ctx, o) {
+    const w = Number(o.w || 4);
+    ctx.strokeStyle = o.color || '#111';
+    ctx.fillStyle = o.color || '#111';
+    ctx.lineWidth = w;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (o.mode === 'dash') ctx.setLineDash([16, 12]);
+    if (o.mode === 'run') {
+        drawTreinoLinhaOndulada(ctx, o.x1, o.y1, o.x2, o.y2, w);
+        drawTreinoSeta(ctx, o.x1, o.y1, o.x2, o.y2, o.color || '#111', w);
+    } else {
+        ctx.beginPath(); ctx.moveTo(o.x1, o.y1); ctx.lineTo(o.x2, o.y2); ctx.stroke();
+        if (o.mode === 'arrow') drawTreinoSeta(ctx, o.x1, o.y1, o.x2, o.y2, o.color || '#111', w);
+    }
+    ctx.setLineDash([]);
+}
+function drawTreinoLinhaOndulada(ctx, x1, y1, x2, y2, w) {
+    const dx = x2-x1, dy = y2-y1, len = Math.hypot(dx,dy) || 1;
+    const ux = dx/len, uy = dy/len, px = -uy, py = ux, amp = 7;
+    ctx.beginPath();
+    for (let d=0; d<=len; d+=8) {
+        const t=d/len, wave=Math.sin(t*Math.PI*len/28)*amp, x=x1+ux*d+px*wave, y=y1+uy*d+py*wave;
+        if (d===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+}
+function drawTreinoSeta(ctx, x1, y1, x2, y2, color, w=4) {
+    const a=Math.atan2(y2-y1,x2-x1), l=17+w*1.2;
+    ctx.save(); ctx.fillStyle=color;
+    ctx.beginPath(); ctx.moveTo(x2,y2);
+    ctx.lineTo(x2-l*Math.cos(a-Math.PI/6),y2-l*Math.sin(a-Math.PI/6));
+    ctx.lineTo(x2-l*Math.cos(a+Math.PI/6),y2-l*Math.sin(a+Math.PI/6));
+    ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function drawTreinoJogador(ctx, o) {
+    const s=Number(o.scale||1), r=18*s;
+    ctx.beginPath(); ctx.arc(o.x,o.y,r,0,Math.PI*2); ctx.fillStyle=o.color||'#3b82f6'; ctx.fill();
+    ctx.lineWidth=2.5*s; ctx.strokeStyle='#fff'; ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.font=`900 ${Math.max(9,14*s)}px Inter,Arial`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(o.n ?? ''), o.x, o.y+1*s);
+}
+function drawTreinoCone(ctx, o) {
+    const s=Number(o.scale||1), x=o.x, y=o.y, c=o.color||'#f97316';
+    ctx.save(); ctx.fillStyle=c; ctx.strokeStyle='#111827'; ctx.lineWidth=2.4*s;
+    if ((o.variant || 'tall') === 'flat') {
+        ctx.beginPath(); ctx.arc(x,y,18*s,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(x,y,7*s,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle='rgba(255,255,255,.7)'; ctx.lineWidth=1.5*s; ctx.beginPath(); ctx.arc(x,y,12*s,0,Math.PI*2); ctx.stroke();
+    } else {
+        ctx.beginPath(); ctx.moveTo(x,y-27*s); ctx.lineTo(x-16*s,y+13*s); ctx.quadraticCurveTo(x,y+20*s,x+16*s,y+13*s); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle='#fff'; ctx.lineWidth=3.2*s; ctx.beginPath(); ctx.moveTo(x-8*s,y-5*s); ctx.lineTo(x+8*s,y-5*s); ctx.moveTo(x-12*s,y+7*s); ctx.lineTo(x+12*s,y+7*s); ctx.stroke();
+        ctx.fillStyle='#111827'; ctx.beginPath(); ctx.ellipse(x,y+21*s,23*s,5*s,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle=c; ctx.beginPath(); ctx.ellipse(x,y+19*s,19*s,3*s,0,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+}
+function drawTreinoBola(ctx, o) {
+    const s=Number(o.scale||1), x=o.x, y=o.y, r=15*s;
+    ctx.save(); ctx.fillStyle='#fff'; ctx.strokeStyle='#111827'; ctx.lineWidth=2.5*s; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#111827'; ctx.beginPath(); for(let i=0;i<5;i++){const a=-Math.PI/2+i*2*Math.PI/5, px=x+Math.cos(a)*r*.45, py=y+Math.sin(a)*r*.45; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='#111827'; ctx.lineWidth=1.4*s; for(let i=0;i<5;i++){const a=-Math.PI/2+i*2*Math.PI/5; ctx.beginPath(); ctx.moveTo(x+Math.cos(a)*r*.48,y+Math.sin(a)*r*.48); ctx.lineTo(x+Math.cos(a)*r*.95,y+Math.sin(a)*r*.95); ctx.stroke();}
+    ctx.restore();
+}
+function drawTreinoBarreira(ctx, o) {
+    const s=Number(o.scale||1), x=o.x, y=o.y, c=o.color||'#f97316', sw=Number(o.strokeWidth||4);
+    ctx.save(); ctx.strokeStyle=c; ctx.lineWidth=sw*s; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); ctx.moveTo(x-30*s,y-18*s); ctx.lineTo(x+30*s,y-18*s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x-22*s,y-18*s); ctx.lineTo(x-22*s,y+28*s); ctx.moveTo(x+22*s,y-18*s); ctx.lineTo(x+22*s,y+28*s); ctx.stroke();
+    ctx.strokeStyle='#111827'; ctx.lineWidth=Math.max(1.8,2.2*s); ctx.beginPath(); ctx.moveTo(x-32*s,y+29*s); ctx.lineTo(x-12*s,y+29*s); ctx.moveTo(x+12*s,y+29*s); ctx.lineTo(x+32*s,y+29*s); ctx.stroke();
+    ctx.restore();
+}
+function drawTreinoEscada(ctx, o) {
+    const s=Number(o.scale||1), x=o.x, y=o.y, c=o.color||'#facc15', sw=Number(o.strokeWidth||4), w=46*s, h=110*s;
+    const left=x-w/2, right=x+w/2, top=y-h/2, bottom=y+h/2;
+    ctx.save(); ctx.strokeStyle=c; ctx.lineWidth=sw*s; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); ctx.moveTo(left,top); ctx.lineTo(left,bottom); ctx.moveTo(right,top); ctx.lineTo(right,bottom); ctx.stroke();
+    for(let i=1;i<6;i++){const yy=top+(h/6)*i; ctx.beginPath(); ctx.moveTo(left,yy); ctx.lineTo(right,yy); ctx.stroke();}
+    ctx.restore();
+}
+function drawTreinoBaliza(ctx, o) {
+    const s=Number(o.scale||1), x=o.x, y=o.y, w=72*s, h=28*s;
+    ctx.save(); ctx.strokeStyle=o.color||'#111'; ctx.lineWidth=(o.strokeWidth||4)*s; ctx.strokeRect(x-w/2,y-h/2,w,h);
+    ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.2*s; for(let i=1;i<4;i++){ctx.beginPath(); ctx.moveTo(x-w/2+i*w/4,y-h/2); ctx.lineTo(x-w/2+i*w/4,y+h/2); ctx.stroke();}
+    ctx.beginPath(); ctx.moveTo(x-w/2,y); ctx.lineTo(x+w/2,y); ctx.stroke(); ctx.restore();
+}
+function drawTreinoRetangulo(ctx, o) { const s=Number(o.scale||1), w=(o.w||120)*s, h=(o.h||72)*s; ctx.save(); ctx.strokeStyle=o.color||'#111'; ctx.lineWidth=o.strokeWidth||4; ctx.strokeRect(o.x-w/2,o.y-h/2,w,h); ctx.restore(); }
+function drawTreinoCirculo(ctx, o) { const s=Number(o.scale||1), r=(o.r||42)*s; ctx.save(); ctx.strokeStyle=o.color||'#111'; ctx.lineWidth=o.strokeWidth||4; ctx.beginPath(); ctx.arc(o.x,o.y,r,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+function drawTreinoTexto(ctx, o) { const s=Number(o.scale||1); ctx.save(); ctx.fillStyle=o.color||'#111'; ctx.font=`900 ${Math.max(10,(o.size||24)*s)}px Inter,Arial`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(o.text||'Texto',o.x,o.y); ctx.restore(); }
+
+function renderTreinoPlanoJogador() {
+    document.querySelectorAll('canvas[data-treino-exercicio]').forEach(canvas => {
+        const idx = Number(canvas.dataset.treinoExercicio || 0);
+        const ex = treinoPlanoExercicios[idx];
+        drawTreinoPlano(canvas, ex && ex.canvas ? ex.canvas : {template:'campo_inteiro', objects:[]});
+    });
+}
+
+document.addEventListener('DOMContentLoaded', renderTreinoPlanoJogador);
 </script>
 </body>
 </html>
