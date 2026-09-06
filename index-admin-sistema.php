@@ -847,7 +847,7 @@ body.layout-locked { overflow: hidden; }
     border: 1px solid #eaeaea;
     display: none;
     flex-direction: column;
-    border-radius: 12px;
+    border-radius: 0;
     overflow: hidden;
     box-shadow: 0 14px 34px rgba(0,0,0,.12);
     z-index: 500;
