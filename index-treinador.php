@@ -10957,39 +10957,78 @@ function gerarRelatorioJogo() {
         const numero = linha.querySelector('.convocado-number')?.textContent.trim() || '';
         const nome = linha.querySelector('.convocado-name')?.textContent.trim() || '';
         const papel = obterTextoSelecionado(linha.querySelector('select'));
-        return `<li><b>${esc(numero)} ${esc(nome)}</b><span>${esc(papel === '—' ? 'Convocado' : papel)}</span></li>`;
-    }).join('') || '<li>Sem convocados registados.</li>';
-    const linhasEvento = (id, campos) => [...document.querySelectorAll(`#${id} .game-event-row`)].map(linha => `<li>${campos.map(campo => esc(valorCampo(linha.querySelector(campo)))).join(' · ')}</li>`).join('') || '<li>Sem registos.</li>';
+        return [numero, nome, papel === '—' ? 'Convocado' : papel];
+    });
+    const linhasEvento = (id, campos) => [...document.querySelectorAll(`#${id} .game-event-row`)].map(linha => campos.map(campo => valorCampo(linha.querySelector(campo))));
     const substituicoes = linhasEvento('substituicoesLista', ['[name="substituicao_entrada[]"]','[name="substituicao_saida[]"]','[name="substituicao_minuto[]"]']);
     const golos = linhasEvento('golosLista', ['[name="golo_marcador[]"]','[name="golo_assistente[]"]','[name="golo_minuto[]"]','[name="golo_zona[]"]','[name="golo_forma[]"]']);
     const coletivas = [...document.querySelectorAll('#estatisticasColetivasGrid .edit-group')].map(grupo => {
         const input = grupo.querySelector('input[name]');
-        return input ? `<tr><td>${esc(grupo.querySelector('label')?.textContent.trim() || '')}</td><td>${esc(input.value)}</td></tr>` : '';
-    }).filter(Boolean).join('');
-    const individuais = [...document.querySelectorAll('.game-stats-scroll tbody tr')].map(linha => `<tr>${[...linha.querySelectorAll('td')].map((celula, indice) => `<td>${indice ? esc(celula.querySelector('input')?.value || '0') : esc(celula.textContent.trim())}</td>`).join('')}</tr>`).join('');
-    const cabecalhoIndividuais = [...document.querySelectorAll('.game-stats-scroll th')].map(celula => `<th>${esc(celula.textContent.trim())}</th>`).join('');
+        return input ? [grupo.querySelector('label')?.textContent.trim() || '', input.value] : null;
+    }).filter(Boolean);
+    const individuais = [...document.querySelectorAll('.game-stats-scroll tbody tr')].map(linha => [...linha.querySelectorAll('td')].map((celula, indice) => indice ? (celula.querySelector('input')?.value || '0') : celula.textContent.trim()));
+    const cabecalhoIndividuais = [...document.querySelectorAll('.game-stats-scroll th')].map(celula => celula.textContent.trim());
     const posseCasa = document.getElementById('posseCasaPercentagem')?.textContent || '0%';
     const posseVisitante = document.getElementById('posseVisitantePercentagem')?.textContent || '0%';
-    const htmlRelatorio = `<div>${titulo}\nTática: ${tatica} | ${partes} parte(s) de ${minutos} min.\nResultado: ${resultadoNos} - ${resultadoAdv}\n\nConvocatória\n${convocados}\n\nSubstituições\n${substituicoes}\n\nGolos\n${golos}\n\nPosse de bola\nCasa: ${posseCasa} | Visitante: ${posseVisitante}\n\nEstatísticas coletivas\n${coletivas}\n\nEstatísticas individuais\n${cabecalhoIndividuais}\n${individuais}</div>`;
-    const textoComLinhas = htmlRelatorio.replace(/<\/?(li|tr|div)[^>]*>/gi, '\n').replace(/<\/?(td|th)[^>]*>/gi, ' | ');
-    const textoPlano = new DOMParser().parseFromString(textoComLinhas, 'text/html').body.textContent;
-    descarregarPdfJogo(textoPlano, titulo);
+    descarregarPdfJogo({ titulo, partes, minutos, resultadoNos, resultadoAdv, tatica, convocados, substituicoes, golos, coletivas, individuais, cabecalhoIndividuais, posseCasa, posseVisitante }, titulo);
 }
 
-function descarregarPdfJogo(texto, titulo) {
-    const limpar = valor => String(valor).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, ' ').replace(/[\\()]/g, '\\$&');
-    const linhas = limpar(texto).split(/\r?\n/).flatMap(linha => linha.match(/.{1,92}(?:\s|$)|.{1,92}/g) || ['']);
-    const paginas = [];
-    for (let inicio = 0; inicio < linhas.length; inicio += 48) paginas.push(linhas.slice(inicio, inicio + 48));
+function descarregarPdfJogo(dados, titulo) {
+    const limpar = valor => String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, ' ').replace(/[\\()]/g, '\\$&');
+    const corHex = getComputedStyle(document.documentElement).getPropertyValue('--club').trim().replace('#', '') || '17334F';
+    const cor = [parseInt(corHex.substring(0, 2), 16) / 255, parseInt(corHex.substring(2, 4), 16) / 255, parseInt(corHex.substring(4, 6), 16) / 255].map(valor => Number.isFinite(valor) ? valor.toFixed(3) : '0.100');
+    const paginas = [[]]; let y = 794;
+    const pagina = () => paginas[paginas.length - 1];
+    const cmd = texto => pagina().push(texto);
+    const texto = (conteudo, x, posY, tamanho = 10, negrito = false, corTexto = '0.12 0.16 0.22') => cmd(`BT /F${negrito ? '2' : '1'} ${tamanho} Tf ${corTexto} rg 1 0 0 1 ${x} ${posY} Tm (${limpar(conteudo)}) Tj ET`);
+    const retangulo = (x, posY, largura, altura, corPreenchimento) => cmd(`${corPreenchimento} rg ${x} ${posY} ${largura} ${altura} re f`);
+    const novaPagina = () => { paginas.push([]); y = 794; desenharTopo(false); };
+    const garantir = altura => { if (y - altura < 48) novaPagina(); };
+    const linha = () => { cmd(`0.86 0.89 0.92 RG 48 ${y} m 547 ${y} l S`); y -= 13; };
+    const desenharTopo = primeira => {
+        retangulo(0, 770, 595, 72, cor.join(' '));
+        texto(primeira ? 'KROOS PROJECT  |  RELATORIO DE JOGO' : 'KROOS PROJECT  |  RELATORIO DE JOGO', 48, 810, 9, true, '1 1 1');
+        texto(primeira ? dados.titulo : 'Continuação do relatório', 48, 786, 18, true, '1 1 1');
+        y = 744;
+    };
+    const secao = nome => { garantir(38); texto(nome.toUpperCase(), 48, y, 10, true, cor.join(' ')); y -= 8; linha(); };
+    const tabela = (cabecalhos, linhas, larguras) => {
+        garantir(30); const x = 48; const alturaLinha = 18;
+        retangulo(x, y - alturaLinha + 4, 499, alturaLinha, cor.join(' '));
+        let cursor = x + 6; cabecalhos.forEach((cabecalho, indice) => { texto(cabecalho, cursor, y - 8, 7, true, '1 1 1'); cursor += larguras[indice]; }); y -= alturaLinha;
+        linhas.forEach((dadosLinha, indice) => { garantir(alturaLinha + 6); if (indice % 2 === 0) retangulo(x, y - alturaLinha + 4, 499, alturaLinha, '0.965 0.975 0.980'); cursor = x + 6; dadosLinha.forEach((celula, coluna) => { texto(String(celula).slice(0, Math.floor(larguras[coluna] / 5.5)), cursor, y - 8, 7.5, false); cursor += larguras[coluna]; }); y -= alturaLinha; });
+        y -= 10;
+    };
+    desenharTopo(true);
+    texto(`Tática  ${dados.tatica}`, 48, y, 10, true); texto(`${dados.partes} parte(s) de ${dados.minutos} min.`, 365, y, 10); y -= 28;
+    retangulo(48, y - 55, 499, 55, '0.955 0.970 0.980');
+    texto('RESULTADO FINAL', 66, y - 18, 8, true, '0.35 0.42 0.50');
+    texto(`${dados.resultadoNos}  -  ${dados.resultadoAdv}`, 66, y - 43, 24, true, cor.join(' '));
+    texto('POSSE DE BOLA', 350, y - 18, 8, true, '0.35 0.42 0.50');
+    texto(`Casa ${dados.posseCasa}   |   Visitante ${dados.posseVisitante}`, 350, y - 40, 11, true); y -= 78;
+    secao('Convocatória');
+    tabela(['#', 'JOGADOR', 'ESTATUTO'], dados.convocados.length ? dados.convocados : [['—', 'Sem convocados registados', '—']], [42, 285, 160]);
+    secao('Eventos do jogo');
+    tabela(['SUBSTITUIÇÕES', 'SAI', 'MIN.'], dados.substituicoes.length ? dados.substituicoes : [['Sem registos', '—', '—']], [210, 210, 67]);
+    tabela(['GOLO', 'ASSIST.', 'MIN.', 'ZONA', 'ORIGEM'], dados.golos.length ? dados.golos : [['Sem registos', '—', '—', '—', '—']], [115, 115, 52, 105, 100]);
+    secao('Estatísticas coletivas');
+    const coletivasDuasColunas = [];
+    for (let indice = 0; indice < dados.coletivas.length; indice += 2) coletivasDuasColunas.push([dados.coletivas[indice]?.[0] || '', dados.coletivas[indice]?.[1] || '', dados.coletivas[indice + 1]?.[0] || '', dados.coletivas[indice + 1]?.[1] || '']);
+    tabela(['MÉTRICA', 'VALOR', 'MÉTRICA', 'VALOR'], coletivasDuasColunas, [190, 58, 190, 58]);
+    secao('Estatísticas individuais');
+    const indicesResumo = [0, 1, 2, 3, 4, 5, 6];
+    const cabecalhosResumo = indicesResumo.map(indice => dados.cabecalhoIndividuais[indice] || '');
+    const linhasResumo = dados.individuais.map(linhaDados => indicesResumo.map(indice => linhaDados[indice] || '0'));
+    tabela(cabecalhosResumo, linhasResumo.length ? linhasResumo : [['Sem estatísticas']], [130, 45, 45, 45, 45, 75, 75]);
+    paginas.forEach((paginaComandos, indice) => {
+        paginaComandos.push(`BT /F1 8 Tf 0.40 0.46 0.54 rg 1 0 0 1 470 24 Tm (Pagina ${indice + 1} de ${paginas.length}) Tj ET`);
+    });
     const objetos = ['<< /Type /Catalog /Pages 2 0 R >>', `<< /Type /Pages /Kids [${paginas.map((_, indice) => `${3 + indice * 2} 0 R`).join(' ')}] /Count ${paginas.length} >>`];
-    paginas.forEach((pagina, indice) => {
+    paginas.forEach((paginaComandos, indice) => {
         const paginaId = 3 + indice * 2;
         const conteudoId = paginaId + 1;
-        const comandos = ['BT', '/F1 16 Tf', '50 800 Td', `(${limpar(titulo)}) Tj`, '/F1 10 Tf', '0 -28 Td'];
-        pagina.forEach(linha => comandos.push(`(${linha}) Tj`, '0 -14 Td'));
-        comandos.push('ET');
-        const conteudo = comandos.join('\n');
-        objetos.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${conteudoId} 0 R >>`);
+        const conteudo = paginaComandos.join('\n');
+        objetos.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> /F2 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> >> >> /Contents ${conteudoId} 0 R >>`);
         objetos.push(`<< /Length ${conteudo.length} >>\nstream\n${conteudo}\nendstream`);
     });
     let pdf = '%PDF-1.4\n'; const offsets = [0];
