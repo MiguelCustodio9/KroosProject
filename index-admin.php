@@ -3888,7 +3888,7 @@ body.layout-locked #dashboardCard {
                                 </div>
                                 <div class="message-user-main">
                                     <span class="message-user-name"><?= htmlspecialchars($nomeU) ?></span>
-                                    <span class="message-user-type"><?= htmlspecialchars($uMsg['tipo_utilizador']) ?></span>
+                                    <span class="message-user-type"><?= htmlspecialchars(['jogador' => 'Jogador', 'treinador' => 'Treinador', 'admin_clube' => 'Admin Clube', 'admin' => 'Admin de Sistema'][$uMsg['tipo_utilizador']] ?? $uMsg['tipo_utilizador']) ?></span>
                                 </div>
                                 <?php if ($badgeNaoLidas > 0): ?>
                                     <span class="message-user-unread"><?= $badgeNaoLidas ?></span>

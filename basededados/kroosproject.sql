@@ -464,6 +464,86 @@ CREATE TABLE `mensagens` (
 -- --------------------------------------------------------
 
 --
+-- Detalhe, convocatória e estatísticas de jogos do clube
+--
+
+CREATE TABLE `jogo_configuracao` (
+  `id_jogo` int(11) NOT NULL,
+  `numero_partes` int(11) NOT NULL DEFAULT 2,
+  `minutos_por_parte` int(11) NOT NULL DEFAULT 45,
+  `presenca_equipa_tecnica` text DEFAULT NULL,
+  PRIMARY KEY (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `jogo_participantes` (
+  `id_participante` int(11) NOT NULL AUTO_INCREMENT,
+  `id_jogo` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `tipo` enum('Convocado','Titular','Suplente','Suplente Utilizado') NOT NULL,
+  PRIMARY KEY (`id_participante`),
+  UNIQUE KEY `uq_jogo_participante_tipo` (`id_jogo`,`id_jogador`,`tipo`),
+  KEY `idx_jogo_participantes_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `jogo_substituicoes` (
+  `id_substituicao` int(11) NOT NULL AUTO_INCREMENT,
+  `id_jogo` int(11) NOT NULL,
+  `id_jogador_entrada` int(11) NOT NULL,
+  `id_jogador_saida` int(11) NOT NULL,
+  `minuto` int(11) NOT NULL,
+  PRIMARY KEY (`id_substituicao`),
+  KEY `idx_jogo_substituicoes_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `jogo_golos` (
+  `id_golo` int(11) NOT NULL AUTO_INCREMENT,
+  `id_jogo` int(11) NOT NULL,
+  `id_jogador_marcador` int(11) NOT NULL,
+  `id_jogador_assistente` int(11) DEFAULT NULL,
+  `minuto` int(11) NOT NULL,
+  `zona` varchar(50) DEFAULT NULL,
+  `forma` varchar(80) DEFAULT NULL,
+  PRIMARY KEY (`id_golo`),
+  KEY `idx_jogo_golos_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `jogo_estatisticas_coletivas` (
+  `id_jogo` int(11) NOT NULL,
+  `posse_casa_segundos` int(11) NOT NULL DEFAULT 0,
+  `sem_posse_segundos` int(11) NOT NULL DEFAULT 0,
+  `posse_visitante_segundos` int(11) NOT NULL DEFAULT 0,
+  `posse_casa_percentagem` decimal(5,2) NOT NULL DEFAULT 0,
+  `posse_visitante_percentagem` decimal(5,2) NOT NULL DEFAULT 0,
+  `remates_nos` int(11) NOT NULL DEFAULT 0, `remates_adversario` int(11) NOT NULL DEFAULT 0,
+  `remates_baliza_nos` int(11) NOT NULL DEFAULT 0, `remates_baliza_adversario` int(11) NOT NULL DEFAULT 0,
+  `dribles_tentados_nos` int(11) NOT NULL DEFAULT 0, `dribles_tentados_adversario` int(11) NOT NULL DEFAULT 0,
+  `dribles_conseguidos_nos` int(11) NOT NULL DEFAULT 0, `dribles_conseguidos_adversario` int(11) NOT NULL DEFAULT 0,
+  `defesas_nos` int(11) NOT NULL DEFAULT 0, `defesas_adversario` int(11) NOT NULL DEFAULT 0,
+  `cantos_nos` int(11) NOT NULL DEFAULT 0, `cantos_adversario` int(11) NOT NULL DEFAULT 0,
+  `passes_nos` int(11) NOT NULL DEFAULT 0, `passes_adversario` int(11) NOT NULL DEFAULT 0,
+  `passes_certos_nos` int(11) NOT NULL DEFAULT 0, `passes_certos_adversario` int(11) NOT NULL DEFAULT 0,
+  `faltas_nos` int(11) NOT NULL DEFAULT 0, `faltas_adversario` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `jogo_estatisticas_individuais` (
+  `id_estatistica` int(11) NOT NULL AUTO_INCREMENT,
+  `id_jogo` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `minutos_jogados` int(11) NOT NULL DEFAULT 0, `remates` int(11) NOT NULL DEFAULT 0,
+  `remates_baliza` int(11) NOT NULL DEFAULT 0, `assistencias` int(11) NOT NULL DEFAULT 0,
+  `passes` int(11) NOT NULL DEFAULT 0, `passes_certos` int(11) NOT NULL DEFAULT 0,
+  `dribles_tentados` int(11) NOT NULL DEFAULT 0, `dribles_conseguidos` int(11) NOT NULL DEFAULT 0,
+  `defesas` int(11) NOT NULL DEFAULT 0, `desarmes` int(11) NOT NULL DEFAULT 0,
+  `intercecoes` int(11) NOT NULL DEFAULT 0, `faltas_sofridas` int(11) NOT NULL DEFAULT 0,
+  `faltas_cometidas` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id_estatistica`),
+  UNIQUE KEY `uq_estatistica_individual` (`id_jogo`,`id_jogador`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura da tabela `notificacao`
 --
 

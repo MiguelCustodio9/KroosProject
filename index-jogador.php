@@ -1396,7 +1396,7 @@ body.layout-locked { overflow: hidden; }
                                 </div>
                                 <div class="message-user-main">
                                     <span class="message-user-name"><?= h($nomeU) ?></span>
-                                    <span class="message-user-type"><?= h($uMsg['tipo_utilizador']) ?></span>
+                                    <span class="message-user-type"><?= h(['jogador' => 'Jogador', 'treinador' => 'Treinador', 'admin_clube' => 'Admin Clube', 'admin' => 'Admin de Sistema'][$uMsg['tipo_utilizador']] ?? $uMsg['tipo_utilizador']) ?></span>
                                 </div>
                                 <?php if ($badgeNaoLidas > 0): ?>
                                     <span class="message-user-unread"><?= $badgeNaoLidas ?></span>

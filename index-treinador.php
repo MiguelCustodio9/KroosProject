@@ -64,6 +64,7 @@ $activeSidebarView = match ($viewMode) {
     default => 'treinos',
 };
 $chatSelecionadoId = (int)($_GET['chat'] ?? 0);
+$jogoSelecionadoId = (int)($_GET['jogo'] ?? 0);
 
 $listaEscaloesDisponiveis = [
     'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
@@ -339,6 +340,90 @@ $conn->query("CREATE TABLE IF NOT EXISTS `jogos_clube` (
     `resultado_adv` INT DEFAULT NULL,
     `estado` ENUM('Agendado','Realizado','Cancelado','Adiado') NOT NULL DEFAULT 'Agendado',
     `id_evento_clube` INT DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+/* ── Detalhe e estatísticas dos jogos ── */
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_configuracao` (
+    `id_jogo` INT NOT NULL PRIMARY KEY,
+    `numero_partes` INT NOT NULL DEFAULT 2,
+    `minutos_por_parte` INT NOT NULL DEFAULT 45,
+    `presenca_equipa_tecnica` TEXT DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_participantes` (
+    `id_participante` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `tipo` ENUM('Convocado','Titular','Suplente','Suplente Utilizado') NOT NULL,
+    UNIQUE KEY `uq_jogo_participante_tipo` (`id_jogo`, `id_jogador`, `tipo`),
+    KEY `idx_jogo_participantes_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_substituicoes` (
+    `id_substituicao` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador_entrada` INT NOT NULL,
+    `id_jogador_saida` INT NOT NULL,
+    `minuto` INT NOT NULL,
+    KEY `idx_jogo_substituicoes_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_golos` (
+    `id_golo` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador_marcador` INT NOT NULL,
+    `id_jogador_assistente` INT DEFAULT NULL,
+    `minuto` INT NOT NULL,
+    `zona` VARCHAR(50) DEFAULT NULL,
+    `forma` VARCHAR(80) DEFAULT NULL,
+    KEY `idx_jogo_golos_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_estatisticas_coletivas` (
+    `id_jogo` INT NOT NULL PRIMARY KEY,
+    `posse_casa_segundos` INT NOT NULL DEFAULT 0,
+    `sem_posse_segundos` INT NOT NULL DEFAULT 0,
+    `posse_visitante_segundos` INT NOT NULL DEFAULT 0,
+    `posse_casa_percentagem` DECIMAL(5,2) NOT NULL DEFAULT 0,
+    `posse_visitante_percentagem` DECIMAL(5,2) NOT NULL DEFAULT 0,
+    `remates_nos` INT NOT NULL DEFAULT 0,
+    `remates_adversario` INT NOT NULL DEFAULT 0,
+    `remates_baliza_nos` INT NOT NULL DEFAULT 0,
+    `remates_baliza_adversario` INT NOT NULL DEFAULT 0,
+    `dribles_tentados_nos` INT NOT NULL DEFAULT 0,
+    `dribles_tentados_adversario` INT NOT NULL DEFAULT 0,
+    `dribles_conseguidos_nos` INT NOT NULL DEFAULT 0,
+    `dribles_conseguidos_adversario` INT NOT NULL DEFAULT 0,
+    `defesas_nos` INT NOT NULL DEFAULT 0,
+    `defesas_adversario` INT NOT NULL DEFAULT 0,
+    `cantos_nos` INT NOT NULL DEFAULT 0,
+    `cantos_adversario` INT NOT NULL DEFAULT 0,
+    `passes_nos` INT NOT NULL DEFAULT 0,
+    `passes_adversario` INT NOT NULL DEFAULT 0,
+    `passes_certos_nos` INT NOT NULL DEFAULT 0,
+    `passes_certos_adversario` INT NOT NULL DEFAULT 0,
+    `faltas_nos` INT NOT NULL DEFAULT 0,
+    `faltas_adversario` INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_estatisticas_individuais` (
+    `id_estatistica` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `minutos_jogados` INT NOT NULL DEFAULT 0,
+    `remates` INT NOT NULL DEFAULT 0,
+    `remates_baliza` INT NOT NULL DEFAULT 0,
+    `assistencias` INT NOT NULL DEFAULT 0,
+    `passes` INT NOT NULL DEFAULT 0,
+    `passes_certos` INT NOT NULL DEFAULT 0,
+    `dribles_tentados` INT NOT NULL DEFAULT 0,
+    `dribles_conseguidos` INT NOT NULL DEFAULT 0,
+    `defesas` INT NOT NULL DEFAULT 0,
+    `desarmes` INT NOT NULL DEFAULT 0,
+    `intercecoes` INT NOT NULL DEFAULT 0,
+    `faltas_sofridas` INT NOT NULL DEFAULT 0,
+    `faltas_cometidas` INT NOT NULL DEFAULT 0,
+    UNIQUE KEY `uq_estatistica_individual` (`id_jogo`, `id_jogador`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 /* ── Exercícios visuais do plano de treino ── */
@@ -851,6 +936,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $erro = 'Erro ao atualizar resultado.';
                 }
+            }
+        }
+    }
+
+    /* ── Guardar detalhe completo de jogo ── */
+    if ($acao === 'guardar_detalhe_jogo') {
+        $viewMode = 'jogos';
+        $idJogoDetalhe = (int)($_POST['id_jogo'] ?? 0);
+        $stmtAcessoJogo = $conn->prepare("SELECT cc.id_equipa FROM jogos_clube jc INNER JOIN competicoes_clube cc ON cc.id_competicao = jc.id_competicao INNER JOIN acesso_equipa ae ON ae.id_equipa = cc.id_equipa WHERE jc.id_jogo = ? AND ae.id_utilizador = ? AND cc.id_clube = ? LIMIT 1");
+        $stmtAcessoJogo->bind_param("iii", $idJogoDetalhe, $id_utilizador, $id_clube);
+        $stmtAcessoJogo->execute();
+        $jogoAcesso = $stmtAcessoJogo->get_result()->fetch_assoc();
+
+        if (!$jogoAcesso) {
+            $erro = 'Não tens acesso a esse jogo.';
+        } else {
+            $idEquipaJogo = (int)$jogoAcesso['id_equipa'];
+            $jogadoresValidos = [];
+            $stmtJogadoresJogo = $conn->prepare("SELECT id_jogador FROM jogadores WHERE id_equipa = ?");
+            $stmtJogadoresJogo->bind_param("i", $idEquipaJogo);
+            $stmtJogadoresJogo->execute();
+            $resJogadoresJogo = $stmtJogadoresJogo->get_result();
+            while ($jogadorJogo = $resJogadoresJogo->fetch_assoc()) {
+                $jogadoresValidos[(int)$jogadorJogo['id_jogador']] = true;
+            }
+
+            $normalizarJogadores = static function ($valores) use ($jogadoresValidos): array {
+                $resultado = [];
+                foreach ((array)$valores as $valor) {
+                    $idJogador = (int)$valor;
+                    if ($idJogador > 0 && isset($jogadoresValidos[$idJogador])) {
+                        $resultado[$idJogador] = $idJogador;
+                    }
+                }
+                return array_values($resultado);
+            };
+
+            $partes = max(1, min(6, (int)($_POST['numero_partes'] ?? 2)));
+            $minutosParte = max(1, min(120, (int)($_POST['minutos_por_parte'] ?? 45)));
+            $convocados = $normalizarJogadores($_POST['convocados'] ?? []);
+            $titulares = $normalizarJogadores($_POST['titulares'] ?? []);
+            $suplentes = $normalizarJogadores($_POST['suplentes'] ?? []);
+            $suplentesUtilizados = $normalizarJogadores($_POST['suplentes_utilizados'] ?? []);
+            $equipaTecnica = implode("\n", array_filter(array_map('trim', (array)($_POST['equipa_tecnica'] ?? []))));
+            $resultadoNosDetalhe = ($_POST['resultado_nos'] ?? '') === '' ? null : max(0, (int)$_POST['resultado_nos']);
+            $resultadoAdvDetalhe = ($_POST['resultado_adv'] ?? '') === '' ? null : max(0, (int)$_POST['resultado_adv']);
+
+            $camposColetivos = ['remates_nos','remates_adversario','remates_baliza_nos','remates_baliza_adversario','dribles_tentados_nos','dribles_tentados_adversario','dribles_conseguidos_nos','dribles_conseguidos_adversario','defesas_nos','defesas_adversario','cantos_nos','cantos_adversario','passes_nos','passes_adversario','passes_certos_nos','passes_certos_adversario','faltas_nos','faltas_adversario'];
+            $coletivas = [];
+            foreach ($camposColetivos as $campo) $coletivas[$campo] = max(0, (int)($_POST[$campo] ?? 0));
+            $posseCasaSegundos = max(0, (int)($_POST['posse_casa_segundos'] ?? 0));
+            $semPosseSegundos = max(0, (int)($_POST['sem_posse_segundos'] ?? 0));
+            $posseVisitanteSegundos = max(0, (int)($_POST['posse_visitante_segundos'] ?? 0));
+            $tempoComPosse = $posseCasaSegundos + $posseVisitanteSegundos;
+            $posseCasaPercentagem = $tempoComPosse > 0 ? round($posseCasaSegundos * 100 / $tempoComPosse, 2) : 0;
+            $posseVisitantePercentagem = $tempoComPosse > 0 ? round($posseVisitanteSegundos * 100 / $tempoComPosse, 2) : 0;
+
+            try {
+                $conn->begin_transaction();
+                $stmtConfig = $conn->prepare("INSERT INTO jogo_configuracao (id_jogo,numero_partes,minutos_por_parte,presenca_equipa_tecnica) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE numero_partes=VALUES(numero_partes),minutos_por_parte=VALUES(minutos_por_parte),presenca_equipa_tecnica=VALUES(presenca_equipa_tecnica)");
+                $stmtConfig->bind_param("iiis", $idJogoDetalhe, $partes, $minutosParte, $equipaTecnica);
+                $stmtConfig->execute();
+
+                $conn->query("DELETE FROM jogo_participantes WHERE id_jogo=" . $idJogoDetalhe);
+                $conn->query("DELETE FROM jogo_substituicoes WHERE id_jogo=" . $idJogoDetalhe);
+                $conn->query("DELETE FROM jogo_golos WHERE id_jogo=" . $idJogoDetalhe);
+                $conn->query("DELETE FROM jogo_estatisticas_individuais WHERE id_jogo=" . $idJogoDetalhe);
+                $stmtParticipante = $conn->prepare("INSERT INTO jogo_participantes (id_jogo,id_jogador,tipo) VALUES (?,?,?)");
+                foreach (['Convocado' => $convocados, 'Titular' => $titulares, 'Suplente' => $suplentes, 'Suplente Utilizado' => $suplentesUtilizados] as $tipoParticipante => $listaParticipantes) {
+                    foreach ($listaParticipantes as $idJogadorParticipante) {
+                        $stmtParticipante->bind_param("iis", $idJogoDetalhe, $idJogadorParticipante, $tipoParticipante);
+                        $stmtParticipante->execute();
+                    }
+                }
+
+                $entradas = (array)($_POST['substituicao_entrada'] ?? []);
+                $saidas = (array)($_POST['substituicao_saida'] ?? []);
+                $minutosSubs = (array)($_POST['substituicao_minuto'] ?? []);
+                $stmtSubstituicao = $conn->prepare("INSERT INTO jogo_substituicoes (id_jogo,id_jogador_entrada,id_jogador_saida,minuto) VALUES (?,?,?,?)");
+                foreach ($entradas as $indice => $entrada) {
+                    $idEntrada = (int)$entrada; $idSaida = (int)($saidas[$indice] ?? 0); $minuto = max(0, (int)($minutosSubs[$indice] ?? 0));
+                    if (isset($jogadoresValidos[$idEntrada], $jogadoresValidos[$idSaida]) && $idEntrada !== $idSaida && $minuto > 0) {
+                        $stmtSubstituicao->bind_param("iiii", $idJogoDetalhe, $idEntrada, $idSaida, $minuto);
+                        $stmtSubstituicao->execute();
+                    }
+                }
+
+                $marcadores = (array)($_POST['golo_marcador'] ?? []);
+                $assistentes = (array)($_POST['golo_assistente'] ?? []);
+                $minutosGolos = (array)($_POST['golo_minuto'] ?? []);
+                $zonasGolo = (array)($_POST['golo_zona'] ?? []);
+                $formasGolo = (array)($_POST['golo_forma'] ?? []);
+                $stmtGolo = $conn->prepare("INSERT INTO jogo_golos (id_jogo,id_jogador_marcador,id_jogador_assistente,minuto,zona,forma) VALUES (?,?,?,?,?,?)");
+                foreach ($marcadores as $indice => $marcador) {
+                    $idMarcador = (int)$marcador;
+                    $idAssistente = (int)($assistentes[$indice] ?? 0);
+                    $minutoGolo = (int)($minutosGolos[$indice] ?? 0);
+                    $minuto = max(0, $minutoGolo);
+                    $zona = trim($zonasGolo[$indice] ?? '');
+                    $forma = trim($formasGolo[$indice] ?? '');
+                    if (isset($jogadoresValidos[$idMarcador]) && $minuto > 0) {
+                        $assistenteNulo = isset($jogadoresValidos[$idAssistente]) ? $idAssistente : null;
+                        $stmtGolo->bind_param("iiiiss", $idJogoDetalhe, $idMarcador, $assistenteNulo, $minuto, $zona, $forma);
+                        $stmtGolo->execute();
+                    }
+                }
+
+                $conn->query("INSERT INTO jogo_estatisticas_coletivas (id_jogo,posse_casa_segundos,sem_posse_segundos,posse_visitante_segundos,posse_casa_percentagem,posse_visitante_percentagem," . implode(',', $camposColetivos) . ") VALUES (" . $idJogoDetalhe . "," . $posseCasaSegundos . "," . $semPosseSegundos . "," . $posseVisitanteSegundos . "," . $posseCasaPercentagem . "," . $posseVisitantePercentagem . "," . implode(',', $coletivas) . ") ON DUPLICATE KEY UPDATE posse_casa_segundos=VALUES(posse_casa_segundos),sem_posse_segundos=VALUES(sem_posse_segundos),posse_visitante_segundos=VALUES(posse_visitante_segundos),posse_casa_percentagem=VALUES(posse_casa_percentagem),posse_visitante_percentagem=VALUES(posse_visitante_percentagem)," . implode(',', array_map(static fn($campo) => $campo . '=VALUES(' . $campo . ')', $camposColetivos)));
+
+                $camposIndividuais = ['minutos_jogados','remates','remates_baliza','assistencias','passes','passes_certos','dribles_tentados','dribles_conseguidos','defesas','desarmes','intercecoes','faltas_sofridas','faltas_cometidas'];
+                foreach ((array)($_POST['estatisticas_individuais'] ?? []) as $idJogador => $estatisticasJogador) {
+                    $idJogador = (int)$idJogador;
+                    if (!isset($jogadoresValidos[$idJogador])) continue;
+                    $valores = array_map(static fn($campo) => max(0, (int)($estatisticasJogador[$campo] ?? 0)), $camposIndividuais);
+                    if (array_sum($valores) === 0) continue;
+                    $conn->query("INSERT INTO jogo_estatisticas_individuais (id_jogo,id_jogador," . implode(',', $camposIndividuais) . ") VALUES (" . $idJogoDetalhe . "," . $idJogador . "," . implode(',', $valores) . ")");
+                }
+
+                $stmtResultadoDetalhe = $conn->prepare("UPDATE jogos_clube SET resultado_nos=?, resultado_adv=?, estado='Realizado' WHERE id_jogo=?");
+                $stmtResultadoDetalhe->bind_param("iii", $resultadoNosDetalhe, $resultadoAdvDetalhe, $idJogoDetalhe);
+                $stmtResultadoDetalhe->execute();
+                $conn->commit();
+                $sucesso = 'Detalhe e estatísticas do jogo guardados.';
+            } catch (Throwable $e) {
+                $conn->rollback();
+                $erro = 'Não foi possível guardar o detalhe do jogo.';
             }
         }
     }
@@ -2639,6 +2850,42 @@ $resJogosC = $stmtJogosClub->get_result();
 while ($row = $resJogosC->fetch_assoc()) {
     $jogosPorCompeticao[$row['id_competicao']][] = $row;
     $jogosTreinador[] = $row;
+}
+
+/* ── Dados do detalhe de jogo selecionado ── */
+$jogoDetalhe = null;
+$configuracaoJogo = ['numero_partes' => 2, 'minutos_por_parte' => 45, 'presenca_equipa_tecnica' => ''];
+$participantesJogo = ['Convocado' => [], 'Titular' => [], 'Suplente' => [], 'Suplente Utilizado' => []];
+$substituicoesJogo = [];
+$golosJogo = [];
+$estatisticasColetivasJogo = [];
+$estatisticasIndividuaisJogo = [];
+
+foreach ($jogosTreinador as $jogoTreinador) {
+    if ((int)$jogoTreinador['id_jogo'] === $jogoSelecionadoId) {
+        $jogoDetalhe = $jogoTreinador;
+        break;
+    }
+}
+
+if ($jogoDetalhe) {
+    $idJogoDetalhe = (int)$jogoDetalhe['id_jogo'];
+    $resConfigJogo = $conn->query("SELECT numero_partes, minutos_por_parte, presenca_equipa_tecnica FROM jogo_configuracao WHERE id_jogo=" . $idJogoDetalhe);
+    if ($resConfigJogo && ($config = $resConfigJogo->fetch_assoc())) $configuracaoJogo = $config;
+    $resParticipantes = $conn->query("SELECT id_jogador, tipo FROM jogo_participantes WHERE id_jogo=" . $idJogoDetalhe);
+    while ($resParticipantes && ($participante = $resParticipantes->fetch_assoc())) {
+        $participantesJogo[$participante['tipo']][] = (int)$participante['id_jogador'];
+    }
+    $resSubsJogo = $conn->query("SELECT id_jogador_entrada, id_jogador_saida, minuto FROM jogo_substituicoes WHERE id_jogo=" . $idJogoDetalhe . " ORDER BY minuto");
+    while ($resSubsJogo && ($substituicao = $resSubsJogo->fetch_assoc())) $substituicoesJogo[] = $substituicao;
+    $resGolosJogo = $conn->query("SELECT id_jogador_marcador, id_jogador_assistente, minuto, zona, forma FROM jogo_golos WHERE id_jogo=" . $idJogoDetalhe . " ORDER BY minuto");
+    while ($resGolosJogo && ($golo = $resGolosJogo->fetch_assoc())) $golosJogo[] = $golo;
+    $resColetivasJogo = $conn->query("SELECT * FROM jogo_estatisticas_coletivas WHERE id_jogo=" . $idJogoDetalhe);
+    if ($resColetivasJogo && ($coletivas = $resColetivasJogo->fetch_assoc())) $estatisticasColetivasJogo = $coletivas;
+    $resIndividuaisJogo = $conn->query("SELECT * FROM jogo_estatisticas_individuais WHERE id_jogo=" . $idJogoDetalhe);
+    while ($resIndividuaisJogo && ($individual = $resIndividuaisJogo->fetch_assoc())) {
+        $estatisticasIndividuaisJogo[(int)$individual['id_jogador']] = $individual;
+    }
 }
 
 /* ── Estatísticas simples para o ecrã Campeonato ── */
@@ -4652,6 +4899,28 @@ body.layout-locked #dashboardCard {
     background: #fff;
 }
 
+.game-detail-form { max-width: 1180px; }
+.game-detail-title { color: #1f2b3d; margin: 0 0 14px; }
+.game-detail-title small { color: #6b7280; font-size: 13px; font-weight: 500; margin-left: 8px; }
+.game-detail-section { background: #fff; border: 1px solid #e2e8f4; border-radius: 8px; padding: 18px; margin-bottom: 14px; }
+.game-detail-section h4 { margin: 0 0 14px; color: #1f2b3d; font-size: 15px; }
+.game-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.game-checkboxes { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.game-checkboxes label { font-size: 13px; color: #334155; }
+.game-events-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.game-event-row { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)) auto; gap: 8px; align-items: end; }
+.game-event-row.golo { grid-template-columns: repeat(5, minmax(120px, 1fr)) auto; }
+.game-event-row select, .game-event-row input { width: 100%; }
+.posse-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.posse-controls button { border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #1f2b3d; padding: 9px 12px; cursor: pointer; }
+.posse-controls button.active { background: #166534; color: #fff; border-color: #166534; }
+.posse-controls strong { margin-left: 8px; color: #1f2b3d; font-variant-numeric: tabular-nums; }
+.game-stats-scroll { overflow-x: auto; }
+.game-stats-scroll table { border-collapse: collapse; width: 100%; min-width: 1120px; font-size: 12px; }
+.game-stats-scroll th, .game-stats-scroll td { border-bottom: 1px solid #e2e8f4; padding: 7px; text-align: left; }
+.game-stats-scroll th { color: #475569; white-space: nowrap; }
+.game-stats-scroll td input { width: 58px; min-width: 58px; }
+
 .trainer-game-date {
     font-size: 12px;
     color: #6b7280;
@@ -5322,7 +5591,7 @@ body.layout-locked #dashboardCard {
                                 </div>
                                 <div class="message-user-main">
                                     <span class="message-user-name"><?= htmlspecialchars($nomeU) ?></span>
-                                    <span class="message-user-type"><?= htmlspecialchars($uMsg['tipo_utilizador']) ?></span>
+                                    <span class="message-user-type"><?= htmlspecialchars(['jogador' => 'Jogador', 'treinador' => 'Treinador', 'admin_clube' => 'Admin Clube', 'admin' => 'Admin de Sistema'][$uMsg['tipo_utilizador']] ?? $uMsg['tipo_utilizador']) ?></span>
                                 </div>
                                 <?php if ($badgeNaoLidas > 0): ?>
                                     <span class="message-user-unread"><?= $badgeNaoLidas ?></span>
@@ -5517,7 +5786,95 @@ body.layout-locked #dashboardCard {
                 </div>
             </div>
 
-            <?php if (empty($jogosTreinador)): ?>
+            <?php if ($jogoDetalhe): ?>
+                <?php
+                    $jogadoresDetalhe = $jogadoresPorEquipa[(int)$jogoDetalhe['id_equipa']] ?? [];
+                    $idsConvocados = $participantesJogo['Convocado'];
+                    $idsTitulares = $participantesJogo['Titular'];
+                    $idsSuplentes = $participantesJogo['Suplente'];
+                    $idsSuplentesUtilizados = $participantesJogo['Suplente Utilizado'];
+                    $tecnicosPresentes = array_filter(explode("\n", $configuracaoJogo['presenca_equipa_tecnica'] ?? ''));
+                    $camposColetivosView = ['remates_nos' => 'Remates nossos', 'remates_adversario' => 'Remates adversário', 'remates_baliza_nos' => 'Remates à baliza nossos', 'remates_baliza_adversario' => 'Remates à baliza adversário', 'dribles_tentados_nos' => 'Dribles tentados nossos', 'dribles_tentados_adversario' => 'Dribles tentados adversário', 'dribles_conseguidos_nos' => 'Dribles conseguidos nossos', 'dribles_conseguidos_adversario' => 'Dribles conseguidos adversário', 'defesas_nos' => 'Defesas nossas', 'defesas_adversario' => 'Defesas adversário', 'cantos_nos' => 'Cantos nossos', 'cantos_adversario' => 'Cantos adversário', 'passes_nos' => 'Passes nossos', 'passes_adversario' => 'Passes adversário', 'passes_certos_nos' => 'Passes certos nossos', 'passes_certos_adversario' => 'Passes certos adversário', 'faltas_nos' => 'Faltas nossas', 'faltas_adversario' => 'Faltas adversário'];
+                    $camposIndividuaisView = ['minutos_jogados' => 'Min.', 'remates' => 'Rem.', 'remates_baliza' => 'R. baliza', 'assistencias' => 'Assist.', 'passes' => 'Passes', 'passes_certos' => 'P. certos', 'dribles_tentados' => 'Drib. tent.', 'dribles_conseguidos' => 'Drib. cons.', 'defesas' => 'Defesas', 'desarmes' => 'Desarmes', 'intercecoes' => 'Interceções', 'faltas_sofridas' => 'F. sofridas', 'faltas_cometidas' => 'F. cometidas'];
+                ?>
+                <a class="btn-cancel" style="display:inline-block;margin-bottom:18px;text-decoration:none;" href="index-treinador.php?view=jogos">Voltar aos jogos</a>
+                <form method="POST" id="formDetalheJogo" class="game-detail-form">
+                    <input type="hidden" name="acao" value="guardar_detalhe_jogo">
+                    <input type="hidden" name="id_jogo" value="<?= (int)$jogoDetalhe['id_jogo'] ?>">
+                    <h3 class="game-detail-title">vs <?= htmlspecialchars($jogoDetalhe['adversario']) ?> <small><?= htmlspecialchars($jogoDetalhe['data_jogo']) ?></small></h3>
+
+                    <section class="game-detail-section">
+                        <h4>Configuração e resultado</h4>
+                        <div class="edit-grid">
+                            <div class="edit-group"><label>Nº de partes</label><input type="number" name="numero_partes" min="1" max="6" value="<?= (int)$configuracaoJogo['numero_partes'] ?>" required></div>
+                            <div class="edit-group"><label>Minutos por parte</label><input type="number" name="minutos_por_parte" min="1" max="120" value="<?= (int)$configuracaoJogo['minutos_por_parte'] ?>" required></div>
+                            <div class="edit-group"><label>Resultado nós</label><input type="number" name="resultado_nos" min="0" value="<?= $jogoDetalhe['resultado_nos'] ?? '' ?>"></div>
+                            <div class="edit-group"><label>Resultado adversário</label><input type="number" name="resultado_adv" min="0" value="<?= $jogoDetalhe['resultado_adv'] ?? '' ?>"></div>
+                        </div>
+                    </section>
+
+                    <section class="game-detail-section">
+                        <h4>Convocatória</h4>
+                        <div class="game-detail-grid">
+                            <?php foreach (['convocados' => ['Convocados', $idsConvocados], 'titulares' => ['11 titular', $idsTitulares], 'suplentes' => ['Suplentes', $idsSuplentes], 'suplentes_utilizados' => ['Suplentes utilizados', $idsSuplentesUtilizados]] as $nomeCampo => [$tituloCampo, $selecionados]): ?>
+                                <div class="edit-group"><label><?= $tituloCampo ?></label><select name="<?= $nomeCampo ?>[]" multiple size="8">
+                                    <?php foreach ($jogadoresDetalhe as $jogador): ?><option value="<?= (int)$jogador['id_jogador'] ?>" <?= in_array((int)$jogador['id_jogador'], $selecionados, true) ? 'selected' : '' ?>><?= htmlspecialchars($jogador['nome_completo']) ?></option><?php endforeach; ?>
+                                </select></div>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+
+                    <section class="game-detail-section">
+                        <h4>Treinadores e equipa técnica presentes</h4>
+                        <div class="game-checkboxes">
+                            <?php foreach ($treinadoresClube as $tecnico): $nomeTecnico = trim($tecnico['primeiro_nome'] . ' ' . $tecnico['último_nome']); ?>
+                                <label><input type="checkbox" name="equipa_tecnica[]" value="<?= htmlspecialchars($nomeTecnico) ?>" <?= in_array($nomeTecnico, $tecnicosPresentes, true) ? 'checked' : '' ?>> <?= htmlspecialchars($nomeTecnico) ?><?= $tecnico['tipo_treinador'] ? ' (' . htmlspecialchars($tecnico['tipo_treinador']) . ')' : '' ?></label>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+
+                    <section class="game-detail-section">
+                        <h4>Substituições</h4>
+                        <div id="substituicoesLista" class="game-events-list"></div>
+                        <button type="button" class="btn-row-edit" onclick="adicionarSubstituicao()">+ Substituição</button>
+                    </section>
+
+                    <section class="game-detail-section">
+                        <h4>Golos</h4>
+                        <div id="golosLista" class="game-events-list"></div>
+                        <button type="button" class="btn-row-edit" onclick="adicionarGolo()">+ Golo</button>
+                    </section>
+
+                    <section class="game-detail-section">
+                        <h4>Posse de bola</h4>
+                        <div class="posse-controls" data-casa="<?= (int)($estatisticasColetivasJogo['posse_casa_segundos'] ?? 0) ?>" data-sem="<?= (int)($estatisticasColetivasJogo['sem_posse_segundos'] ?? 0) ?>" data-visitante="<?= (int)($estatisticasColetivasJogo['posse_visitante_segundos'] ?? 0) ?>">
+                            <button type="button" data-posse="casa">Posse da casa</button><button type="button" data-posse="sem">Sem posse</button><button type="button" data-posse="visitante">Posse do visitante</button>
+                            <strong id="posseCronometro">00:00:00</strong>
+                            <input type="hidden" name="posse_casa_segundos"><input type="hidden" name="sem_posse_segundos"><input type="hidden" name="posse_visitante_segundos">
+                        </div>
+                    </section>
+
+                    <section class="game-detail-section">
+                        <h4>Estatísticas coletivas</h4>
+                        <div class="game-detail-grid">
+                            <?php foreach ($camposColetivosView as $campo => $rotulo): ?><div class="edit-group"><label><?= $rotulo ?></label><input type="number" min="0" name="<?= $campo ?>" value="<?= (int)($estatisticasColetivasJogo[$campo] ?? 0) ?>"></div><?php endforeach; ?>
+                        </div>
+                    </section>
+
+                    <section class="game-detail-section game-individual-stats">
+                        <h4>Estatísticas individuais pós-jogo</h4>
+                        <div class="game-stats-scroll"><table><thead><tr><th>Jogador</th><?php foreach ($camposIndividuaisView as $rotulo): ?><th><?= $rotulo ?></th><?php endforeach; ?></tr></thead><tbody>
+                            <?php foreach ($jogadoresDetalhe as $jogador): $idJogador = (int)$jogador['id_jogador']; $estatistica = $estatisticasIndividuaisJogo[$idJogador] ?? []; ?><tr><td><?= htmlspecialchars($jogador['nome_completo']) ?></td><?php foreach ($camposIndividuaisView as $campo => $rotulo): ?><td><input type="number" min="0" name="estatisticas_individuais[<?= $idJogador ?>][<?= $campo ?>]" value="<?= (int)($estatistica[$campo] ?? 0) ?>"></td><?php endforeach; ?></tr><?php endforeach; ?>
+                        </tbody></table></div>
+                    </section>
+                    <div class="modal-actions"><button class="btn-save" type="submit">Guardar detalhe do jogo</button></div>
+                </form>
+                <script>
+                    const jogadoresDetalheJogo = <?= json_encode($jogadoresDetalhe, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+                    const subsGuardadas = <?= json_encode($substituicoesJogo, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+                    const golosGuardados = <?= json_encode($golosJogo, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+                </script>
+            <?php elseif (empty($jogosTreinador)): ?>
                 <div class="empty-state"><p>Ainda não há jogos associados às tuas equipas.</p></div>
             <?php else: ?>
                 <div class="trainer-list">
@@ -5543,6 +5900,7 @@ body.layout-locked #dashboardCard {
                             <span class="jogo-casa-badge"><?= $jogo['casa'] ? 'Casa' : 'Fora' ?></span>
                             <div class="trainer-result"><?= htmlspecialchars($resultadoJogo) ?></div>
                             <span class="jogo-estado <?= htmlspecialchars($estadoClass) ?>"><?= htmlspecialchars($jogo['estado']) ?></span>
+                            <a class="btn-row-edit" title="Abrir detalhe do jogo" href="index-treinador.php?view=jogos&jogo=<?= (int)$jogo['id_jogo'] ?>">Detalhe</a>
                             <button class="btn-row-edit" type="button" title="Atualizar resultado" onclick="openResultadoTreinadorModal(<?= (int)$jogo['id_jogo'] ?>)">⚽</button>
                         </div>
                     <?php endforeach; ?>
@@ -10410,6 +10768,59 @@ planoCanvasWheel = function(ev) {
         }
     });
 })();
+
+/* ══════════════════════════════════
+   DETALHE DE JOGO
+══════════════════════════════════ */
+function opcoesJogadoresDetalhe(selecionado, permitirVazio) {
+    const vazio = permitirVazio ? '<option value="">Sem assistência</option>' : '<option value="">Selecionar</option>';
+    return vazio + (typeof jogadoresDetalheJogo === 'undefined' ? [] : jogadoresDetalheJogo).map(j => `<option value="${j.id_jogador}" ${String(j.id_jogador) === String(selecionado || '') ? 'selected' : ''}>${esc(j.nome_completo)}</option>`).join('');
+}
+
+function adicionarSubstituicao(valor = {}) {
+    const lista = document.getElementById('substituicoesLista');
+    if (!lista) return;
+    const linha = document.createElement('div');
+    linha.className = 'game-event-row';
+    linha.innerHTML = `<select name="substituicao_entrada[]">${opcoesJogadoresDetalhe(valor.id_jogador_entrada)}</select><select name="substituicao_saida[]">${opcoesJogadoresDetalhe(valor.id_jogador_saida)}</select><input type="number" min="1" name="substituicao_minuto[]" placeholder="Minuto" value="${valor.minuto || ''}"><button type="button" class="btn-row-edit btn-row-delete" title="Remover" onclick="this.parentElement.remove()">×</button>`;
+    lista.appendChild(linha);
+}
+
+function adicionarGolo(valor = {}) {
+    const lista = document.getElementById('golosLista');
+    if (!lista) return;
+    const linha = document.createElement('div');
+    linha.className = 'game-event-row golo';
+    linha.innerHTML = `<select name="golo_marcador[]">${opcoesJogadoresDetalhe(valor.id_jogador_marcador)}</select><select name="golo_assistente[]">${opcoesJogadoresDetalhe(valor.id_jogador_assistente, true)}</select><input type="number" min="1" name="golo_minuto[]" placeholder="Minuto" value="${valor.minuto || ''}"><select name="golo_zona[]"><option value="">Zona</option><option ${valor.zona === 'Dentro da área' ? 'selected' : ''}>Dentro da área</option><option ${valor.zona === 'Fora da área' ? 'selected' : ''}>Fora da área</option><option ${valor.zona === 'Pequena área' ? 'selected' : ''}>Pequena área</option></select><select name="golo_forma[]"><option value="">Forma</option><option ${valor.forma === 'Bola corrida' ? 'selected' : ''}>Bola corrida</option><option ${valor.forma === 'Bola parada' ? 'selected' : ''}>Bola parada</option><option ${valor.forma === 'Grande penalidade' ? 'selected' : ''}>Grande penalidade</option><option ${valor.forma === 'Canto' ? 'selected' : ''}>Canto</option><option ${valor.forma === 'Livre' ? 'selected' : ''}>Livre</option></select><button type="button" class="btn-row-edit btn-row-delete" title="Remover" onclick="this.parentElement.remove()">×</button>`;
+    lista.appendChild(linha);
+}
+
+function iniciarPosseJogo() {
+    const painel = document.querySelector('.posse-controls');
+    if (!painel) return;
+    const valores = { casa: Number(painel.dataset.casa || 0), sem: Number(painel.dataset.sem || 0), visitante: Number(painel.dataset.visitante || 0) };
+    let ativa = null;
+    const mostrar = () => {
+        const total = valores.casa + valores.sem + valores.visitante;
+        const h = String(Math.floor(total / 3600)).padStart(2, '0'); const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0'); const s = String(total % 60).padStart(2, '0');
+        document.getElementById('posseCronometro').textContent = `${h}:${m}:${s}`;
+        painel.querySelector('[name="posse_casa_segundos"]').value = valores.casa;
+        painel.querySelector('[name="sem_posse_segundos"]').value = valores.sem;
+        painel.querySelector('[name="posse_visitante_segundos"]').value = valores.visitante;
+    };
+    painel.querySelectorAll('button[data-posse]').forEach(botao => botao.addEventListener('click', () => {
+        ativa = ativa === botao.dataset.posse ? null : botao.dataset.posse;
+        painel.querySelectorAll('button[data-posse]').forEach(b => b.classList.toggle('active', b.dataset.posse === ativa));
+    }));
+    setInterval(() => { if (ativa) { valores[ativa]++; mostrar(); } }, 1000);
+    mostrar();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof subsGuardadas !== 'undefined') (subsGuardadas.length ? subsGuardadas : [{}]).forEach(adicionarSubstituicao);
+    if (typeof golosGuardados !== 'undefined') (golosGuardados.length ? golosGuardados : [{}]).forEach(adicionarGolo);
+    iniciarPosseJogo();
+});
 
 </script>
 
