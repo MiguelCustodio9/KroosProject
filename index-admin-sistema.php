@@ -20,6 +20,24 @@ if ($_SESSION['tipo_utilizador'] !== 'admin') {
 
 $id_utilizador = $_SESSION['id_utilizador'];
 
+/* ── Definições globais da plataforma ── */
+$conn->query("CREATE TABLE IF NOT EXISTS configuracoes_plataforma (
+    chave_configuracao VARCHAR(100) NOT NULL PRIMARY KEY,
+    valor_configuracao TEXT DEFAULT NULL,
+    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$definicoesPadrao = [
+    'nome_plataforma' => 'Kroos Project',
+    'email_suporte' => '',
+    'idioma_padrao' => 'pt-PT',
+    'fuso_horario' => 'Europe/Lisbon',
+    'registos_ativos' => '1',
+    'modo_manutencao' => '0',
+    'limite_upload_mb' => '10',
+    'sessao_minutos' => '120'
+];
+
 /* ── View activa (menu escolhido na sidebar) ──
    Predefinido: Estatísticas, ao entrar sem parâmetro na URL ── */
 $viewsValidas = [
@@ -77,6 +95,32 @@ if (isset($_SESSION['flash_erro'])) {
 ══════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
+
+    if ($acao === 'guardar_definicoes_plataforma') {
+        $definicoes = [
+            'nome_plataforma' => substr(trim($_POST['nome_plataforma'] ?? ''), 0, 120),
+            'email_suporte' => substr(trim($_POST['email_suporte'] ?? ''), 0, 255),
+            'idioma_padrao' => in_array($_POST['idioma_padrao'] ?? '', ['pt-PT', 'en-GB', 'es-ES'], true) ? $_POST['idioma_padrao'] : 'pt-PT',
+            'fuso_horario' => in_array($_POST['fuso_horario'] ?? '', ['Europe/Lisbon', 'Atlantic/Azores', 'Europe/Madrid'], true) ? $_POST['fuso_horario'] : 'Europe/Lisbon',
+            'registos_ativos' => !empty($_POST['registos_ativos']) ? '1' : '0',
+            'modo_manutencao' => !empty($_POST['modo_manutencao']) ? '1' : '0',
+            'limite_upload_mb' => (string)max(1, min(100, (int)($_POST['limite_upload_mb'] ?? 10))),
+            'sessao_minutos' => (string)max(15, min(1440, (int)($_POST['sessao_minutos'] ?? 120)))
+        ];
+        if ($definicoes['nome_plataforma'] === '') $definicoes['nome_plataforma'] = $definicoesPadrao['nome_plataforma'];
+        if ($definicoes['email_suporte'] !== '' && !filter_var($definicoes['email_suporte'], FILTER_VALIDATE_EMAIL)) {
+            $_SESSION['flash_erro'] = 'Indica um email de suporte válido.';
+        } else {
+            $stmtDefinicao = $conn->prepare("INSERT INTO configuracoes_plataforma (chave_configuracao, valor_configuracao) VALUES (?, ?) ON DUPLICATE KEY UPDATE valor_configuracao = VALUES(valor_configuracao)");
+            foreach ($definicoes as $chave => $valor) {
+                $stmtDefinicao->bind_param("ss", $chave, $valor);
+                $stmtDefinicao->execute();
+            }
+            $_SESSION['flash_sucesso'] = 'Definições gerais atualizadas.';
+        }
+        header('Location: index-admin-sistema.php?view=definicoes');
+        exit;
+    }
 
     /* ══════════════════════════════════
        GESTÃO DE UTILIZADORES — todos os campos
@@ -487,6 +531,14 @@ while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
 
+$definicoesPlataforma = $definicoesPadrao;
+$resDefinicoesPlataforma = $conn->query("SELECT chave_configuracao, valor_configuracao FROM configuracoes_plataforma");
+while ($resDefinicoesPlataforma && ($definicao = $resDefinicoesPlataforma->fetch_assoc())) {
+    if (array_key_exists($definicao['chave_configuracao'], $definicoesPlataforma)) {
+        $definicoesPlataforma[$definicao['chave_configuracao']] = $definicao['valor_configuracao'];
+    }
+}
+
 /* ── Menus de gestão (sidebar) ── */
 $menusGestao = [
     'utilizadores'          => ['label' => 'Gestão de Utilizadores', 'icon' => 'assets/user.png'],
@@ -756,8 +808,26 @@ body.layout-locked { overflow: hidden; }
     width: 22px;
     height: 2px;
     background: #000;
-    border-radius: 2px;
+    border-radius: 0;
 }
+
+.platform-settings-form { max-width: 920px; }
+.platform-settings-section { margin-bottom: 16px; padding: 22px; border: 1px solid #e1e6eb; border-radius: 8px; background: #fff; }
+.platform-settings-section h3 { margin: 0 0 18px; color: #1f2b3d; font-size: 16px; }
+.platform-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.platform-settings-grid label { display: grid; gap: 7px; color: #4b5563; font-size: 12px; font-weight: 700; }
+.platform-settings-grid input, .platform-settings-grid select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #cfd8e1; border-radius: 6px; background: #fff; color: #1f2b3d; font: inherit; }
+.platform-settings-grid input:focus, .platform-settings-grid select:focus { outline: 2px solid rgba(0,0,0,.13); border-color: #000; }
+.platform-setting-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.platform-toggle { display: grid; grid-template-columns: 38px 1fr; gap: 11px; align-items: center; padding: 14px; border: 1px solid #dde4e9; border-radius: 7px; cursor: pointer; }
+.platform-toggle input { position: absolute; opacity: 0; }
+.platform-toggle > span { position: relative; width: 34px; height: 20px; border-radius: 0; background: #cbd5df; transition: background .18s; }
+.platform-toggle > span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: #fff; transition: transform .18s; }
+.platform-toggle input:checked + span { background: #000; }
+.platform-toggle input:checked + span::after { transform: translateX(14px); }
+.platform-toggle strong { display: block; color: #1f2b3d; font-size: 13px; }
+.platform-toggle small { display: block; margin-top: 3px; color: #6b7280; font-size: 11px; line-height: 1.35; }
+@media (max-width: 680px) { .platform-settings-grid, .platform-setting-toggles { grid-template-columns: 1fr; } }
 
 /* ══════════════════════════════════
    MENU SUPERIOR DIREITO
@@ -2223,10 +2293,30 @@ body.layout-locked .main {
                     <p class="trainer-page-subtitle">Definições do sistema Kroos Project.</p>
                 </div>
             </div>
-            <div class="empty-state">
-                <strong>Plataforma de Apoio à Gestão Desportiva - Kroos</strong>
-                Versão 1.0 (Janeiro 2026)
-            </div>
+            <form method="post" class="platform-settings-form">
+                <input type="hidden" name="acao" value="guardar_definicoes_plataforma">
+                <section class="platform-settings-section">
+                    <h3>Identidade e suporte</h3>
+                    <div class="platform-settings-grid">
+                        <label>Nome da plataforma<input type="text" name="nome_plataforma" maxlength="120" value="<?= htmlspecialchars($definicoesPlataforma['nome_plataforma']) ?>" required></label>
+                        <label>Email de suporte<input type="email" name="email_suporte" maxlength="255" value="<?= htmlspecialchars($definicoesPlataforma['email_suporte']) ?>" placeholder="suporte@dominio.pt"></label>
+                        <label>Idioma padrão<select name="idioma_padrao"><?php foreach (['pt-PT' => 'Português (Portugal)', 'en-GB' => 'English (UK)', 'es-ES' => 'Español'] as $valor => $rotulo): ?><option value="<?= $valor ?>" <?= $definicoesPlataforma['idioma_padrao'] === $valor ? 'selected' : '' ?>><?= $rotulo ?></option><?php endforeach; ?></select></label>
+                        <label>Fuso horário<select name="fuso_horario"><?php foreach (['Europe/Lisbon' => 'Lisboa', 'Atlantic/Azores' => 'Açores', 'Europe/Madrid' => 'Madrid'] as $valor => $rotulo): ?><option value="<?= $valor ?>" <?= $definicoesPlataforma['fuso_horario'] === $valor ? 'selected' : '' ?>><?= $rotulo ?></option><?php endforeach; ?></select></label>
+                    </div>
+                </section>
+                <section class="platform-settings-section">
+                    <h3>Acesso e operação</h3>
+                    <div class="platform-settings-grid">
+                        <label>Limite de upload (MB)<input type="number" name="limite_upload_mb" min="1" max="100" value="<?= (int)$definicoesPlataforma['limite_upload_mb'] ?>"></label>
+                        <label>Duração da sessão (minutos)<input type="number" name="sessao_minutos" min="15" max="1440" value="<?= (int)$definicoesPlataforma['sessao_minutos'] ?>"></label>
+                    </div>
+                    <div class="platform-setting-toggles">
+                        <label class="platform-toggle"><input type="checkbox" name="registos_ativos" value="1" <?= $definicoesPlataforma['registos_ativos'] === '1' ? 'checked' : '' ?>><span></span><div><strong>Permitir novos registos</strong><small>Permite criar novas contas na plataforma.</small></div></label>
+                        <label class="platform-toggle"><input type="checkbox" name="modo_manutencao" value="1" <?= $definicoesPlataforma['modo_manutencao'] === '1' ? 'checked' : '' ?>><span></span><div><strong>Modo de manutenção</strong><small>Indica que a plataforma está temporariamente em manutenção.</small></div></label>
+                    </div>
+                </section>
+                <div class="modal-actions"><button type="submit" class="btn-save">Guardar definições</button></div>
+            </form>
         </div>
 
     </div>

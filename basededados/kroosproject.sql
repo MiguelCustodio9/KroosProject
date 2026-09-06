@@ -568,6 +568,19 @@ CREATE TABLE `notificacao` (
 -- --------------------------------------------------------
 
 --
+-- Estrutura da tabela `configuracoes_plataforma`
+--
+
+CREATE TABLE `configuracoes_plataforma` (
+  `chave_configuracao` varchar(100) NOT NULL,
+  `valor_configuracao` text DEFAULT NULL,
+  `atualizado_em` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`chave_configuracao`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura da tabela `plano_treino`
 --
 
