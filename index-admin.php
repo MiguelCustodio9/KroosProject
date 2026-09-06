@@ -52,7 +52,7 @@ $isAdminClube = true;
 $erro = '';
 $sucesso = '';
 $activeTab = 'tab-info';
-$viewMode = $_GET['view'] ?? 'dashboard';
+$viewMode = $_GET['view'] ?? 'home';
 $mostrarMensagens = ($viewMode === 'mensagens');
 $activeSidebarView = match ($viewMode) {
     'mensagens' => 'mensagens',
@@ -1831,6 +1831,18 @@ $resJogosC = $stmtJogosClub->get_result();
 while ($row = $resJogosC->fetch_assoc()) {
     $jogosPorCompeticao[$row['id_competicao']][] = $row;
 }
+
+/* ── Indicadores do dashboard do clube ── */
+$jogosClube = array_merge(...array_values($jogosPorCompeticao ?: [[]]));
+$totalAtletas = array_sum(array_map('count', $jogadoresPorEquipa));
+$jogosRealizados = array_filter($jogosClube, static fn($jogo) => $jogo['estado'] === 'Realizado');
+$proximosEventosDashboard = array_values(array_filter($eventosCalendario, static fn($evento) => $evento['data_evento'] >= date('Y-m-d') && $evento['estado_evento'] !== 'Cancelado'));
+usort($proximosEventosDashboard, static fn($primeiro, $segundo) => strcmp($primeiro['data_evento'] . ($primeiro['hora_evento'] ?? ''), $segundo['data_evento'] . ($segundo['hora_evento'] ?? '')));
+$proximosEventosDashboard = array_slice($proximosEventosDashboard, 0, 5);
+$vitoriasClube = 0;
+foreach ($jogosRealizados as $jogoRealizado) {
+    if ($jogoRealizado['resultado_nos'] !== null && $jogoRealizado['resultado_adv'] !== null && (int)$jogoRealizado['resultado_nos'] > (int)$jogoRealizado['resultado_adv']) $vitoriasClube++;
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt">
@@ -3428,6 +3440,38 @@ body.layout-locked #dashboardCard {
 }
 .screen-shell.visible { display: block; }
 
+.club-overview { display: none; }
+.club-overview.visible { display: block; }
+.club-overview-header { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 20px; }
+.club-overview-title { color: #1f2b3d; font-size: 24px; font-weight: 800; }
+.club-overview-subtitle { margin-top: 5px; color: #6b7280; font-size: 13px; }
+.club-overview-date { color: var(--club); font-size: 12px; font-weight: 800; }
+.club-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.club-kpi { min-height: 126px; padding: 18px; border: 1px solid #e1e8f0; border-top: 4px solid var(--club); border-radius: 8px; background: #fff; box-shadow: 0 5px 16px rgba(31,43,61,.06); }
+.club-kpi-label { color: #687588; font-size: 12px; font-weight: 700; }
+.club-kpi-value { margin-top: 13px; color: #172033; font-size: 32px; font-weight: 800; line-height: 1; }
+.club-kpi-detail { margin-top: 8px; color: #8793a2; font-size: 11px; }
+.club-overview-grid { display: grid; grid-template-columns: 1.3fr .9fr; gap: 16px; }
+.club-overview-panel { border: 1px solid #e1e8f0; border-radius: 8px; background: #fff; overflow: hidden; }
+.club-overview-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-bottom: 1px solid #edf1f5; }
+.club-overview-panel-head h3 { color: #1f2b3d; font-size: 14px; }
+.club-overview-panel-head span { color: var(--club); font-size: 11px; font-weight: 800; }
+.club-event-list { padding: 4px 18px 12px; }
+.club-event { display: grid; grid-template-columns: 58px 1fr auto; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #edf1f5; }
+.club-event:last-child { border-bottom: 0; }
+.club-event-date { color: var(--club); font-size: 12px; font-weight: 800; }
+.club-event-name { color: #29374a; font-size: 13px; font-weight: 700; }
+.club-event-meta { margin-top: 3px; color: #7b8794; font-size: 11px; }
+.club-event-type { padding: 4px 8px; border-radius: 999px; background: #f1f4f7; color: #5f6d7b; font-size: 10px; font-weight: 800; }
+.club-team-list { padding: 6px 18px 14px; }
+.club-team-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #edf1f5; }
+.club-team-row:last-child { border-bottom: 0; }
+.club-team-name { color: #29374a; font-size: 13px; font-weight: 800; }
+.club-team-count { color: var(--club); font-size: 12px; font-weight: 800; }
+.club-overview-empty { padding: 26px 18px; color: #7b8794; font-size: 13px; text-align: center; }
+@media (max-width: 900px) { .club-kpis { grid-template-columns: repeat(2, 1fr); } .club-overview-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .club-overview-header { align-items: start; flex-direction: column; } .club-kpis { grid-template-columns: 1fr 1fr; } .club-kpi { min-height: 105px; } .club-kpi-value { font-size: 26px; } }
+
 /* ── Ecrã de Escalões ── */
 .escaloes-header {
     display: flex;
@@ -3948,6 +3992,51 @@ body.layout-locked #dashboardCard {
                 <?php endif; ?>
             </section>
         </div>
+
+        <!-- ══ MENU PRINCIPAL: RESUMO DO CLUBE ══ -->
+        <section class="club-overview" id="clubOverview">
+            <header class="club-overview-header">
+                <div>
+                    <h2 class="club-overview-title">Resumo do clube</h2>
+                    <p class="club-overview-subtitle">Visão geral da atividade desportiva de <?= htmlspecialchars($nomeClube) ?>.</p>
+                </div>
+                <span class="club-overview-date"><?= htmlspecialchars(date('d/m/Y')) ?></span>
+            </header>
+
+            <div class="club-kpis">
+                <article class="club-kpi"><div class="club-kpi-label">Equipas ativas</div><div class="club-kpi-value"><?= count($escaloesClube) ?></div><div class="club-kpi-detail">Escalões registados</div></article>
+                <article class="club-kpi"><div class="club-kpi-label">Atletas</div><div class="club-kpi-value"><?= $totalAtletas ?></div><div class="club-kpi-detail">Plantel total do clube</div></article>
+                <article class="club-kpi"><div class="club-kpi-label">Treinadores</div><div class="club-kpi-value"><?= count($treinadoresClube) ?></div><div class="club-kpi-detail">Equipa técnica registada</div></article>
+                <article class="club-kpi"><div class="club-kpi-label">Jogos realizados</div><div class="club-kpi-value"><?= count($jogosRealizados) ?></div><div class="club-kpi-detail"><?= $vitoriasClube ?> vitória<?= $vitoriasClube === 1 ? '' : 's' ?> registada<?= $vitoriasClube === 1 ? '' : 's' ?></div></article>
+            </div>
+
+            <div class="club-overview-grid">
+                <section class="club-overview-panel">
+                    <div class="club-overview-panel-head"><h3>Próximos eventos</h3><span><?= count($proximosEventosDashboard) ?></span></div>
+                    <div class="club-event-list">
+                        <?php if (empty($proximosEventosDashboard)): ?>
+                            <div class="club-overview-empty">Não há eventos futuros agendados.</div>
+                        <?php else: foreach ($proximosEventosDashboard as $evento): ?>
+                            <div class="club-event">
+                                <div class="club-event-date"><?= htmlspecialchars(date('d/m', strtotime($evento['data_evento']))) ?></div>
+                                <div><div class="club-event-name"><?= htmlspecialchars($evento['descricao_evento'] ?: $evento['tipo_evento']) ?></div><div class="club-event-meta"><?= htmlspecialchars($evento['escalão'] . ' ' . $evento['hierarquia']) ?><?= $evento['hora_evento'] ? ' · ' . htmlspecialchars(substr($evento['hora_evento'], 0, 5)) : '' ?></div></div>
+                                <span class="club-event-type"><?= htmlspecialchars($evento['tipo_evento']) ?></span>
+                            </div>
+                        <?php endforeach; endif; ?>
+                    </div>
+                </section>
+                <section class="club-overview-panel">
+                    <div class="club-overview-panel-head"><h3>Plantel por equipa</h3><span><?= $totalAtletas ?> atletas</span></div>
+                    <div class="club-team-list">
+                        <?php if (empty($escaloesClube)): ?>
+                            <div class="club-overview-empty">Ainda não existem equipas criadas.</div>
+                        <?php else: foreach ($escaloesClube as $equipa): $idEquipa = (int)$equipa['id_equipa']; ?>
+                            <div class="club-team-row"><span class="club-team-name"><?= htmlspecialchars($equipa['escalão'] . ' ' . $equipa['hierarquia']) ?></span><span class="club-team-count"><?= count($jogadoresPorEquipa[$idEquipa] ?? []) ?> atletas</span></div>
+                        <?php endforeach; endif; ?>
+                    </div>
+                </section>
+            </div>
+        </section>
 
         <!-- ══ CALENDÁRIO ══ -->
         <div class="calendar-shell" id="calendarScreen" aria-label="Calendário">
@@ -5273,7 +5362,7 @@ function setLayoutLock(locked) {
 }
 
 function hideAllScreens() {
-    ['profileScreen','notificationsScreen','messagesScreen','calendarScreen','escaloesScreen','competicoesScreen'].forEach(id => {
+    ['profileScreen','notificationsScreen','messagesScreen','clubOverview','calendarScreen','escaloesScreen','competicoesScreen'].forEach(id => {
         const el = document.getElementById(id);
         if (el) { el.style.display = 'none'; el.classList.remove('visible'); }
     });
@@ -5311,10 +5400,12 @@ function showDashboard() {
 function showMainMenu() {
     const dashboard = document.getElementById('dashboardCard');
     if (dashboard) dashboard.style.display = 'block';
-    showDashboardContent();
+    hideDashboardContent();
     hideAllScreens();
     setLayoutLock(false);
     setActiveSidebar('home');
+    const overview = document.getElementById('clubOverview');
+    if (overview) { overview.style.display = 'block'; overview.classList.add('visible'); }
 }
 
 function showMessagesScreen() {
@@ -6004,7 +6095,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (thread) setTimeout(() => { thread.scrollTop = thread.scrollHeight; }, 50);
     <?php elseif (($_GET['view'] ?? '') === 'calendario'): ?>
     showCalendarScreen();
-    <?php elseif (($_GET['view'] ?? '') === 'home'): ?>
+    <?php elseif (($_GET['view'] ?? 'home') === 'home'): ?>
     showMainMenu();
     <?php else: ?>
     setLayoutLock(false);
