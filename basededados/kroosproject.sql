@@ -472,6 +472,10 @@ CREATE TABLE `jogo_configuracao` (
   `numero_partes` int(11) NOT NULL DEFAULT 2,
   `minutos_por_parte` int(11) NOT NULL DEFAULT 45,
   `presenca_equipa_tecnica` text DEFAULT NULL,
+  `tatica` varchar(30) DEFAULT '4-3-3',
+  `posicoes_titulares` longtext DEFAULT NULL,
+  `parte_atual` int(11) NOT NULL DEFAULT 0,
+  `jogo_terminado` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id_jogo`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -531,6 +535,7 @@ CREATE TABLE `jogo_estatisticas_individuais` (
   `id_jogo` int(11) NOT NULL,
   `id_jogador` int(11) NOT NULL,
   `minutos_jogados` int(11) NOT NULL DEFAULT 0, `remates` int(11) NOT NULL DEFAULT 0,
+  `golos` int(11) NOT NULL DEFAULT 0,
   `remates_baliza` int(11) NOT NULL DEFAULT 0, `assistencias` int(11) NOT NULL DEFAULT 0,
   `passes` int(11) NOT NULL DEFAULT 0, `passes_certos` int(11) NOT NULL DEFAULT 0,
   `dribles_tentados` int(11) NOT NULL DEFAULT 0, `dribles_conseguidos` int(11) NOT NULL DEFAULT 0,
