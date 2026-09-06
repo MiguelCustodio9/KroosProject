@@ -118,6 +118,29 @@ $conn->query("CREATE TABLE IF NOT EXISTS `treino_exercicio` (
     KEY `idx_treino_exercicio_ordem` (`id_treino`, `ordem`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+$conn->query("CREATE TABLE IF NOT EXISTS `presenca_treino` (
+    `id_presenca` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_treino` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `estado_presenca` ENUM('Presente','Não Presente Justificado','Não Presente Injustificado') NOT NULL DEFAULT 'Presente',
+    `lesionado` TINYINT(1) NOT NULL DEFAULT 0,
+    `observacoes` TEXT DEFAULT NULL,
+    `atualizado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_presenca_treino_jogador` (`id_treino`, `id_jogador`),
+    KEY `idx_presenca_treino` (`id_treino`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `avaliacao_esforco` (
+    `id_avaliacao` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_treino` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `nivel_esforco` TINYINT NOT NULL,
+    `criado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `atualizado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_avaliacao_esforco` (`id_treino`, `id_jogador`),
+    KEY `idx_avaliacao_esforco_treino` (`id_treino`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 /* ── Flash messages ── */
 if (isset($_SESSION['flash_sucesso'])) {
     $sucesso = $_SESSION['flash_sucesso'];
@@ -292,6 +315,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtMarcaLida->execute();
         }
 
+        exit;
+    }
+
+    if ($acao === 'guardar_esforco') {
+        $idTreinoEsforco = (int)($_POST['id_treino'] ?? 0);
+        $nivelEsforco = (int)($_POST['nivel_esforco'] ?? 0);
+
+        $stmtJogadorEsforco = $conn->prepare(" 
+            SELECT j.id_jogador, j.id_equipa
+            FROM jogadores j
+            JOIN equipa eq ON eq.id_equipa = j.id_equipa
+            WHERE j.id_utilizador = ?
+              AND eq.id_clube = ?
+            LIMIT 1
+        ");
+        $stmtJogadorEsforco->bind_param("ii", $id_utilizador, $id_clube);
+        $stmtJogadorEsforco->execute();
+        $jogadorEsforco = $stmtJogadorEsforco->get_result()->fetch_assoc();
+
+        if ($idTreinoEsforco <= 0 || $nivelEsforco < 1 || $nivelEsforco > 5 || !$jogadorEsforco) {
+            $_SESSION['flash_erro'] = 'Não foi possível registar a avaliação de esforço.';
+        } else {
+            $idJogadorEsforco = (int)$jogadorEsforco['id_jogador'];
+            $idEquipaEsforco = (int)$jogadorEsforco['id_equipa'];
+
+            $stmtCheckPresencaEsforco = $conn->prepare(" 
+                SELECT pt.estado_presenca
+                FROM presenca_treino pt
+                INNER JOIN treino t ON t.id_treino = pt.id_treino
+                WHERE pt.id_treino = ?
+                  AND pt.id_jogador = ?
+                  AND t.id_equipa = ?
+                LIMIT 1
+            ");
+            $stmtCheckPresencaEsforco->bind_param("iii", $idTreinoEsforco, $idJogadorEsforco, $idEquipaEsforco);
+            $stmtCheckPresencaEsforco->execute();
+            $presencaEsforco = $stmtCheckPresencaEsforco->get_result()->fetch_assoc();
+
+            if (!$presencaEsforco || $presencaEsforco['estado_presenca'] !== 'Presente') {
+                $_SESSION['flash_erro'] = 'Só podes avaliar o esforço em treinos onde estiveste presente.';
+            } else {
+                $stmtGuardarEsforco = $conn->prepare(" 
+                    INSERT INTO avaliacao_esforco (id_treino, id_jogador, nivel_esforco)
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE nivel_esforco = VALUES(nivel_esforco)
+                ");
+                $stmtGuardarEsforco->bind_param("iii", $idTreinoEsforco, $idJogadorEsforco, $nivelEsforco);
+                $_SESSION['flash_sucesso'] = $stmtGuardarEsforco->execute()
+                    ? 'Avaliação de esforço registada.'
+                    : 'Erro ao registar a avaliação de esforço.';
+            }
+        }
+
+        header('Location: index-jogador.php?view=treino&id=' . $idTreinoEsforco);
         exit;
     }
 }
@@ -705,6 +782,36 @@ if ($id_equipa > 0 && $idTreinoSelecionado > 0) {
             ];
         }
     }
+}
+
+/* ── Presença e avaliação de esforço do jogador nesse treino ── */
+$presencaTreinoSelecionado = null;
+$avaliacaoEsforcoSelecionada = null;
+
+if ($treinoSelecionado && $jogador) {
+    $idJogadorAtual = (int)$jogador['id_jogador'];
+
+    $stmtPresencaSelecionada = $conn->prepare(" 
+        SELECT estado_presenca, lesionado, observacoes
+        FROM presenca_treino
+        WHERE id_treino = ?
+          AND id_jogador = ?
+        LIMIT 1
+    ");
+    $stmtPresencaSelecionada->bind_param("ii", $idTreinoSelecionado, $idJogadorAtual);
+    $stmtPresencaSelecionada->execute();
+    $presencaTreinoSelecionado = $stmtPresencaSelecionada->get_result()->fetch_assoc() ?: null;
+
+    $stmtEsforcoSelecionado = $conn->prepare(" 
+        SELECT nivel_esforco
+        FROM avaliacao_esforco
+        WHERE id_treino = ?
+          AND id_jogador = ?
+        LIMIT 1
+    ");
+    $stmtEsforcoSelecionado->bind_param("ii", $idTreinoSelecionado, $idJogadorAtual);
+    $stmtEsforcoSelecionado->execute();
+    $avaliacaoEsforcoSelecionada = $stmtEsforcoSelecionado->get_result()->fetch_assoc() ?: null;
 }
 
 function formatDatePt($date) {
@@ -1192,6 +1299,69 @@ body.layout-locked { overflow: hidden; }
     .treino-exercicio-view { grid-template-columns: 1fr; }
     .treino-exercicio-visual { border-right: none; padding-right: 0; }
     .treino-exercicio-desc { padding-left: 0; }
+}
+
+.presenca-status-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: #f8fafc;
+    border: 1px solid #e6ebf5;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    font-size: 14px;
+    color: #222;
+}
+.presenca-status-obs {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.esforco-box {
+    background: #fff;
+    border: 1px solid #e6ebf5;
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 22px;
+}
+.esforco-titulo {
+    font-size: 16px;
+    font-weight: 700;
+    color: #222;
+}
+.esforco-subtitulo {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 4px 0 14px;
+}
+.esforco-escala {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.esforco-opcao {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid #dfe3ea;
+    font-weight: 700;
+    cursor: pointer;
+    position: relative;
+}
+.esforco-opcao input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+.esforco-opcao:has(input:checked) {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
 }
 
 .messages-shell {
@@ -1691,6 +1861,35 @@ body.layout-locked { overflow: hidden; }
                     <div class="treino-info-box"><span>Equipa</span><strong><?= h($treinoSelecionado['escalão'] . ' ' . $treinoSelecionado['hierarquia']) ?></strong></div>
                     <div class="treino-info-box"><span>Observações</span><strong><?= h($treinoSelecionado['observacoes_treino'] ?: '—') ?></strong></div>
                 </div>
+
+                <?php if ($presencaTreinoSelecionado): ?>
+                    <div class="presenca-status-box">
+                        <span>A tua presença: <strong><?= h($presencaTreinoSelecionado['estado_presenca']) ?></strong><?= !empty($presencaTreinoSelecionado['lesionado']) ? ' · <strong>Lesionado</strong>' : '' ?></span>
+                        <?php if (!empty($presencaTreinoSelecionado['observacoes'])): ?>
+                            <span class="presenca-status-obs"><?= h($presencaTreinoSelecionado['observacoes']) ?></span>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($presencaTreinoSelecionado['estado_presenca'] === 'Presente'): ?>
+                        <div class="esforco-box">
+                            <div class="esforco-titulo">Como te sentiste depois deste treino?</div>
+                            <p class="esforco-subtitulo">Avalia o teu nível de cansaço de 1 (muito leve) a 5 (exaustivo).</p>
+                            <form method="POST" class="esforco-form">
+                                <input type="hidden" name="acao" value="guardar_esforco">
+                                <input type="hidden" name="id_treino" value="<?= (int)$treinoSelecionado['id_treino'] ?>">
+                                <div class="esforco-escala">
+                                    <?php for ($nivelEsf = 1; $nivelEsf <= 5; $nivelEsf++): ?>
+                                        <label class="esforco-opcao">
+                                            <input type="radio" name="nivel_esforco" value="<?= $nivelEsf ?>" <?= ((int)($avaliacaoEsforcoSelecionada['nivel_esforco'] ?? 0) === $nivelEsf) ? 'checked' : '' ?> required>
+                                            <span><?= $nivelEsf ?></span>
+                                        </label>
+                                    <?php endfor; ?>
+                                </div>
+                                <button class="btn-save" type="submit"><?= $avaliacaoEsforcoSelecionada ? 'Atualizar avaliação' : 'Guardar avaliação' ?></button>
+                            </form>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
 
                 <?php if (empty($exerciciosTreinoSelecionado)): ?>
                     <div class="empty-state">Este treino ainda não tem plano visual associado.</div>

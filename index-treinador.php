@@ -462,6 +462,31 @@ $conn->query("CREATE TABLE IF NOT EXISTS `treino_exercicio` (
     KEY `idx_treino_exercicio_ordem` (`id_treino`, `ordem`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+/* ── Folha de presenças dos treinos ── */
+$conn->query("CREATE TABLE IF NOT EXISTS `presenca_treino` (
+    `id_presenca` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_treino` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `estado_presenca` ENUM('Presente','Não Presente Justificado','Não Presente Injustificado') NOT NULL DEFAULT 'Presente',
+    `lesionado` TINYINT(1) NOT NULL DEFAULT 0,
+    `observacoes` TEXT DEFAULT NULL,
+    `atualizado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_presenca_treino_jogador` (`id_treino`, `id_jogador`),
+    KEY `idx_presenca_treino` (`id_treino`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+/* ── Avaliação de esforço (RPE) reportada pelo próprio atleta ── */
+$conn->query("CREATE TABLE IF NOT EXISTS `avaliacao_esforco` (
+    `id_avaliacao` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_treino` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `nivel_esforco` TINYINT NOT NULL,
+    `criado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `atualizado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_avaliacao_esforco` (`id_treino`, `id_jogador`),
+    KEY `idx_avaliacao_esforco_treino` (`id_treino`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 $checkEnviadaEm = $conn->query("SHOW COLUMNS FROM mensagens LIKE 'enviada_em'");
 if ($checkEnviadaEm && $checkEnviadaEm->num_rows === 0) {
     $conn->query("ALTER TABLE mensagens ADD COLUMN enviada_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER estado");
@@ -673,6 +698,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    /* ── Guardar folha de presenças de um treino ── */
+    if ($acao === 'guardar_presencas') {
+        $viewMode = 'treinos';
+        $idTreinoPresencas = (int)($_POST['id_treino'] ?? 0);
+        $presencasPost = $_POST['presenca'] ?? [];
+
+        $stmtCheckTreinoPresenca = $conn->prepare("
+            SELECT t.id_equipa
+            FROM treino t
+            INNER JOIN equipa eq ON eq.id_equipa = t.id_equipa
+            INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+            WHERE t.id_treino = ?
+              AND ae.id_utilizador = ?
+              AND eq.id_clube = ?
+            LIMIT 1
+        ");
+        $stmtCheckTreinoPresenca->bind_param("iii", $idTreinoPresencas, $id_utilizador, $id_clube);
+        $stmtCheckTreinoPresenca->execute();
+        $treinoPresencaValido = $stmtCheckTreinoPresenca->get_result()->fetch_assoc();
+
+        if ($idTreinoPresencas <= 0 || !$treinoPresencaValido || !is_array($presencasPost)) {
+            $erro = 'Não tens acesso a esse treino.';
+        } else {
+            $idEquipaPresenca = (int)$treinoPresencaValido['id_equipa'];
+            $jogadoresEquipaPresenca = [];
+            $stmtJogadoresEquipaPresenca = $conn->prepare("SELECT id_jogador FROM jogadores WHERE id_equipa = ?");
+            $stmtJogadoresEquipaPresenca->bind_param("i", $idEquipaPresenca);
+            $stmtJogadoresEquipaPresenca->execute();
+            $resJogadoresEquipaPresenca = $stmtJogadoresEquipaPresenca->get_result();
+            while ($rowJogPresenca = $resJogadoresEquipaPresenca->fetch_assoc()) {
+                $jogadoresEquipaPresenca[(int)$rowJogPresenca['id_jogador']] = true;
+            }
+
+            $estadosPresencaValidos = ['Presente', 'Não Presente Justificado', 'Não Presente Injustificado'];
+            $stmtGuardarPresenca = $conn->prepare("
+                INSERT INTO presenca_treino (id_treino, id_jogador, estado_presenca, lesionado, observacoes)
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    estado_presenca = VALUES(estado_presenca),
+                    lesionado = VALUES(lesionado),
+                    observacoes = VALUES(observacoes)
+            ");
+
+            foreach ($presencasPost as $idJogadorPresencaRaw => $dadosPresenca) {
+                $idJogadorPresenca = (int)$idJogadorPresencaRaw;
+                if ($idJogadorPresenca <= 0 || !isset($jogadoresEquipaPresenca[$idJogadorPresenca]) || !is_array($dadosPresenca)) {
+                    continue;
+                }
+
+                $estadoPresenca = (string)($dadosPresenca['estado'] ?? 'Presente');
+                if (!in_array($estadoPresenca, $estadosPresencaValidos, true)) {
+                    $estadoPresenca = 'Presente';
+                }
+                $lesionadoPresenca = !empty($dadosPresenca['lesionado']) ? 1 : 0;
+                $observacoesPresenca = trim((string)($dadosPresenca['observacoes'] ?? ''));
+                $observacoesPresenca = $observacoesPresenca !== '' ? substr($observacoesPresenca, 0, 1000) : null;
+
+                $stmtGuardarPresenca->bind_param(
+                    "iisis",
+                    $idTreinoPresencas,
+                    $idJogadorPresenca,
+                    $estadoPresenca,
+                    $lesionadoPresenca,
+                    $observacoesPresenca
+                );
+                $stmtGuardarPresenca->execute();
+            }
+
+            $sucesso = 'Folha de presenças guardada com sucesso.';
+        }
+    }
+
     /* ── Remover treino ── */
     if ($acao === 'remover_treino') {
         $viewMode = 'treinos';
@@ -714,6 +811,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmtApagarExerciciosTreino->bind_param("iii", $idTreino, $id_utilizador, $id_clube);
             $stmtApagarExerciciosTreino->execute();
+
+            $stmtApagarPresencasTreino = $conn->prepare("DELETE FROM presenca_treino WHERE id_treino = ?");
+            $stmtApagarPresencasTreino->bind_param("i", $idTreino);
+            $stmtApagarPresencasTreino->execute();
+
+            $stmtApagarEsforcosTreino = $conn->prepare("DELETE FROM avaliacao_esforco WHERE id_treino = ?");
+            $stmtApagarEsforcosTreino->bind_param("i", $idTreino);
+            $stmtApagarEsforcosTreino->execute();
 
             $stmtRemoverTreino = $conn->prepare("
                 DELETE t
@@ -2828,6 +2933,27 @@ if (!empty($treinosTreinador)) {
     unset($treinoRef);
 }
 
+/* ── Buscar folha de presenças por treino ── */
+$presencasPorTreino = [];
+if (!empty($treinosTreinador)) {
+    $idsTreinosPresenca = array_map(static fn($tr) => (int)$tr['id_treino'], $treinosTreinador);
+    $idsTreinosPresencaSql = implode(',', array_filter($idsTreinosPresenca, static fn($id) => $id > 0));
+
+    if ($idsTreinosPresencaSql !== '') {
+        $resPresencasTreino = $conn->query("
+            SELECT id_treino, id_jogador, estado_presenca, lesionado, observacoes
+            FROM presenca_treino
+            WHERE id_treino IN ($idsTreinosPresencaSql)
+        ");
+
+        if ($resPresencasTreino) {
+            while ($rowPresencaTreino = $resPresencasTreino->fetch_assoc()) {
+                $presencasPorTreino[(int)$rowPresencaTreino['id_treino']][(int)$rowPresencaTreino['id_jogador']] = $rowPresencaTreino;
+            }
+        }
+    }
+}
+
 /* ── Buscar jogadores por equipa (para o ecrã de escalões) ── */
 $jogadoresPorEquipa = [];
 $stmtJogadores = $conn->prepare("
@@ -4386,6 +4512,70 @@ body.layout-locked #dashboardCard {
     max-width: 760px;
 }
 
+.presenca-legend {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0 0 14px;
+}
+
+.presenca-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 50vh;
+    overflow-y: auto;
+    margin-bottom: 18px;
+}
+
+.presenca-row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px 16px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #e6ebf5;
+    border-radius: 12px;
+}
+
+.presenca-row-nome {
+    font-weight: 600;
+    font-size: 14px;
+    color: #222;
+}
+
+.presenca-row-opcoes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+}
+
+.presenca-opcao {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #444;
+    cursor: pointer;
+}
+
+.presenca-opcao-lesionado {
+    color: #b45309;
+    font-weight: 600;
+}
+
+.presenca-row-obs {
+    grid-column: 1 / -1;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #dfe3ea;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+@media (max-width: 620px) {
+    .presenca-row { grid-template-columns: 1fr; }
+}
+
 .modal-header {
     display: flex;
     align-items: center;
@@ -5855,6 +6045,12 @@ body.layout-locked #dashboardCard {
                             <?php else: ?>
                                 <div class="plan-badge" style="background:#f8fafc;color:#64748b;">Sem plano visual</div>
                             <?php endif; ?>
+                            <?php
+                                $totalPresencasRegistadas = count($presencasPorTreino[(int)$treino['id_treino']] ?? []);
+                            ?>
+                            <div class="plan-badge" style="background:#eef2ff;color:#3730a3;">
+                                <?= $totalPresencasRegistadas > 0 ? $totalPresencasRegistadas . ' presença(s) registada(s)' : 'Presenças por registar' ?>
+                            </div>
                             <div class="trainer-card-actions">
                                 <div class="plan-card-buttons">
                                     <?php if ((int)($treino['total_exercicios'] ?? 0) > 0): ?>
@@ -5863,6 +6059,7 @@ body.layout-locked #dashboardCard {
                                     <?php else: ?>
                                         <button class="btn-plan" type="button" onclick="abrirEditorPlanoTreino(<?= (int)$treino['id_treino'] ?>)">+ Plano visual</button>
                                     <?php endif; ?>
+                                    <button class="btn-plan" type="button" onclick="abrirPresencasTreino(<?= (int)$treino['id_treino'] ?>)">Folha de presenças</button>
                                 </div>
                                 <button class="btn-row-edit" type="button" title="Editar treino" onclick="openEditTreinoModal(<?= (int)$treino['id_treino'] ?>)">✎</button>
                                 <form method="POST" style="display:inline;" onsubmit="return confirm('Remover este treino?');">
@@ -7569,6 +7766,30 @@ body.layout-locked #dashboardCard {
     </div>
 </div>
 
+<!-- ══ MODAL FOLHA DE PRESENÇAS ══ -->
+<div class="modal-backdrop" id="modalPresencasTreino">
+    <div class="modal large">
+        <div class="modal-header">
+            <div class="modal-title" id="presencasTreinoTitulo">Folha de presenças</div>
+            <button class="modal-close" type="button" onclick="closeModal('modalPresencasTreino')">×</button>
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="acao" value="guardar_presencas">
+            <input type="hidden" name="id_treino" id="presencasTreinoId">
+
+            <p class="presenca-legend">"Presente", "Não presente justificado" e "Não presente injustificado" são mutuamente exclusivos. "Lesionado" pode ser combinado com qualquer um deles.</p>
+
+            <div id="presencasTreinoLista" class="presenca-lista"></div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" type="button" onclick="closeModal('modalPresencasTreino')">Cancelar</button>
+                <button class="btn-save" type="submit">Guardar presenças</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- ══ MODAL EDITAR TREINO ══ -->
 <div class="modal-backdrop" id="modalEditarTreino">
     <div class="modal">
@@ -8625,6 +8846,60 @@ const treinosTreinadorData = <?= json_encode($treinosTreinador, JSON_HEX_TAG | J
 const jogosTreinadorData = <?= json_encode($jogosTreinador, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
 const exerciciosPorTreinoData = <?= json_encode($exerciciosPorTreino, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
 const equipasTreinadorData = <?= json_encode($equipasTreinador, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+const presencasTreinadorData = <?= json_encode($presencasPorTreino, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+
+const ESTADOS_PRESENCA = [
+    ['Presente', 'Presente'],
+    ['Não Presente Justificado', 'Não presente (justificado)'],
+    ['Não Presente Injustificado', 'Não presente (injustificado)']
+];
+
+function abrirPresencasTreino(idTreino) {
+    const treino = treinosTreinadorData.find(t => String(t.id_treino) === String(idTreino));
+    if (!treino) return;
+
+    const jogadoresEquipa = jogadoresData.filter(j => String(j.id_equipa) === String(treino.id_equipa));
+    const presencasTreino = presencasTreinadorData[idTreino] || {};
+
+    document.getElementById('presencasTreinoId').value = treino.id_treino;
+    document.getElementById('presencasTreinoTitulo').textContent = 'Folha de presenças — Treino #' + treino.numero_treino + ' (' + treino.data_treino + ')';
+
+    let html = '';
+    if (!jogadoresEquipa.length) {
+        html = '<p class="empty-state">Esta equipa ainda não tem jogadores.</p>';
+    } else {
+        jogadoresEquipa.forEach(jog => {
+            const atual = presencasTreino[jog.id_jogador] || {};
+            const estadoAtual = atual.estado_presenca || 'Presente';
+            const lesionadoAtual = Number(atual.lesionado) === 1;
+            const campo = 'presenca[' + jog.id_jogador + ']';
+
+            const opcoesHtml = ESTADOS_PRESENCA.map(([valor, label]) => `
+                <label class="presenca-opcao">
+                    <input type="radio" name="${campo}[estado]" value="${valor}" ${estadoAtual === valor ? 'checked' : ''}>
+                    ${label}
+                </label>
+            `).join('');
+
+            html += `
+                <div class="presenca-row">
+                    <div class="presenca-row-nome">${esc(jog.alcunha_jogador || jog.nome_completo)}</div>
+                    <div class="presenca-row-opcoes">
+                        ${opcoesHtml}
+                        <label class="presenca-opcao presenca-opcao-lesionado">
+                            <input type="checkbox" name="${campo}[lesionado]" value="1" ${lesionadoAtual ? 'checked' : ''}>
+                            Lesionado
+                        </label>
+                    </div>
+                    <input type="text" class="presenca-row-obs" name="${campo}[observacoes]" placeholder="Observações" value="${esc(atual.observacoes || '')}">
+                </div>
+            `;
+        });
+    }
+
+    document.getElementById('presencasTreinoLista').innerHTML = html;
+    openModal('modalPresencasTreino');
+}
 
 function openEditTreinoModal(idTreino) {
     const treino = treinosTreinadorData.find(t => String(t.id_treino) === String(idTreino));
