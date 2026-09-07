@@ -2807,7 +2807,9 @@ while ($row = $resUtilizadoresMensagem->fetch_assoc()) {
     $utilizadoresMensagem[] = $row;
 }
 
-if ($chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
+$abrirMensagensAgora = ($mostrarMensagens || $chatSelecionadoId > 0);
+
+if ($abrirMensagensAgora && $chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
     $chatSelecionadoId = (int)$utilizadoresMensagem[0]['id_utilizador'];
 }
 
@@ -5817,7 +5819,7 @@ body.layout-locked #dashboardCard {
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
-    <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
+    <a href="index-treinador.php?view=mensagens" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>">
         <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
         <span>Mensagens</span>
     </a>
@@ -8815,10 +8817,10 @@ document.addEventListener('DOMContentLoaded', function () {
     showJogosScreen();
     <?php elseif (($_GET['view'] ?? '') === 'campeonato'): ?>
     showCampeonatoScreen();
-    <?php elseif (($_GET['view'] ?? '') === 'treinos'): ?>
-    showTreinosMenu();
+    <?php elseif (($_GET['view'] ?? '') === 'home'): ?>
+    showMainMenu();
     <?php else: ?>
-    showMainScreen();
+    showMainMenu();
     <?php endif; ?>
 });
 

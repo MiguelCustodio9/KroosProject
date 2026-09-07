@@ -571,11 +571,15 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
-$notificacoesNaoLidas = count(array_filter($notificacoesUtilizador, static fn($notificacao) => ($notificacao['estado'] ?? '') === 'Nao Lida'));
+
+$mensagensNaoLidas = 0;
 $stmtMensagensNaoLidas = $conn->prepare("SELECT COUNT(*) AS total FROM mensagens WHERE destino = ? AND estado = 'Não Lida'");
-$stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
-$stmtMensagensNaoLidas->execute();
-$mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
+if ($stmtMensagensNaoLidas) {
+    $stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
+    $stmtMensagensNaoLidas->execute();
+    $mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
+}
+
 
 /* ── Mensagens ── */
 $utilizadoresMensagem = [];
@@ -623,7 +627,9 @@ while ($row = $resUtilizadoresMensagem->fetch_assoc()) {
     $utilizadoresMensagem[] = $row;
 }
 
-if ($chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
+$abrirMensagensAgora = ($mostrarMensagens || $chatSelecionadoId > 0);
+
+if ($abrirMensagensAgora && $chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
     $chatSelecionadoId = (int)$utilizadoresMensagem[0]['id_utilizador'];
 }
 
@@ -858,11 +864,52 @@ body.layout-locked { overflow: hidden; }
 .sidebar a span { opacity: 0; width: 0; overflow: hidden; transition: opacity .18s, width .22s; }
 .sidebar:hover a span { opacity: 1; width: auto; }
 
-.sidebar a .sidebar-icon-wrap { position: relative; display: block; width: 34px; height: 34px; flex-shrink: 0; opacity: 1; overflow: visible; }
-.sidebar a .sidebar-icon-wrap img { width: 34px; height: 34px; }
-.menu-count-badge, .topbar-notification-badge { position: absolute; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; }
-.menu-count-badge { top: -6px; right: -8px; }
-.topbar-notification-badge { top: -7px; right: -8px; }
+
+.sidebar a .sidebar-icon-wrap {
+    position: relative;
+    display: block;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    opacity: 1;
+    overflow: visible;
+    transition: width .22s, height .22s, opacity .15s;
+}
+
+.sidebar a .sidebar-icon-wrap img {
+    width: 34px;
+    height: 34px;
+}
+
+.sidebar:hover a .sidebar-icon-wrap {
+    width: 24px;
+    height: 24px;
+}
+
+.sidebar:hover a .sidebar-icon-wrap img {
+    width: 24px;
+    height: 24px;
+}
+
+.menu-count-badge {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #dc2626;
+    color: #fff;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    box-shadow: 0 0 0 2px var(--club);
+    z-index: 2;
+}
+
 
 .main {
     margin-left: var(--sidebar-w);
@@ -1334,7 +1381,6 @@ body.layout-locked { overflow: hidden; }
             <button class="topbar-menu" type="button" aria-label="Menu" onclick="toggleUserMenu(event)">
                 <span></span><span></span><span></span>
             </button>
-            <?php if ($notificacoesNaoLidas > 0): ?><b class="topbar-notification-badge"><?= $notificacoesNaoLidas ?></b><?php endif; ?>
             <div class="user-dropdown" id="userDropdown">
                 <a href="index-jogador.php?view=perfil"><span>Perfil</span></a>
                 <a href="index-jogador.php?view=notificacoes"><span>Notificações</span></a>
