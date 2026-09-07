@@ -64,7 +64,6 @@ $activeSidebarView = match ($viewMode) {
     default => 'treinos',
 };
 $chatSelecionadoId = (int)($_GET['chat'] ?? 0);
-$jogoSelecionadoId = (int)($_GET['jogo'] ?? 0);
 
 $listaEscaloesDisponiveis = [
     'S5','S6','S7','S8','S9','S10','S11','S12','S13','S14','S15',
@@ -342,111 +341,6 @@ $conn->query("CREATE TABLE IF NOT EXISTS `jogos_clube` (
     `id_evento_clube` INT DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-/* ── Detalhe e estatísticas dos jogos ── */
-$conn->query("CREATE TABLE IF NOT EXISTS `jogo_configuracao` (
-    `id_jogo` INT NOT NULL PRIMARY KEY,
-    `numero_partes` INT NOT NULL DEFAULT 2,
-    `minutos_por_parte` INT NOT NULL DEFAULT 45,
-    `presenca_equipa_tecnica` TEXT DEFAULT NULL,
-    `tatica` VARCHAR(30) DEFAULT '4-3-3',
-    `posicoes_titulares` LONGTEXT DEFAULT NULL,
-    `parte_atual` INT NOT NULL DEFAULT 0,
-    `jogo_terminado` TINYINT(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-foreach ([
-    "ALTER TABLE jogo_configuracao ADD COLUMN tatica VARCHAR(30) DEFAULT '4-3-3'",
-    "ALTER TABLE jogo_configuracao ADD COLUMN posicoes_titulares LONGTEXT DEFAULT NULL",
-    "ALTER TABLE jogo_configuracao ADD COLUMN parte_atual INT NOT NULL DEFAULT 0",
-    "ALTER TABLE jogo_configuracao ADD COLUMN jogo_terminado TINYINT(1) NOT NULL DEFAULT 0"
-] as $alterarConfiguracaoJogo) {
-    $colunaConfiguracao = preg_replace('/^ALTER TABLE jogo_configuracao ADD COLUMN ([a-z_]+).*/', '$1', $alterarConfiguracaoJogo);
-    $existeColunaConfiguracao = $conn->query("SHOW COLUMNS FROM jogo_configuracao LIKE '" . $colunaConfiguracao . "'");
-    if ($existeColunaConfiguracao && $existeColunaConfiguracao->num_rows === 0) $conn->query($alterarConfiguracaoJogo);
-}
-
-$conn->query("CREATE TABLE IF NOT EXISTS `jogo_participantes` (
-    `id_participante` INT AUTO_INCREMENT PRIMARY KEY,
-    `id_jogo` INT NOT NULL,
-    `id_jogador` INT NOT NULL,
-    `tipo` ENUM('Convocado','Titular','Suplente','Suplente Utilizado') NOT NULL,
-    UNIQUE KEY `uq_jogo_participante_tipo` (`id_jogo`, `id_jogador`, `tipo`),
-    KEY `idx_jogo_participantes_jogo` (`id_jogo`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-$conn->query("CREATE TABLE IF NOT EXISTS `jogo_substituicoes` (
-    `id_substituicao` INT AUTO_INCREMENT PRIMARY KEY,
-    `id_jogo` INT NOT NULL,
-    `id_jogador_entrada` INT NOT NULL,
-    `id_jogador_saida` INT NOT NULL,
-    `minuto` INT NOT NULL,
-    KEY `idx_jogo_substituicoes_jogo` (`id_jogo`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-$conn->query("CREATE TABLE IF NOT EXISTS `jogo_golos` (
-    `id_golo` INT AUTO_INCREMENT PRIMARY KEY,
-    `id_jogo` INT NOT NULL,
-    `id_jogador_marcador` INT NOT NULL,
-    `id_jogador_assistente` INT DEFAULT NULL,
-    `minuto` INT NOT NULL,
-    `zona` VARCHAR(50) DEFAULT NULL,
-    `forma` VARCHAR(80) DEFAULT NULL,
-    KEY `idx_jogo_golos_jogo` (`id_jogo`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-$conn->query("CREATE TABLE IF NOT EXISTS `jogo_estatisticas_coletivas` (
-    `id_jogo` INT NOT NULL PRIMARY KEY,
-    `posse_casa_segundos` INT NOT NULL DEFAULT 0,
-    `sem_posse_segundos` INT NOT NULL DEFAULT 0,
-    `posse_visitante_segundos` INT NOT NULL DEFAULT 0,
-    `posse_casa_percentagem` DECIMAL(5,2) NOT NULL DEFAULT 0,
-    `posse_visitante_percentagem` DECIMAL(5,2) NOT NULL DEFAULT 0,
-    `remates_nos` INT NOT NULL DEFAULT 0,
-    `remates_adversario` INT NOT NULL DEFAULT 0,
-    `remates_baliza_nos` INT NOT NULL DEFAULT 0,
-    `remates_baliza_adversario` INT NOT NULL DEFAULT 0,
-    `dribles_tentados_nos` INT NOT NULL DEFAULT 0,
-    `dribles_tentados_adversario` INT NOT NULL DEFAULT 0,
-    `dribles_conseguidos_nos` INT NOT NULL DEFAULT 0,
-    `dribles_conseguidos_adversario` INT NOT NULL DEFAULT 0,
-    `defesas_nos` INT NOT NULL DEFAULT 0,
-    `defesas_adversario` INT NOT NULL DEFAULT 0,
-    `cantos_nos` INT NOT NULL DEFAULT 0,
-    `cantos_adversario` INT NOT NULL DEFAULT 0,
-    `passes_nos` INT NOT NULL DEFAULT 0,
-    `passes_adversario` INT NOT NULL DEFAULT 0,
-    `passes_certos_nos` INT NOT NULL DEFAULT 0,
-    `passes_certos_adversario` INT NOT NULL DEFAULT 0,
-    `faltas_nos` INT NOT NULL DEFAULT 0,
-    `faltas_adversario` INT NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-$conn->query("CREATE TABLE IF NOT EXISTS `jogo_estatisticas_individuais` (
-    `id_estatistica` INT AUTO_INCREMENT PRIMARY KEY,
-    `id_jogo` INT NOT NULL,
-    `id_jogador` INT NOT NULL,
-    `minutos_jogados` INT NOT NULL DEFAULT 0,
-    `golos` INT NOT NULL DEFAULT 0,
-    `remates` INT NOT NULL DEFAULT 0,
-    `remates_baliza` INT NOT NULL DEFAULT 0,
-    `assistencias` INT NOT NULL DEFAULT 0,
-    `passes` INT NOT NULL DEFAULT 0,
-    `passes_certos` INT NOT NULL DEFAULT 0,
-    `dribles_tentados` INT NOT NULL DEFAULT 0,
-    `dribles_conseguidos` INT NOT NULL DEFAULT 0,
-    `defesas` INT NOT NULL DEFAULT 0,
-    `desarmes` INT NOT NULL DEFAULT 0,
-    `intercecoes` INT NOT NULL DEFAULT 0,
-    `faltas_sofridas` INT NOT NULL DEFAULT 0,
-    `faltas_cometidas` INT NOT NULL DEFAULT 0,
-    UNIQUE KEY `uq_estatistica_individual` (`id_jogo`, `id_jogador`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-$colunaGolosIndividual = $conn->query("SHOW COLUMNS FROM jogo_estatisticas_individuais LIKE 'golos'");
-if ($colunaGolosIndividual && $colunaGolosIndividual->num_rows === 0) {
-    $conn->query("ALTER TABLE jogo_estatisticas_individuais ADD COLUMN golos INT NOT NULL DEFAULT 0 AFTER minutos_jogados");
-}
-
 /* ── Exercícios visuais do plano de treino ── */
 $conn->query("CREATE TABLE IF NOT EXISTS `treino_exercicio` (
     `id_exercicio` INT AUTO_INCREMENT PRIMARY KEY,
@@ -460,31 +354,6 @@ $conn->query("CREATE TABLE IF NOT EXISTS `treino_exercicio` (
     `atualizado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY `idx_treino_exercicio_treino` (`id_treino`),
     KEY `idx_treino_exercicio_ordem` (`id_treino`, `ordem`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-/* ── Folha de presenças dos treinos ── */
-$conn->query("CREATE TABLE IF NOT EXISTS `presenca_treino` (
-    `id_presenca` INT AUTO_INCREMENT PRIMARY KEY,
-    `id_treino` INT NOT NULL,
-    `id_jogador` INT NOT NULL,
-    `estado_presenca` ENUM('Presente','Não Presente Justificado','Não Presente Injustificado') NOT NULL DEFAULT 'Presente',
-    `lesionado` TINYINT(1) NOT NULL DEFAULT 0,
-    `observacoes` TEXT DEFAULT NULL,
-    `atualizado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY `uq_presenca_treino_jogador` (`id_treino`, `id_jogador`),
-    KEY `idx_presenca_treino` (`id_treino`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-/* ── Avaliação de esforço (RPE) reportada pelo próprio atleta ── */
-$conn->query("CREATE TABLE IF NOT EXISTS `avaliacao_esforco` (
-    `id_avaliacao` INT AUTO_INCREMENT PRIMARY KEY,
-    `id_treino` INT NOT NULL,
-    `id_jogador` INT NOT NULL,
-    `nivel_esforco` TINYINT NOT NULL,
-    `criado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    `atualizado_em` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY `uq_avaliacao_esforco` (`id_treino`, `id_jogador`),
-    KEY `idx_avaliacao_esforco_treino` (`id_treino`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 $checkEnviadaEm = $conn->query("SHOW COLUMNS FROM mensagens LIKE 'enviada_em'");
@@ -698,78 +567,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    /* ── Guardar folha de presenças de um treino ── */
-    if ($acao === 'guardar_presencas') {
-        $viewMode = 'treinos';
-        $idTreinoPresencas = (int)($_POST['id_treino'] ?? 0);
-        $presencasPost = $_POST['presenca'] ?? [];
-
-        $stmtCheckTreinoPresenca = $conn->prepare("
-            SELECT t.id_equipa
-            FROM treino t
-            INNER JOIN equipa eq ON eq.id_equipa = t.id_equipa
-            INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
-            WHERE t.id_treino = ?
-              AND ae.id_utilizador = ?
-              AND eq.id_clube = ?
-            LIMIT 1
-        ");
-        $stmtCheckTreinoPresenca->bind_param("iii", $idTreinoPresencas, $id_utilizador, $id_clube);
-        $stmtCheckTreinoPresenca->execute();
-        $treinoPresencaValido = $stmtCheckTreinoPresenca->get_result()->fetch_assoc();
-
-        if ($idTreinoPresencas <= 0 || !$treinoPresencaValido || !is_array($presencasPost)) {
-            $erro = 'Não tens acesso a esse treino.';
-        } else {
-            $idEquipaPresenca = (int)$treinoPresencaValido['id_equipa'];
-            $jogadoresEquipaPresenca = [];
-            $stmtJogadoresEquipaPresenca = $conn->prepare("SELECT id_jogador FROM jogadores WHERE id_equipa = ?");
-            $stmtJogadoresEquipaPresenca->bind_param("i", $idEquipaPresenca);
-            $stmtJogadoresEquipaPresenca->execute();
-            $resJogadoresEquipaPresenca = $stmtJogadoresEquipaPresenca->get_result();
-            while ($rowJogPresenca = $resJogadoresEquipaPresenca->fetch_assoc()) {
-                $jogadoresEquipaPresenca[(int)$rowJogPresenca['id_jogador']] = true;
-            }
-
-            $estadosPresencaValidos = ['Presente', 'Não Presente Justificado', 'Não Presente Injustificado'];
-            $stmtGuardarPresenca = $conn->prepare("
-                INSERT INTO presenca_treino (id_treino, id_jogador, estado_presenca, lesionado, observacoes)
-                VALUES (?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                    estado_presenca = VALUES(estado_presenca),
-                    lesionado = VALUES(lesionado),
-                    observacoes = VALUES(observacoes)
-            ");
-
-            foreach ($presencasPost as $idJogadorPresencaRaw => $dadosPresenca) {
-                $idJogadorPresenca = (int)$idJogadorPresencaRaw;
-                if ($idJogadorPresenca <= 0 || !isset($jogadoresEquipaPresenca[$idJogadorPresenca]) || !is_array($dadosPresenca)) {
-                    continue;
-                }
-
-                $estadoPresenca = (string)($dadosPresenca['estado'] ?? 'Presente');
-                if (!in_array($estadoPresenca, $estadosPresencaValidos, true)) {
-                    $estadoPresenca = 'Presente';
-                }
-                $lesionadoPresenca = !empty($dadosPresenca['lesionado']) ? 1 : 0;
-                $observacoesPresenca = trim((string)($dadosPresenca['observacoes'] ?? ''));
-                $observacoesPresenca = $observacoesPresenca !== '' ? substr($observacoesPresenca, 0, 1000) : null;
-
-                $stmtGuardarPresenca->bind_param(
-                    "iisis",
-                    $idTreinoPresencas,
-                    $idJogadorPresenca,
-                    $estadoPresenca,
-                    $lesionadoPresenca,
-                    $observacoesPresenca
-                );
-                $stmtGuardarPresenca->execute();
-            }
-
-            $sucesso = 'Folha de presenças guardada com sucesso.';
-        }
-    }
-
     /* ── Remover treino ── */
     if ($acao === 'remover_treino') {
         $viewMode = 'treinos';
@@ -811,14 +608,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmtApagarExerciciosTreino->bind_param("iii", $idTreino, $id_utilizador, $id_clube);
             $stmtApagarExerciciosTreino->execute();
-
-            $stmtApagarPresencasTreino = $conn->prepare("DELETE FROM presenca_treino WHERE id_treino = ?");
-            $stmtApagarPresencasTreino->bind_param("i", $idTreino);
-            $stmtApagarPresencasTreino->execute();
-
-            $stmtApagarEsforcosTreino = $conn->prepare("DELETE FROM avaliacao_esforco WHERE id_treino = ?");
-            $stmtApagarEsforcosTreino->bind_param("i", $idTreino);
-            $stmtApagarEsforcosTreino->execute();
 
             $stmtRemoverTreino = $conn->prepare("
                 DELETE t
@@ -1062,186 +851,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $erro = 'Erro ao atualizar resultado.';
                 }
-            }
-        }
-    }
-
-    /* ── Guardar detalhe completo de jogo ── */
-    if ($acao === 'guardar_detalhe_jogo') {
-        $viewMode = 'jogos';
-        $idJogoDetalhe = (int)($_POST['id_jogo'] ?? 0);
-        $stmtAcessoJogo = $conn->prepare("SELECT cc.id_equipa FROM jogos_clube jc INNER JOIN competicoes_clube cc ON cc.id_competicao = jc.id_competicao INNER JOIN acesso_equipa ae ON ae.id_equipa = cc.id_equipa WHERE jc.id_jogo = ? AND ae.id_utilizador = ? AND cc.id_clube = ? LIMIT 1");
-        $stmtAcessoJogo->bind_param("iii", $idJogoDetalhe, $id_utilizador, $id_clube);
-        $stmtAcessoJogo->execute();
-        $jogoAcesso = $stmtAcessoJogo->get_result()->fetch_assoc();
-
-        if (!$jogoAcesso) {
-            $erro = 'Não tens acesso a esse jogo.';
-        } else {
-            $idEquipaJogo = (int)$jogoAcesso['id_equipa'];
-            $jogadoresValidos = [];
-            $stmtJogadoresJogo = $conn->prepare("SELECT id_jogador FROM jogadores WHERE id_equipa = ?");
-            $stmtJogadoresJogo->bind_param("i", $idEquipaJogo);
-            $stmtJogadoresJogo->execute();
-            $resJogadoresJogo = $stmtJogadoresJogo->get_result();
-            while ($jogadorJogo = $resJogadoresJogo->fetch_assoc()) {
-                $jogadoresValidos[(int)$jogadorJogo['id_jogador']] = true;
-            }
-
-            $normalizarJogadores = static function ($valores) use ($jogadoresValidos): array {
-                $resultado = [];
-                foreach ((array)$valores as $valor) {
-                    $idJogador = (int)$valor;
-                    if ($idJogador > 0 && isset($jogadoresValidos[$idJogador])) {
-                        $resultado[$idJogador] = $idJogador;
-                    }
-                }
-                return array_values($resultado);
-            };
-
-            $partes = max(1, min(6, (int)($_POST['numero_partes'] ?? 2)));
-            $minutosParte = max(1, min(120, (int)($_POST['minutos_por_parte'] ?? 45)));
-            $convocados = $normalizarJogadores($_POST['convocados'] ?? []);
-            $titulares = $normalizarJogadores($_POST['titulares'] ?? []);
-            $suplentes = $normalizarJogadores($_POST['suplentes'] ?? []);
-            if (isset($_POST['papel_jogador'])) {
-                $convocados = $normalizarJogadores($_POST['convocados'] ?? []);
-                $titulares = [];
-                $suplentes = [];
-                foreach ((array)$_POST['papel_jogador'] as $idJogadorPapel => $papelJogador) {
-                    $idJogadorPapel = (int)$idJogadorPapel;
-                    if (!isset($jogadoresValidos[$idJogadorPapel]) || !in_array($idJogadorPapel, $convocados, true)) continue;
-                    if ($papelJogador === 'Titular') {
-                        $titulares[] = $idJogadorPapel;
-                    } elseif ($papelJogador === 'Suplente') {
-                        $suplentes[] = $idJogadorPapel;
-                    }
-                }
-                $convocados = $normalizarJogadores($convocados);
-                $titulares = $normalizarJogadores($titulares);
-                $suplentes = $normalizarJogadores($suplentes);
-            }
-            $suplentesUtilizados = [];
-            $equipaTecnica = implode("\n", array_filter(array_map('trim', (array)($_POST['equipa_tecnica'] ?? []))));
-            $tatica = trim($_POST['tatica'] ?? '4-3-3');
-            $taticasValidas = ['4-3-3','4-2-3-1','4-4-2','3-5-2','3-4-3','4-1-4-1','5-3-2'];
-            if (!in_array($tatica, $taticasValidas, true)) $tatica = '4-3-3';
-            $posicoesTitulares = [];
-            foreach ((array)($_POST['posicao_titular'] ?? []) as $posicao => $idJogadorPosicao) {
-                $idJogadorPosicao = (int)$idJogadorPosicao;
-                if (isset($jogadoresValidos[$idJogadorPosicao]) && in_array($idJogadorPosicao, $convocados, true)) $posicoesTitulares[$posicao] = $idJogadorPosicao;
-            }
-            $parteAtual = max(0, (int)($_POST['parte_atual'] ?? 0));
-            $jogoTerminado = !empty($_POST['jogo_terminado']) ? 1 : 0;
-            $resultadoNosDetalhe = ($_POST['resultado_nos'] ?? '') === '' ? null : max(0, (int)$_POST['resultado_nos']);
-            $resultadoAdvDetalhe = ($_POST['resultado_adv'] ?? '') === '' ? null : max(0, (int)$_POST['resultado_adv']);
-
-            $camposColetivos = ['remates_nos','remates_adversario','remates_baliza_nos','remates_baliza_adversario','dribles_tentados_nos','dribles_tentados_adversario','dribles_conseguidos_nos','dribles_conseguidos_adversario','defesas_nos','defesas_adversario','cantos_nos','cantos_adversario','passes_nos','passes_adversario','passes_certos_nos','passes_certos_adversario','faltas_nos','faltas_adversario'];
-            $coletivas = [];
-            foreach ($camposColetivos as $campo) $coletivas[$campo] = max(0, (int)($_POST[$campo] ?? 0));
-            foreach ([['remates_baliza_nos', 'remates_nos'], ['remates_baliza_adversario', 'remates_adversario'], ['dribles_conseguidos_nos', 'dribles_tentados_nos'], ['dribles_conseguidos_adversario', 'dribles_tentados_adversario'], ['passes_certos_nos', 'passes_nos'], ['passes_certos_adversario', 'passes_adversario']] as [$campoDependente, $campoBase]) {
-                $coletivas[$campoBase] = max($coletivas[$campoBase], $coletivas[$campoDependente]);
-            }
-            $posseCasaSegundos = max(0, (int)($_POST['posse_casa_segundos'] ?? 0));
-            $semPosseSegundos = max(0, (int)($_POST['sem_posse_segundos'] ?? 0));
-            $posseVisitanteSegundos = max(0, (int)($_POST['posse_visitante_segundos'] ?? 0));
-            $tempoComPosse = $posseCasaSegundos + $posseVisitanteSegundos;
-            $posseCasaPercentagem = $tempoComPosse > 0 ? round($posseCasaSegundos * 100 / $tempoComPosse, 2) : 0;
-            $posseVisitantePercentagem = $tempoComPosse > 0 ? round($posseVisitanteSegundos * 100 / $tempoComPosse, 2) : 0;
-
-            try {
-                $conn->begin_transaction();
-                $posicoesTitularesJson = json_encode($posicoesTitulares);
-                $stmtConfig = $conn->prepare("INSERT INTO jogo_configuracao (id_jogo,numero_partes,minutos_por_parte,presenca_equipa_tecnica,tatica,posicoes_titulares,parte_atual,jogo_terminado) VALUES (?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE numero_partes=VALUES(numero_partes),minutos_por_parte=VALUES(minutos_por_parte),presenca_equipa_tecnica=VALUES(presenca_equipa_tecnica),tatica=VALUES(tatica),posicoes_titulares=VALUES(posicoes_titulares),parte_atual=VALUES(parte_atual),jogo_terminado=VALUES(jogo_terminado)");
-                $stmtConfig->bind_param("iiisssii", $idJogoDetalhe, $partes, $minutosParte, $equipaTecnica, $tatica, $posicoesTitularesJson, $parteAtual, $jogoTerminado);
-                $stmtConfig->execute();
-
-                $conn->query("DELETE FROM jogo_participantes WHERE id_jogo=" . $idJogoDetalhe);
-                $conn->query("DELETE FROM jogo_substituicoes WHERE id_jogo=" . $idJogoDetalhe);
-                $conn->query("DELETE FROM jogo_golos WHERE id_jogo=" . $idJogoDetalhe);
-                $conn->query("DELETE FROM jogo_estatisticas_individuais WHERE id_jogo=" . $idJogoDetalhe);
-                $stmtParticipante = $conn->prepare("INSERT INTO jogo_participantes (id_jogo,id_jogador,tipo) VALUES (?,?,?)");
-                foreach (['Convocado' => $convocados, 'Titular' => $titulares, 'Suplente' => $suplentes] as $tipoParticipante => $listaParticipantes) {
-                    foreach ($listaParticipantes as $idJogadorParticipante) {
-                        $stmtParticipante->bind_param("iis", $idJogoDetalhe, $idJogadorParticipante, $tipoParticipante);
-                        $stmtParticipante->execute();
-                    }
-                }
-
-                $entradas = (array)($_POST['substituicao_entrada'] ?? []);
-                $saidas = (array)($_POST['substituicao_saida'] ?? []);
-                $minutosSubs = (array)($_POST['substituicao_minuto'] ?? []);
-                $stmtSubstituicao = $conn->prepare("INSERT INTO jogo_substituicoes (id_jogo,id_jogador_entrada,id_jogador_saida,minuto) VALUES (?,?,?,?)");
-                $jogadoresEmJogo = array_fill_keys($titulares, true);
-                $substituicoesValidas = [];
-                foreach ($entradas as $indice => $entrada) {
-                    $idEntrada = (int)$entrada; $idSaida = (int)($saidas[$indice] ?? 0); $minuto = max(0, (int)($minutosSubs[$indice] ?? 0));
-                    if (isset($jogadoresValidos[$idEntrada], $jogadoresValidos[$idSaida]) && in_array($idEntrada, $convocados, true) && in_array($idSaida, $convocados, true) && isset($jogadoresEmJogo[$idSaida]) && !isset($jogadoresEmJogo[$idEntrada]) && $idEntrada !== $idSaida && $minuto > 0) {
-                        $stmtSubstituicao->bind_param("iiii", $idJogoDetalhe, $idEntrada, $idSaida, $minuto);
-                        $stmtSubstituicao->execute();
-                        $suplentesUtilizados[$idEntrada] = $idEntrada;
-                        unset($jogadoresEmJogo[$idSaida]);
-                        $jogadoresEmJogo[$idEntrada] = true;
-                        $substituicoesValidas[] = ['entrada' => $idEntrada, 'saida' => $idSaida, 'minuto' => $minuto];
-                    }
-                }
-
-                foreach ($suplentesUtilizados as $idSuplenteUtilizado) {
-                    $tipoSuplenteUtilizado = 'Suplente Utilizado';
-                    $stmtParticipante->bind_param("iis", $idJogoDetalhe, $idSuplenteUtilizado, $tipoSuplenteUtilizado);
-                    $stmtParticipante->execute();
-                }
-
-                $marcadores = (array)($_POST['golo_marcador'] ?? []);
-                $assistentes = (array)($_POST['golo_assistente'] ?? []);
-                $minutosGolos = (array)($_POST['golo_minuto'] ?? []);
-                $zonasGolo = (array)($_POST['golo_zona'] ?? []);
-                $formasGolo = (array)($_POST['golo_forma'] ?? []);
-                $stmtGolo = $conn->prepare("INSERT INTO jogo_golos (id_jogo,id_jogador_marcador,id_jogador_assistente,minuto,zona,forma) VALUES (?,?,?,?,?,?)");
-                foreach ($marcadores as $indice => $marcador) {
-                    $idMarcador = (int)$marcador;
-                    $idAssistente = (int)($assistentes[$indice] ?? 0);
-                    $minutoGolo = (int)($minutosGolos[$indice] ?? 0);
-                    $minuto = max(0, $minutoGolo);
-                    $zona = trim($zonasGolo[$indice] ?? '');
-                    $forma = trim($formasGolo[$indice] ?? '');
-                    $jogadoresNoMinuto = array_fill_keys($titulares, true);
-                    foreach ($substituicoesValidas as $substituicaoValida) {
-                        if ($substituicaoValida['minuto'] > $minuto) continue;
-                        unset($jogadoresNoMinuto[$substituicaoValida['saida']]);
-                        $jogadoresNoMinuto[$substituicaoValida['entrada']] = true;
-                    }
-                    if (isset($jogadoresNoMinuto[$idMarcador]) && $minuto > 0) {
-                        $assistenteNulo = isset($jogadoresNoMinuto[$idAssistente]) ? $idAssistente : null;
-                        $stmtGolo->bind_param("iiiiss", $idJogoDetalhe, $idMarcador, $assistenteNulo, $minuto, $zona, $forma);
-                        $stmtGolo->execute();
-                    }
-                }
-
-                $conn->query("INSERT INTO jogo_estatisticas_coletivas (id_jogo,posse_casa_segundos,sem_posse_segundos,posse_visitante_segundos,posse_casa_percentagem,posse_visitante_percentagem," . implode(',', $camposColetivos) . ") VALUES (" . $idJogoDetalhe . "," . $posseCasaSegundos . "," . $semPosseSegundos . "," . $posseVisitanteSegundos . "," . $posseCasaPercentagem . "," . $posseVisitantePercentagem . "," . implode(',', $coletivas) . ") ON DUPLICATE KEY UPDATE posse_casa_segundos=VALUES(posse_casa_segundos),sem_posse_segundos=VALUES(sem_posse_segundos),posse_visitante_segundos=VALUES(posse_visitante_segundos),posse_casa_percentagem=VALUES(posse_casa_percentagem),posse_visitante_percentagem=VALUES(posse_visitante_percentagem)," . implode(',', array_map(static fn($campo) => $campo . '=VALUES(' . $campo . ')', $camposColetivos)));
-
-                $camposIndividuais = ['minutos_jogados','golos','remates','remates_baliza','assistencias','passes','passes_certos','dribles_tentados','dribles_conseguidos','defesas','desarmes','intercecoes','faltas_sofridas','faltas_cometidas'];
-                foreach ((array)($_POST['estatisticas_individuais'] ?? []) as $idJogador => $estatisticasJogador) {
-                    $idJogador = (int)$idJogador;
-                    if (!isset($jogadoresEmJogo[$idJogador])) continue;
-                    $valores = array_map(static fn($campo) => max(0, (int)($estatisticasJogador[$campo] ?? 0)), $camposIndividuais);
-                    foreach ([['remates_baliza', 'remates'], ['dribles_conseguidos', 'dribles_tentados'], ['passes_certos', 'passes']] as [$campoDependente, $campoBase]) {
-                        $indiceDependente = array_search($campoDependente, $camposIndividuais, true);
-                        $indiceBase = array_search($campoBase, $camposIndividuais, true);
-                        $valores[$indiceBase] = max($valores[$indiceBase], $valores[$indiceDependente]);
-                    }
-                    if (array_sum($valores) === 0) continue;
-                    $conn->query("INSERT INTO jogo_estatisticas_individuais (id_jogo,id_jogador," . implode(',', $camposIndividuais) . ") VALUES (" . $idJogoDetalhe . "," . $idJogador . "," . implode(',', $valores) . ")");
-                }
-
-                $stmtResultadoDetalhe = $conn->prepare("UPDATE jogos_clube SET resultado_nos=?, resultado_adv=?, estado='Realizado' WHERE id_jogo=?");
-                $stmtResultadoDetalhe->bind_param("iii", $resultadoNosDetalhe, $resultadoAdvDetalhe, $idJogoDetalhe);
-                $stmtResultadoDetalhe->execute();
-                $conn->commit();
-                $sucesso = 'Detalhe e estatísticas do jogo guardados.';
-            } catch (Throwable $e) {
-                $conn->rollback();
-                $erro = 'Não foi possível guardar o detalhe do jogo.';
             }
         }
     }
@@ -2858,11 +2467,6 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
-$notificacoesNaoLidas = count(array_filter($notificacoesUtilizador, static fn($notificacao) => ($notificacao['estado'] ?? '') === 'Nao Lida'));
-$stmtMensagensNaoLidas = $conn->prepare("SELECT COUNT(*) AS total FROM mensagens WHERE destino = ? AND estado = 'Não Lida'");
-$stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
-$stmtMensagensNaoLidas->execute();
-$mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
 
 /* ── Buscar eventos do calendário das equipas do treinador ── */
 $eventosCalendario = [];
@@ -2957,35 +2561,16 @@ if (!empty($treinosTreinador)) {
     unset($treinoRef);
 }
 
-/* ── Buscar folha de presenças por treino ── */
-$presencasPorTreino = [];
-if (!empty($treinosTreinador)) {
-    $idsTreinosPresenca = array_map(static fn($tr) => (int)$tr['id_treino'], $treinosTreinador);
-    $idsTreinosPresencaSql = implode(',', array_filter($idsTreinosPresenca, static fn($id) => $id > 0));
-
-    if ($idsTreinosPresencaSql !== '') {
-        $resPresencasTreino = $conn->query("
-            SELECT id_treino, id_jogador, estado_presenca, lesionado, observacoes
-            FROM presenca_treino
-            WHERE id_treino IN ($idsTreinosPresencaSql)
-        ");
-
-        if ($resPresencasTreino) {
-            while ($rowPresencaTreino = $resPresencasTreino->fetch_assoc()) {
-                $presencasPorTreino[(int)$rowPresencaTreino['id_treino']][(int)$rowPresencaTreino['id_jogador']] = $rowPresencaTreino;
-            }
-        }
-    }
-}
-
 /* ── Buscar jogadores por equipa (para o ecrã de escalões) ── */
 $jogadoresPorEquipa = [];
 $stmtJogadores = $conn->prepare("
     SELECT DISTINCT j.id_jogador, j.nome_completo, j.alcunha_jogador, j.`posição_principal`,
            j.`posição_secundária`, j.`número_favorito`, j.`pé_preferencial`,
            j.data_nascimento, j.nacionalidade, j.altura, j.peso,
-           j.id_equipa, j.id_utilizador, j.foto_jogador
+           j.id_equipa, j.id_utilizador, j.foto_jogador,
+           uJog.foto_perfil AS foto_perfil_utilizador
     FROM jogadores j
+    LEFT JOIN utilizador uJog ON uJog.id_utilizador = j.id_utilizador
     INNER JOIN equipa eq ON eq.id_equipa = j.id_equipa
     INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
     WHERE ae.id_utilizador = ?
@@ -2996,9 +2581,22 @@ $stmtJogadores->bind_param("ii", $id_utilizador, $id_clube);
 $stmtJogadores->execute();
 $resJogadores = $stmtJogadores->get_result();
 while ($row = $resJogadores->fetch_assoc()) {
-    $row['tem_foto'] = !empty($row['foto_jogador']) && strlen($row['foto_jogador']) > 10;
-    $row['foto_base64'] = $row['tem_foto'] ? 'data:image/png;base64,' . base64_encode($row['foto_jogador']) : null;
-    unset($row['foto_jogador']);
+    // Preferir a foto editada no perfil do utilizador.
+    // Se ainda não existir, usar a foto antiga da ficha do jogador como fallback.
+    $fotoJogadorBlob = null;
+
+    if (!empty($row['foto_perfil_utilizador']) && strlen($row['foto_perfil_utilizador']) > 10) {
+        $fotoJogadorBlob = $row['foto_perfil_utilizador'];
+    } elseif (!empty($row['foto_jogador']) && strlen($row['foto_jogador']) > 10) {
+        $fotoJogadorBlob = $row['foto_jogador'];
+    }
+
+    $row['tem_foto'] = $fotoJogadorBlob !== null;
+    $row['foto_base64'] = $fotoJogadorBlob !== null
+        ? 'data:image/png;base64,' . base64_encode($fotoJogadorBlob)
+        : null;
+
+    unset($row['foto_jogador'], $row['foto_perfil_utilizador']);
     $jogadoresPorEquipa[$row['id_equipa']][] = $row;
 }
 
@@ -3056,42 +2654,6 @@ $resJogosC = $stmtJogosClub->get_result();
 while ($row = $resJogosC->fetch_assoc()) {
     $jogosPorCompeticao[$row['id_competicao']][] = $row;
     $jogosTreinador[] = $row;
-}
-
-/* ── Dados do detalhe de jogo selecionado ── */
-$jogoDetalhe = null;
-$configuracaoJogo = ['numero_partes' => 2, 'minutos_por_parte' => 45, 'presenca_equipa_tecnica' => '', 'tatica' => '4-3-3', 'posicoes_titulares' => null, 'parte_atual' => 0, 'jogo_terminado' => 0];
-$participantesJogo = ['Convocado' => [], 'Titular' => [], 'Suplente' => [], 'Suplente Utilizado' => []];
-$substituicoesJogo = [];
-$golosJogo = [];
-$estatisticasColetivasJogo = [];
-$estatisticasIndividuaisJogo = [];
-
-foreach ($jogosTreinador as $jogoTreinador) {
-    if ((int)$jogoTreinador['id_jogo'] === $jogoSelecionadoId) {
-        $jogoDetalhe = $jogoTreinador;
-        break;
-    }
-}
-
-if ($jogoDetalhe) {
-    $idJogoDetalhe = (int)$jogoDetalhe['id_jogo'];
-    $resConfigJogo = $conn->query("SELECT numero_partes, minutos_por_parte, presenca_equipa_tecnica, tatica, posicoes_titulares, parte_atual, jogo_terminado FROM jogo_configuracao WHERE id_jogo=" . $idJogoDetalhe);
-    if ($resConfigJogo && ($config = $resConfigJogo->fetch_assoc())) $configuracaoJogo = $config;
-    $resParticipantes = $conn->query("SELECT id_jogador, tipo FROM jogo_participantes WHERE id_jogo=" . $idJogoDetalhe);
-    while ($resParticipantes && ($participante = $resParticipantes->fetch_assoc())) {
-        $participantesJogo[$participante['tipo']][] = (int)$participante['id_jogador'];
-    }
-    $resSubsJogo = $conn->query("SELECT id_jogador_entrada, id_jogador_saida, minuto FROM jogo_substituicoes WHERE id_jogo=" . $idJogoDetalhe . " ORDER BY minuto");
-    while ($resSubsJogo && ($substituicao = $resSubsJogo->fetch_assoc())) $substituicoesJogo[] = $substituicao;
-    $resGolosJogo = $conn->query("SELECT id_jogador_marcador, id_jogador_assistente, minuto, zona, forma FROM jogo_golos WHERE id_jogo=" . $idJogoDetalhe . " ORDER BY minuto");
-    while ($resGolosJogo && ($golo = $resGolosJogo->fetch_assoc())) $golosJogo[] = $golo;
-    $resColetivasJogo = $conn->query("SELECT * FROM jogo_estatisticas_coletivas WHERE id_jogo=" . $idJogoDetalhe);
-    if ($resColetivasJogo && ($coletivas = $resColetivasJogo->fetch_assoc())) $estatisticasColetivasJogo = $coletivas;
-    $resIndividuaisJogo = $conn->query("SELECT * FROM jogo_estatisticas_individuais WHERE id_jogo=" . $idJogoDetalhe);
-    while ($resIndividuaisJogo && ($individual = $resIndividuaisJogo->fetch_assoc())) {
-        $estatisticasIndividuaisJogo[(int)$individual['id_jogador']] = $individual;
-    }
 }
 
 /* ── Estatísticas simples para o ecrã Campeonato ── */
@@ -3391,12 +2953,6 @@ body.layout-locked { overflow: hidden; }
     opacity: 1;
     width: auto;
 }
-
-.sidebar a .sidebar-icon-wrap { position: relative; display: block; width: 34px; height: 34px; flex-shrink: 0; opacity: 1; overflow: visible; }
-.sidebar a .sidebar-icon-wrap img { width: 34px; height: 34px; }
-.menu-count-badge, .topbar-notification-badge { position: absolute; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; }
-.menu-count-badge { top: -6px; right: -8px; }
-.topbar-notification-badge { top: -7px; right: -8px; }
 
 /* ══════════════════════════════════
    MAIN CONTENT
@@ -4542,70 +4098,6 @@ body.layout-locked #dashboardCard {
     max-width: 760px;
 }
 
-.presenca-legend {
-    font-size: 12px;
-    color: #6b7280;
-    margin: 0 0 14px;
-}
-
-.presenca-lista {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-height: 50vh;
-    overflow-y: auto;
-    margin-bottom: 18px;
-}
-
-.presenca-row {
-    display: grid;
-    grid-template-columns: 140px 1fr;
-    gap: 8px 16px;
-    align-items: center;
-    padding: 12px;
-    border: 1px solid #e6ebf5;
-    border-radius: 12px;
-}
-
-.presenca-row-nome {
-    font-weight: 600;
-    font-size: 14px;
-    color: #222;
-}
-
-.presenca-row-opcoes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 16px;
-}
-
-.presenca-opcao {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: #444;
-    cursor: pointer;
-}
-
-.presenca-opcao-lesionado {
-    color: #b45309;
-    font-weight: 600;
-}
-
-.presenca-row-obs {
-    grid-column: 1 / -1;
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid #dfe3ea;
-    border-radius: 8px;
-    font-size: 13px;
-}
-
-@media (max-width: 620px) {
-    .presenca-row { grid-template-columns: 1fr; }
-}
-
 .modal-header {
     display: flex;
     align-items: center;
@@ -5175,72 +4667,6 @@ body.layout-locked #dashboardCard {
     background: #fff;
 }
 
-.game-detail-form { max-width: 1240px; padding-bottom: 30px; }
-.game-detail-title { color: #172033; margin: 0 0 18px; padding: 22px 24px; border-radius: 8px; background: linear-gradient(135deg, #12233c, #1c5a52); color: #fff; font-size: 22px; }
-.game-detail-title small { color: #c7e9df; font-size: 13px; font-weight: 600; margin-left: 10px; }
-.game-detail-section { background: #fff; border: 1px solid #dce6ed; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 4px 16px rgba(28, 53, 81, .06); }
-.game-detail-section h4 { margin: 0 0 16px; color: #172033; font-size: 16px; }
-.game-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.game-checkboxes { display: flex; flex-wrap: wrap; gap: 12px 20px; }
-.game-checkboxes label { font-size: 13px; color: #334155; }
-.convocatoria-head, .convocado-row { display: grid; grid-template-columns: 38px minmax(110px, 1fr) 82px 130px; gap: 10px; align-items: center; }
-.convocatoria-head { padding: 0 12px 8px; color: #748093; font-size: 10px; text-transform: uppercase; font-weight: 800; letter-spacing: .06em; }
-.convocatoria-head span:first-child { grid-column: span 2; }
-.convocatoria-lista { display: grid; grid-template-columns: repeat(2, minmax(270px, 1fr)); gap: 6px; }
-.convocado-row { min-height: 50px; padding: 6px 10px; border: 1px solid #e3ebef; border-radius: 6px; background: #fbfdfd; }
-.convocado-row:focus-within { border-color: var(--club); background: color-mix(in srgb, var(--club) 8%, #fff); }
-.convocado-row.nao-convocado { opacity: .58; }
-.convocado-row select:disabled { cursor: not-allowed; background: #edf1f3; color: #8793a1; }
-.convocado-number { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--club); color: #fff; font-size: 11px; font-weight: 800; }
-.convocado-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1f2d3d; font-size: 13px; font-weight: 800; }
-.convocado-row select { height: 32px; border: 1px solid #dbe5ea; border-radius: 5px; background: #fff; padding: 0 6px; font-size: 12px; color: #364152; }
-.convocado-toggle { display: inline-flex; cursor: pointer; }
-.convocado-toggle input { position: absolute; opacity: 0; }
-.convocado-toggle span { width: 34px; height: 19px; border-radius: 10px; background: #cbd5df; position: relative; transition: .18s; }
-.convocado-toggle span::after { content: ''; position: absolute; width: 15px; height: 15px; left: 2px; top: 2px; border-radius: 50%; background: #fff; transition: .18s; }
-.convocado-toggle input:checked + span { background: var(--club); }
-.convocado-toggle input:checked + span::after { transform: translateX(15px); }
-.game-events-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-.game-add-event { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border: 1px solid var(--club); border-radius: 6px; background: #fff; color: var(--club); font-size: 13px; font-weight: 800; cursor: pointer; }
-.game-add-event:hover { background: var(--club); color: #fff; }
-.game-add-event-icon { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--club); color: #fff; font-size: 17px; line-height: 1; }
-.game-add-event:hover .game-add-event-icon { background: #fff; color: var(--club); }
-.game-detail-link { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; border: 1px solid var(--club); border-radius: 6px; background: #fff; color: var(--club); font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
-.game-detail-link:hover { background: var(--club); color: #fff; }
-.game-report-button { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 14px; border: 1px solid var(--club); border-radius: 6px; background: var(--club); color: #fff; font-size: 13px; font-weight: 800; cursor: pointer; }
-.game-report-button:hover { filter: brightness(.88); }
-.game-event-row { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)) 34px; gap: 10px; align-items: end; padding: 12px; border: 1px solid #dfe9ee; border-left: 4px solid var(--club); border-radius: 6px; background: #f9fcfc; }
-.game-event-row.golo { grid-template-columns: repeat(5, minmax(120px, 1fr)) 34px; border-left-color: var(--club); }
-.game-event-row select, .game-event-row input { width: 100%; }
-.game-event-row label { display: grid; gap: 5px; color: #6b7787; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-.game-event-row label select, .game-event-row label input { box-sizing: border-box; height: 34px; border: 1px solid #d6e1e8; border-radius: 5px; background: #fff; color: #263548; font-size: 12px; font-weight: 600; padding: 0 8px; text-transform: none; letter-spacing: 0; }
-.game-event-row .btn-row-delete { width: 34px; height: 34px; padding: 0; }
-.match-phase-bar { display: flex; align-items: center; gap: 14px; background: #f2f8f7; padding: 14px; border: 1px solid #c9e2dd; border-radius: 8px; margin-top: 28px; }
-.match-phase-bar strong { color: #172033; }
-.match-phase-button { border: 0; border-radius: 6px; background: var(--club); color: #fff; padding: 10px 16px; font-weight: 800; cursor: pointer; }
-.match-phase-button.running { background: #c2410c; }
-.tactic-layout { display: grid; grid-template-columns: minmax(300px, .9fr) minmax(300px, 1.1fr); gap: 20px; align-items: start; }
-.tactic-pitch { position: relative; min-height: 570px; border: 5px solid #d7f0d5; border-radius: 8px; overflow: hidden; background-color: #2d8149; background-image: linear-gradient(90deg, rgba(255,255,255,.07) 50%, transparent 50%); background-size: 84px 100%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.55); }
-.tactic-pitch::before { content: ''; position: absolute; inset: 50% 0 auto; border-top: 2px solid rgba(255,255,255,.8); }
-.tactic-pitch::after { content: ''; position: absolute; width: 90px; height: 90px; left: calc(50% - 45px); top: calc(50% - 45px); border: 2px solid rgba(255,255,255,.8); border-radius: 50%; }
-.tactic-slot { position: absolute; transform: translate(-50%, -50%); width: 94px; z-index: 1; }
-.tactic-slot label { display: block; color: #fff; text-align: center; font-size: 10px; font-weight: 800; margin-bottom: 4px; text-shadow: 0 1px 2px #123; }
-.tactic-slot select { width: 100%; border: 0; border-radius: 6px; padding: 7px 4px; font-size: 10px; box-shadow: 0 2px 5px rgba(0,0,0,.25); }
-.posse-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px; background: #f7fafc; border-radius: 8px; }
-.posse-controls button { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #1f2b3d; padding: 9px 12px; cursor: pointer; font-weight: 700; }
-.posse-controls button.active { background: var(--club); color: #fff; border-color: var(--club); }
-.posse-controls strong { margin-left: 8px; color: #172033; font-variant-numeric: tabular-nums; }
-.posse-percent { margin-left: auto; display: flex; gap: 12px; font-weight: 800; color: #172033; }
-.stat-counter { display: grid; grid-template-columns: 34px 1fr 34px; border: 1px solid #dbe4ec; border-radius: 6px; overflow: hidden; background: #fff; }
-.stat-counter button { border: 0; background: color-mix(in srgb, var(--club) 10%, #fff); color: var(--club); font-weight: 900; font-size: 18px; cursor: pointer; }
-.stat-counter input { border: 0; text-align: center; min-width: 0; font-weight: 800; color: #172033; }
-.game-stats-scroll { overflow-x: auto; }
-.game-stats-scroll table { border-collapse: collapse; width: 100%; min-width: 1120px; font-size: 12px; }
-.game-stats-scroll th, .game-stats-scroll td { border-bottom: 1px solid #e2e8f4; padding: 7px; text-align: left; }
-.game-stats-scroll th { color: #475569; white-space: nowrap; }
-.game-stats-scroll td .stat-counter { width: 100px; }
-@media (max-width: 760px) { .tactic-layout { grid-template-columns: 1fr; } .tactic-pitch { min-height: 520px; } .convocatoria-lista { grid-template-columns: 1fr; } .game-event-row, .game-event-row.golo { grid-template-columns: 1fr 1fr; } .posse-percent { width: 100%; margin-left: 0; } }
-
 .trainer-game-date {
     font-size: 12px;
     color: #6b7280;
@@ -5723,7 +5149,6 @@ body.layout-locked #dashboardCard {
             <button class="topbar-menu" type="button" aria-label="Menu" onclick="toggleUserMenu(event)">
                 <span></span><span></span><span></span>
             </button>
-            <?php if ($notificacoesNaoLidas > 0): ?><b class="topbar-notification-badge"><?= $notificacoesNaoLidas ?></b><?php endif; ?>
 
             <div class="user-dropdown" id="userDropdown">
                 <a href="#" onclick="event.preventDefault(); showProfileScreen(); toggleUserMenu(event);">
@@ -5761,7 +5186,7 @@ body.layout-locked #dashboardCard {
         <span>Calendário</span>
     </a>
     <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
-        <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
+        <img src="assets/mensagens.png" alt="">
         <span>Mensagens</span>
     </a>
     <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
@@ -5912,7 +5337,7 @@ body.layout-locked #dashboardCard {
                                 </div>
                                 <div class="message-user-main">
                                     <span class="message-user-name"><?= htmlspecialchars($nomeU) ?></span>
-                                    <span class="message-user-type"><?= htmlspecialchars(['jogador' => 'Jogador', 'treinador' => 'Treinador', 'admin_clube' => 'Admin Clube', 'admin' => 'Admin de Sistema'][$uMsg['tipo_utilizador']] ?? $uMsg['tipo_utilizador']) ?></span>
+                                    <span class="message-user-type"><?= htmlspecialchars($uMsg['tipo_utilizador']) ?></span>
                                 </div>
                                 <?php if ($badgeNaoLidas > 0): ?>
                                     <span class="message-user-unread"><?= $badgeNaoLidas ?></span>
@@ -6076,12 +5501,6 @@ body.layout-locked #dashboardCard {
                             <?php else: ?>
                                 <div class="plan-badge" style="background:#f8fafc;color:#64748b;">Sem plano visual</div>
                             <?php endif; ?>
-                            <?php
-                                $totalPresencasRegistadas = count($presencasPorTreino[(int)$treino['id_treino']] ?? []);
-                            ?>
-                            <div class="plan-badge" style="background:#eef2ff;color:#3730a3;">
-                                <?= $totalPresencasRegistadas > 0 ? $totalPresencasRegistadas . ' presença(s) registada(s)' : 'Presenças por registar' ?>
-                            </div>
                             <div class="trainer-card-actions">
                                 <div class="plan-card-buttons">
                                     <?php if ((int)($treino['total_exercicios'] ?? 0) > 0): ?>
@@ -6090,7 +5509,6 @@ body.layout-locked #dashboardCard {
                                     <?php else: ?>
                                         <button class="btn-plan" type="button" onclick="abrirEditorPlanoTreino(<?= (int)$treino['id_treino'] ?>)">+ Plano visual</button>
                                     <?php endif; ?>
-                                    <button class="btn-plan" type="button" onclick="abrirPresencasTreino(<?= (int)$treino['id_treino'] ?>)">Folha de presenças</button>
                                 </div>
                                 <button class="btn-row-edit" type="button" title="Editar treino" onclick="openEditTreinoModal(<?= (int)$treino['id_treino'] ?>)">✎</button>
                                 <form method="POST" style="display:inline;" onsubmit="return confirm('Remover este treino?');">
@@ -6114,121 +5532,7 @@ body.layout-locked #dashboardCard {
                 </div>
             </div>
 
-            <?php if ($jogoDetalhe): ?>
-                <?php
-                    $jogadoresDetalhe = $jogadoresPorEquipa[(int)$jogoDetalhe['id_equipa']] ?? [];
-                    $idsConvocados = $participantesJogo['Convocado'];
-                    $idsTitulares = $participantesJogo['Titular'];
-                    $idsSuplentes = $participantesJogo['Suplente'];
-                    $tecnicosPresentes = array_filter(explode("\n", $configuracaoJogo['presenca_equipa_tecnica'] ?? ''));
-                    $camposColetivosView = ['remates_nos' => 'Remates nossos', 'remates_adversario' => 'Remates adversário', 'remates_baliza_nos' => 'Remates à baliza nossos', 'remates_baliza_adversario' => 'Remates à baliza adversário', 'dribles_tentados_nos' => 'Dribles tentados nossos', 'dribles_tentados_adversario' => 'Dribles tentados adversário', 'dribles_conseguidos_nos' => 'Dribles conseguidos nossos', 'dribles_conseguidos_adversario' => 'Dribles conseguidos adversário', 'defesas_nos' => 'Defesas nossas', 'defesas_adversario' => 'Defesas adversário', 'cantos_nos' => 'Cantos nossos', 'cantos_adversario' => 'Cantos adversário', 'passes_nos' => 'Passes nossos', 'passes_adversario' => 'Passes adversário', 'passes_certos_nos' => 'Passes certos nossos', 'passes_certos_adversario' => 'Passes certos adversário', 'faltas_nos' => 'Faltas nossas', 'faltas_adversario' => 'Faltas adversário'];
-                    $camposIndividuaisView = ['minutos_jogados' => 'Min.', 'golos' => 'Golos', 'remates' => 'Rem.', 'remates_baliza' => 'R. baliza', 'assistencias' => 'Assist.', 'passes' => 'Passes', 'passes_certos' => 'P. certos', 'dribles_tentados' => 'Drib. tent.', 'dribles_conseguidos' => 'Drib. cons.', 'defesas' => 'Defesas', 'desarmes' => 'Desarmes', 'intercecoes' => 'Interceções', 'faltas_sofridas' => 'F. sofridas', 'faltas_cometidas' => 'F. cometidas'];
-                ?>
-                <a class="btn-cancel" style="display:inline-block;margin-bottom:18px;text-decoration:none;" href="index-treinador.php?view=jogos">Voltar aos jogos</a>
-                <form method="POST" id="formDetalheJogo" class="game-detail-form">
-                    <input type="hidden" name="acao" value="guardar_detalhe_jogo">
-                    <input type="hidden" name="id_jogo" value="<?= (int)$jogoDetalhe['id_jogo'] ?>">
-                    <input type="hidden" name="parte_atual" id="parteAtual" value="<?= (int)$configuracaoJogo['parte_atual'] ?>">
-                    <input type="hidden" name="jogo_terminado" id="jogoTerminado" value="<?= (int)$configuracaoJogo['jogo_terminado'] ?>">
-                    <h3 class="game-detail-title">vs <?= htmlspecialchars($jogoDetalhe['adversario']) ?> <small><?= htmlspecialchars($jogoDetalhe['data_jogo']) ?></small></h3>
-
-                    <section class="game-detail-section">
-                        <h4>Centro de jogo</h4>
-                        <div class="edit-grid">
-                            <div class="edit-group"><label>Nº de partes</label><input type="number" name="numero_partes" min="1" max="6" value="<?= (int)$configuracaoJogo['numero_partes'] ?>" required></div>
-                            <div class="edit-group"><label>Minutos por parte</label><input type="number" name="minutos_por_parte" min="1" max="120" value="<?= (int)$configuracaoJogo['minutos_por_parte'] ?>" required></div>
-                            <div class="edit-group"><label>Resultado nós</label><input type="number" name="resultado_nos" min="0" value="<?= $jogoDetalhe['resultado_nos'] ?? '' ?>"></div>
-                            <div class="edit-group"><label>Resultado adversário</label><input type="number" name="resultado_adv" min="0" value="<?= $jogoDetalhe['resultado_adv'] ?? '' ?>"></div>
-                        </div>
-                        <div class="match-phase-bar" id="matchPhaseBar" data-partes="<?= (int)$configuracaoJogo['numero_partes'] ?>" data-atual="<?= (int)$configuracaoJogo['parte_atual'] ?>" data-terminado="<?= (int)$configuracaoJogo['jogo_terminado'] ?>">
-                            <strong id="matchPhaseLabel">Jogo por iniciar</strong><button type="button" class="match-phase-button" id="matchPhaseButton">Iniciar parte</button>
-                            <select id="posseInicial" aria-label="Quem inicia com a bola"><option value="">Quem começa com a bola?</option><option value="casa">A nossa equipa</option><option value="visitante">Adversário</option></select>
-                        </div>
-                    </section>
-
-                    <section class="game-detail-section">
-                        <h4>Convocatória</h4>
-                        <div class="convocatoria-head"><span>Jogador</span><span>Convocado</span><span>Ficha de jogo</span></div>
-                        <div class="convocatoria-lista">
-                            <?php foreach ($jogadoresDetalhe as $jogador): ?>
-                                <?php
-                                    $idJogador = (int)$jogador['id_jogador'];
-                                    $nomeCurto = trim(($jogador['alcunha_jogador'] ?? '') ?: preg_replace('/\s+.*/', '', $jogador['nome_completo']));
-                                    $papelAtual = in_array($idJogador, $idsTitulares, true) ? 'Titular' : (in_array($idJogador, $idsSuplentes, true) ? 'Suplente' : '');
-                                ?>
-                                <div class="convocado-row">
-                                    <span class="convocado-number"><?= htmlspecialchars($jogador['número_favorito'] ?: '—') ?></span>
-                                    <span class="convocado-name" title="<?= htmlspecialchars($jogador['nome_completo']) ?>"><?= htmlspecialchars($nomeCurto) ?></span>
-                                    <label class="convocado-toggle"><input type="checkbox" name="convocados[]" value="<?= $idJogador ?>" <?= in_array($idJogador, $idsConvocados, true) ? 'checked' : '' ?>><span></span></label>
-                                    <select name="papel_jogador[<?= $idJogador ?>]" aria-label="Papel de <?= htmlspecialchars($jogador['nome_completo']) ?>"><option value="">—</option><option value="Titular" <?= $papelAtual === 'Titular' ? 'selected' : '' ?>>Titular</option><option value="Suplente" <?= $papelAtual === 'Suplente' ? 'selected' : '' ?>>Suplente</option></select>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </section>
-
-                    <section class="game-detail-section">
-                        <h4>Onze inicial e tática</h4>
-                        <div class="tactic-layout">
-                            <div class="edit-group"><label>Tática</label><select name="tatica" id="taticaJogo">
-                                <?php foreach (['4-3-3','4-2-3-1','4-4-2','3-5-2','3-4-3','4-1-4-1','5-3-2'] as $tatica): ?><option value="<?= $tatica ?>" <?= ($configuracaoJogo['tatica'] ?? '4-3-3') === $tatica ? 'selected' : '' ?>><?= $tatica ?></option><?php endforeach; ?>
-                            </select><p style="font-size:12px;color:#64748b;line-height:1.5;">Escolhe a tática e atribui um jogador a cada posição no relvado.</p></div>
-                            <div class="tactic-pitch" id="tacticPitch"></div>
-                        </div>
-                    </section>
-
-                    <section class="game-detail-section">
-                        <h4>Treinadores e equipa técnica presentes</h4>
-                        <div class="game-checkboxes">
-                            <?php foreach ($treinadoresClube as $tecnico): $nomeTecnico = trim($tecnico['primeiro_nome'] . ' ' . $tecnico['último_nome']); ?>
-                                <label><input type="checkbox" name="equipa_tecnica[]" value="<?= htmlspecialchars($nomeTecnico) ?>" <?= in_array($nomeTecnico, $tecnicosPresentes, true) ? 'checked' : '' ?>> <?= htmlspecialchars($nomeTecnico) ?><?= $tecnico['tipo_treinador'] ? ' (' . htmlspecialchars($tecnico['tipo_treinador']) . ')' : '' ?></label>
-                            <?php endforeach; ?>
-                        </div>
-                    </section>
-
-                    <section class="game-detail-section">
-                        <h4>Substituições</h4>
-                        <div id="substituicoesLista" class="game-events-list"></div>
-                        <button type="button" class="game-add-event" onclick="adicionarSubstituicao()"><span class="game-add-event-icon">+</span>Adicionar substituição</button>
-                    </section>
-
-                    <section class="game-detail-section">
-                        <h4>Golos</h4>
-                        <div id="golosLista" class="game-events-list"></div>
-                        <button type="button" class="game-add-event" onclick="adicionarGolo()"><span class="game-add-event-icon">+</span>Adicionar golo</button>
-                    </section>
-
-                    <section class="game-detail-section">
-                        <h4>Posse de bola</h4>
-                        <div class="posse-controls" data-casa="<?= (int)($estatisticasColetivasJogo['posse_casa_segundos'] ?? 0) ?>" data-sem="<?= (int)($estatisticasColetivasJogo['sem_posse_segundos'] ?? 0) ?>" data-visitante="<?= (int)($estatisticasColetivasJogo['posse_visitante_segundos'] ?? 0) ?>">
-                            <button type="button" data-posse="casa">Posse da casa</button><button type="button" data-posse="sem">Sem posse</button><button type="button" data-posse="visitante">Posse do visitante</button>
-                            <strong id="posseCronometro">00:00:00</strong>
-                            <div class="posse-percent"><span>Casa <b id="posseCasaPercentagem">0%</b></span><span>Visitante <b id="posseVisitantePercentagem">0%</b></span></div>
-                            <input type="hidden" name="posse_casa_segundos"><input type="hidden" name="sem_posse_segundos"><input type="hidden" name="posse_visitante_segundos">
-                        </div>
-                    </section>
-
-                    <section class="game-detail-section">
-                        <h4>Estatísticas coletivas</h4>
-                        <div class="game-detail-grid" id="estatisticasColetivasGrid">
-                            <?php foreach ($camposColetivosView as $campo => $rotulo): ?><div class="edit-group"><label><?= $rotulo ?></label><div class="stat-counter"><button type="button" aria-label="Diminuir <?= $rotulo ?>" onclick="alterarContador(this,-1)">−</button><input type="number" min="0" name="<?= $campo ?>" value="<?= (int)($estatisticasColetivasJogo[$campo] ?? 0) ?>"><button type="button" aria-label="Somar <?= $rotulo ?>" onclick="alterarContador(this,1)">+</button></div></div><?php endforeach; ?>
-                        </div>
-                    </section>
-
-                    <section class="game-detail-section game-individual-stats">
-                        <h4>Estatísticas individuais pós-jogo</h4>
-                        <div class="game-stats-scroll"><table><thead><tr><th>Jogador</th><?php foreach ($camposIndividuaisView as $rotulo): ?><th><?= $rotulo ?></th><?php endforeach; ?></tr></thead><tbody>
-                            <?php foreach ($jogadoresDetalhe as $jogador): $idJogador = (int)$jogador['id_jogador']; $estatistica = $estatisticasIndividuaisJogo[$idJogador] ?? []; ?><tr data-jogador="<?= $idJogador ?>"><td><?= htmlspecialchars($jogador['nome_completo']) ?></td><?php foreach ($camposIndividuaisView as $campo => $rotulo): ?><td><div class="stat-counter"><button type="button" aria-label="Diminuir <?= $rotulo ?>" onclick="alterarContador(this,-1)">−</button><input type="number" min="0" name="estatisticas_individuais[<?= $idJogador ?>][<?= $campo ?>]" value="<?= (int)($estatistica[$campo] ?? 0) ?>"><button type="button" aria-label="Somar <?= $rotulo ?>" onclick="alterarContador(this,1)">+</button></div></td><?php endforeach; ?></tr><?php endforeach; ?>
-                        </tbody></table></div>
-                    </section>
-                    <div class="modal-actions"><button class="game-report-button" type="button" onclick="gerarRelatorioJogo()">Relatório PDF</button><button class="btn-save" type="submit">Guardar detalhe do jogo</button></div>
-                </form>
-                <script>
-                    const jogadoresDetalheJogo = <?= json_encode($jogadoresDetalhe, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
-                    const subsGuardadas = <?= json_encode($substituicoesJogo, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
-                    const golosGuardados = <?= json_encode($golosJogo, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
-                    const posicoesTitularesGuardadas = <?= json_encode(json_decode($configuracaoJogo['posicoes_titulares'] ?? '{}', true) ?: [], JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
-                </script>
-            <?php elseif (empty($jogosTreinador)): ?>
+            <?php if (empty($jogosTreinador)): ?>
                 <div class="empty-state"><p>Ainda não há jogos associados às tuas equipas.</p></div>
             <?php else: ?>
                 <div class="trainer-list">
@@ -6254,7 +5558,6 @@ body.layout-locked #dashboardCard {
                             <span class="jogo-casa-badge"><?= $jogo['casa'] ? 'Casa' : 'Fora' ?></span>
                             <div class="trainer-result"><?= htmlspecialchars($resultadoJogo) ?></div>
                             <span class="jogo-estado <?= htmlspecialchars($estadoClass) ?>"><?= htmlspecialchars($jogo['estado']) ?></span>
-                            <a class="game-detail-link" title="Abrir detalhe do jogo" href="index-treinador.php?view=jogos&jogo=<?= (int)$jogo['id_jogo'] ?>">Ver detalhe</a>
                             <button class="btn-row-edit" type="button" title="Atualizar resultado" onclick="openResultadoTreinadorModal(<?= (int)$jogo['id_jogo'] ?>)">⚽</button>
                         </div>
                     <?php endforeach; ?>
@@ -7798,30 +7101,6 @@ body.layout-locked #dashboardCard {
     </div>
 </div>
 
-<!-- ══ MODAL FOLHA DE PRESENÇAS ══ -->
-<div class="modal-backdrop" id="modalPresencasTreino">
-    <div class="modal large">
-        <div class="modal-header">
-            <div class="modal-title" id="presencasTreinoTitulo">Folha de presenças</div>
-            <button class="modal-close" type="button" onclick="closeModal('modalPresencasTreino')">×</button>
-        </div>
-
-        <form method="POST">
-            <input type="hidden" name="acao" value="guardar_presencas">
-            <input type="hidden" name="id_treino" id="presencasTreinoId">
-
-            <p class="presenca-legend">"Presente", "Não presente justificado" e "Não presente injustificado" são mutuamente exclusivos. "Lesionado" pode ser combinado com qualquer um deles.</p>
-
-            <div id="presencasTreinoLista" class="presenca-lista"></div>
-
-            <div class="modal-actions">
-                <button class="btn-cancel" type="button" onclick="closeModal('modalPresencasTreino')">Cancelar</button>
-                <button class="btn-save" type="submit">Guardar presenças</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- ══ MODAL EDITAR TREINO ══ -->
 <div class="modal-backdrop" id="modalEditarTreino">
     <div class="modal">
@@ -8878,60 +8157,6 @@ const treinosTreinadorData = <?= json_encode($treinosTreinador, JSON_HEX_TAG | J
 const jogosTreinadorData = <?= json_encode($jogosTreinador, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
 const exerciciosPorTreinoData = <?= json_encode($exerciciosPorTreino, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
 const equipasTreinadorData = <?= json_encode($equipasTreinador, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
-const presencasTreinadorData = <?= json_encode($presencasPorTreino, JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
-
-const ESTADOS_PRESENCA = [
-    ['Presente', 'Presente'],
-    ['Não Presente Justificado', 'Não presente (justificado)'],
-    ['Não Presente Injustificado', 'Não presente (injustificado)']
-];
-
-function abrirPresencasTreino(idTreino) {
-    const treino = treinosTreinadorData.find(t => String(t.id_treino) === String(idTreino));
-    if (!treino) return;
-
-    const jogadoresEquipa = jogadoresData.filter(j => String(j.id_equipa) === String(treino.id_equipa));
-    const presencasTreino = presencasTreinadorData[idTreino] || {};
-
-    document.getElementById('presencasTreinoId').value = treino.id_treino;
-    document.getElementById('presencasTreinoTitulo').textContent = 'Folha de presenças — Treino #' + treino.numero_treino + ' (' + treino.data_treino + ')';
-
-    let html = '';
-    if (!jogadoresEquipa.length) {
-        html = '<p class="empty-state">Esta equipa ainda não tem jogadores.</p>';
-    } else {
-        jogadoresEquipa.forEach(jog => {
-            const atual = presencasTreino[jog.id_jogador] || {};
-            const estadoAtual = atual.estado_presenca || 'Presente';
-            const lesionadoAtual = Number(atual.lesionado) === 1;
-            const campo = 'presenca[' + jog.id_jogador + ']';
-
-            const opcoesHtml = ESTADOS_PRESENCA.map(([valor, label]) => `
-                <label class="presenca-opcao">
-                    <input type="radio" name="${campo}[estado]" value="${valor}" ${estadoAtual === valor ? 'checked' : ''}>
-                    ${label}
-                </label>
-            `).join('');
-
-            html += `
-                <div class="presenca-row">
-                    <div class="presenca-row-nome">${esc(jog.alcunha_jogador || jog.nome_completo)}</div>
-                    <div class="presenca-row-opcoes">
-                        ${opcoesHtml}
-                        <label class="presenca-opcao presenca-opcao-lesionado">
-                            <input type="checkbox" name="${campo}[lesionado]" value="1" ${lesionadoAtual ? 'checked' : ''}>
-                            Lesionado
-                        </label>
-                    </div>
-                    <input type="text" class="presenca-row-obs" name="${campo}[observacoes]" placeholder="Observações" value="${esc(atual.observacoes || '')}">
-                </div>
-            `;
-        });
-    }
-
-    document.getElementById('presencasTreinoLista').innerHTML = html;
-    openModal('modalPresencasTreino');
-}
 
 function openEditTreinoModal(idTreino) {
     const treino = treinosTreinadorData.find(t => String(t.id_treino) === String(idTreino));
@@ -11200,321 +10425,6 @@ planoCanvasWheel = function(ev) {
         }
     });
 })();
-
-/* ══════════════════════════════════
-   DETALHE DE JOGO
-══════════════════════════════════ */
-function jogadoresConvocadosDetalhe() {
-    return (typeof jogadoresDetalheJogo === 'undefined' ? [] : jogadoresDetalheJogo).filter(j => document.querySelector(`input[name="convocados[]"][value="${j.id_jogador}"]`)?.checked);
-}
-
-function jogadoresEmJogoDetalhe(minuto = 0) {
-    const convocados = jogadoresConvocadosDetalhe();
-    const emJogo = new Map(convocados.filter(j => document.querySelector(`select[name="papel_jogador[${j.id_jogador}]"]`)?.value === 'Titular').map(j => [String(j.id_jogador), j]));
-    [...document.querySelectorAll('#substituicoesLista .game-event-row')]
-        .map(linha => ({entrada: linha.querySelector('[name="substituicao_entrada[]"]')?.value, saida: linha.querySelector('[name="substituicao_saida[]"]')?.value, minuto: Number(linha.querySelector('[name="substituicao_minuto[]"]')?.value || 0)}))
-        .filter(substituicao => substituicao.minuto > 0 && substituicao.minuto <= minuto)
-        .sort((a, b) => a.minuto - b.minuto)
-        .forEach(substituicao => { emJogo.delete(String(substituicao.saida)); const jogador = convocados.find(j => String(j.id_jogador) === String(substituicao.entrada)); if (jogador) emJogo.set(String(jogador.id_jogador), jogador); });
-    return [...emJogo.values()];
-}
-
-function opcoesJogadoresDetalhe(selecionado, permitirVazio, jogadores = jogadoresConvocadosDetalhe()) {
-    const vazio = permitirVazio ? '<option value="">Sem assistência</option>' : '<option value="">Selecionar</option>';
-    return vazio + jogadores.map(j => `<option value="${j.id_jogador}" ${String(j.id_jogador) === String(selecionado || '') ? 'selected' : ''}>${esc(j.nome_completo)}</option>`).join('');
-}
-
-function adicionarSubstituicao(valor = {}) {
-    const lista = document.getElementById('substituicoesLista');
-    if (!lista) return;
-    const linha = document.createElement('div');
-    linha.className = 'game-event-row';
-    linha.innerHTML = `<label>Entra<select name="substituicao_entrada[]">${opcoesJogadoresDetalhe(valor.id_jogador_entrada)}</select></label><label>Sai<select name="substituicao_saida[]">${opcoesJogadoresDetalhe(valor.id_jogador_saida)}</select></label><label>Minuto<input type="number" min="1" name="substituicao_minuto[]" value="${valor.minuto || ''}"></label><button type="button" class="btn-row-edit btn-row-delete" title="Remover substituição" aria-label="Remover substituição" onclick="this.parentElement.remove();atualizarOpcoesDetalheJogo()">×</button>`;
-    lista.appendChild(linha);
-    linha.querySelectorAll('select,input').forEach(campo => campo.addEventListener('change', atualizarOpcoesDetalheJogo));
-}
-
-function adicionarGolo(valor = {}) {
-    const lista = document.getElementById('golosLista');
-    if (!lista) return;
-    const linha = document.createElement('div');
-    linha.className = 'game-event-row golo';
-    linha.innerHTML = `<label>Marcador<select name="golo_marcador[]" onchange="sincronizarGolos()">${opcoesJogadoresDetalhe(valor.id_jogador_marcador)}</select></label><label>Assistência<select name="golo_assistente[]" onchange="sincronizarGolos()">${opcoesJogadoresDetalhe(valor.id_jogador_assistente, true)}</select></label><label>Minuto<input type="number" min="1" name="golo_minuto[]" value="${valor.minuto || ''}"></label><label>Zona<select name="golo_zona[]"><option value="">Selecionar</option><option ${valor.zona === 'Dentro da área' ? 'selected' : ''}>Dentro da área</option><option ${valor.zona === 'Fora da área' ? 'selected' : ''}>Fora da área</option><option ${valor.zona === 'Pequena área' ? 'selected' : ''}>Pequena área</option></select></label><label>Origem<select name="golo_forma[]"><option value="">Selecionar</option><option ${valor.forma === 'Bola corrida' ? 'selected' : ''}>Bola corrida</option><option ${valor.forma === 'Bola parada' ? 'selected' : ''}>Bola parada</option><option ${valor.forma === 'Grande penalidade' ? 'selected' : ''}>Grande penalidade</option><option ${valor.forma === 'Canto' ? 'selected' : ''}>Canto</option><option ${valor.forma === 'Livre' ? 'selected' : ''}>Livre</option></select></label><button type="button" class="btn-row-edit btn-row-delete" title="Remover golo" aria-label="Remover golo" onclick="this.parentElement.remove();sincronizarGolos()">×</button>`;
-    lista.appendChild(linha);
-    linha.querySelector('[name="golo_minuto[]"]').addEventListener('change', atualizarOpcoesDetalheJogo);
-    sincronizarGolos();
-}
-
-function substituirOpcoes(select, opcoes) {
-    if (!select) return;
-    const selecionado = select.value;
-    select.innerHTML = opcoes;
-    if ([...select.options].some(opcao => opcao.value === selecionado)) select.value = selecionado;
-}
-
-function atualizarOpcoesDetalheJogo() {
-    const convocados = jogadoresConvocadosDetalhe();
-    document.querySelectorAll('#tacticPitch select[name^="posicao_titular"]').forEach(select => substituirOpcoes(select, opcoesJogadoresDetalhe(select.value, false, convocados)));
-
-    document.querySelectorAll('#substituicoesLista .game-event-row').forEach(linha => {
-        const minuto = Number(linha.querySelector('[name="substituicao_minuto[]"]')?.value || 0);
-        const emJogo = jogadoresEmJogoDetalhe(Math.max(0, minuto - 0.01));
-        const entrada = linha.querySelector('[name="substituicao_entrada[]"]');
-        const saida = linha.querySelector('[name="substituicao_saida[]"]');
-        substituirOpcoes(entrada, opcoesJogadoresDetalhe(entrada?.value, false, convocados.filter(jogador => !emJogo.some(ativo => ativo.id_jogador === jogador.id_jogador))));
-        substituirOpcoes(saida, opcoesJogadoresDetalhe(saida?.value, false, emJogo));
-    });
-
-    document.querySelectorAll('#golosLista .game-event-row').forEach(linha => {
-        const minuto = Number(linha.querySelector('[name="golo_minuto[]"]')?.value || 0);
-        const emJogo = jogadoresEmJogoDetalhe(minuto);
-        substituirOpcoes(linha.querySelector('[name="golo_marcador[]"]'), opcoesJogadoresDetalhe(linha.querySelector('[name="golo_marcador[]"]')?.value, false, emJogo));
-        substituirOpcoes(linha.querySelector('[name="golo_assistente[]"]'), opcoesJogadoresDetalhe(linha.querySelector('[name="golo_assistente[]"]')?.value, true, emJogo));
-    });
-
-    const jogadoresComMinutos = jogadoresEmJogoDetalhe(Number.MAX_SAFE_INTEGER);
-    document.querySelectorAll('.game-stats-scroll tbody tr').forEach(linha => {
-        linha.style.display = jogadoresComMinutos.some(jogador => String(jogador.id_jogador) === linha.dataset.jogador) ? '' : 'none';
-    });
-}
-
-function alterarContador(botao, diferenca) {
-    const input = botao.parentElement.querySelector('input');
-    input.value = Math.max(0, Number(input.value || 0) + diferenca);
-    const dependencias = { remates_baliza: 'remates', passes_certos: 'passes', dribles_conseguidos: 'dribles_tentados', remates_baliza_nos: 'remates_nos', remates_baliza_adversario: 'remates_adversario', passes_certos_nos: 'passes_nos', passes_certos_adversario: 'passes_adversario', dribles_conseguidos_nos: 'dribles_tentados_nos', dribles_conseguidos_adversario: 'dribles_tentados_adversario' };
-    const nome = input.name.match(/\[([^\]]+)\]$/)?.[1] || input.name;
-    const base = dependencias[nome];
-    if (base) {
-        const seletor = input.name.includes('estatisticas_individuais') ? input.name.replace(`[${nome}]`, `[${base}]`) : `[name="${base}"]`;
-        const inputBase = document.querySelector(seletor);
-        if (inputBase) inputBase.value = Math.max(0, Number(inputBase.value || 0) + diferenca);
-    }
-    input.dispatchEvent(new Event('change'));
-}
-
-function sincronizarGolos() {
-    const marcadores = [...document.querySelectorAll('[name="golo_marcador[]"]')].map(el => el.value).filter(Boolean);
-    const assistentes = [...document.querySelectorAll('[name="golo_assistente[]"]')].map(el => el.value).filter(Boolean);
-    const porJogador = valores => valores.reduce((resultado, id) => ({...resultado, [id]: (resultado[id] || 0) + 1}), {});
-    const golos = porJogador(marcadores); const assistencias = porJogador(assistentes);
-    document.querySelectorAll('[name^="estatisticas_individuais["]').forEach(input => {
-        const resultado = input.name.match(/^estatisticas_individuais\[(\d+)\]\[(golos|assistencias)\]$/);
-        if (resultado) input.value = resultado[2] === 'golos' ? (golos[resultado[1]] || 0) : (assistencias[resultado[1]] || 0);
-    });
-    const resultadoNos = document.querySelector('[name="resultado_nos"]');
-    if (resultadoNos) resultadoNos.value = marcadores.length;
-    ['remates_nos', 'remates_baliza_nos'].forEach(nome => {
-        const input = document.querySelector(`[name="${nome}"]`);
-        if (input) input.value = Math.max(Number(input.value || 0), marcadores.length);
-    });
-}
-
-function gerarRelatorioJogo() {
-    const obterTextoSelecionado = seletor => seletor?.options?.[seletor.selectedIndex]?.text || '—';
-    const valorCampo = campo => campo?.tagName === 'SELECT' ? obterTextoSelecionado(campo) : (campo?.value || '—');
-    const titulo = document.querySelector('.game-detail-title')?.textContent.trim() || 'Relatório de jogo';
-    const partes = document.querySelector('[name="numero_partes"]')?.value || '—';
-    const minutos = document.querySelector('[name="minutos_por_parte"]')?.value || '—';
-    const resultadoNos = document.querySelector('[name="resultado_nos"]')?.value || '—';
-    const resultadoAdv = document.querySelector('[name="resultado_adv"]')?.value || '—';
-    const tatica = obterTextoSelecionado(document.getElementById('taticaJogo'));
-    const convocados = [...document.querySelectorAll('.convocado-row')].filter(linha => linha.querySelector('input[type="checkbox"]')?.checked || linha.querySelector('select')?.value).map(linha => {
-        const numero = linha.querySelector('.convocado-number')?.textContent.trim() || '';
-        const nome = linha.querySelector('.convocado-name')?.textContent.trim() || '';
-        const papel = obterTextoSelecionado(linha.querySelector('select'));
-        return [numero, nome, papel === '—' ? 'Convocado' : papel];
-    });
-    const linhasEvento = (id, campos) => [...document.querySelectorAll(`#${id} .game-event-row`)].map(linha => campos.map(campo => valorCampo(linha.querySelector(campo))));
-    const substituicoes = linhasEvento('substituicoesLista', ['[name="substituicao_entrada[]"]','[name="substituicao_saida[]"]','[name="substituicao_minuto[]"]']);
-    const golos = linhasEvento('golosLista', ['[name="golo_marcador[]"]','[name="golo_assistente[]"]','[name="golo_minuto[]"]','[name="golo_zona[]"]','[name="golo_forma[]"]']);
-    const coletivas = [...document.querySelectorAll('#estatisticasColetivasGrid .edit-group')].map(grupo => {
-        const input = grupo.querySelector('input[name]');
-        return input ? [grupo.querySelector('label')?.textContent.trim() || '', input.value] : null;
-    }).filter(Boolean);
-    const individuais = [...document.querySelectorAll('.game-stats-scroll tbody tr')].map(linha => [...linha.querySelectorAll('td')].map((celula, indice) => indice ? (celula.querySelector('input')?.value || '0') : celula.textContent.trim()));
-    const cabecalhoIndividuais = [...document.querySelectorAll('.game-stats-scroll th')].map(celula => celula.textContent.trim());
-    const posseCasa = document.getElementById('posseCasaPercentagem')?.textContent || '0%';
-    const posseVisitante = document.getElementById('posseVisitantePercentagem')?.textContent || '0%';
-    descarregarPdfJogo({ titulo, partes, minutos, resultadoNos, resultadoAdv, tatica, convocados, substituicoes, golos, coletivas, individuais, cabecalhoIndividuais, posseCasa, posseVisitante }, titulo);
-}
-
-function descarregarPdfJogo(dados, titulo) {
-    const limpar = valor => String(valor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, ' ').replace(/[\\()]/g, '\\$&');
-    const corHex = getComputedStyle(document.documentElement).getPropertyValue('--club').trim().replace('#', '') || '17334F';
-    const cor = [parseInt(corHex.substring(0, 2), 16) / 255, parseInt(corHex.substring(2, 4), 16) / 255, parseInt(corHex.substring(4, 6), 16) / 255].map(valor => Number.isFinite(valor) ? valor.toFixed(3) : '0.100');
-    const paginas = [[]]; let y = 794;
-    const pagina = () => paginas[paginas.length - 1];
-    const cmd = texto => pagina().push(texto);
-    const texto = (conteudo, x, posY, tamanho = 10, negrito = false, corTexto = '0.12 0.16 0.22') => cmd(`BT /F${negrito ? '2' : '1'} ${tamanho} Tf ${corTexto} rg 1 0 0 1 ${x} ${posY} Tm (${limpar(conteudo)}) Tj ET`);
-    const retangulo = (x, posY, largura, altura, corPreenchimento) => cmd(`${corPreenchimento} rg ${x} ${posY} ${largura} ${altura} re f`);
-    const novaPagina = () => { paginas.push([]); y = 794; desenharTopo(false); };
-    const garantir = altura => { if (y - altura < 48) novaPagina(); };
-    const linha = () => { cmd(`0.86 0.89 0.92 RG 48 ${y} m 547 ${y} l S`); y -= 13; };
-    const desenharTopo = primeira => {
-        retangulo(0, 770, 595, 72, cor.join(' '));
-        texto(primeira ? 'KROOS PROJECT  |  RELATORIO DE JOGO' : 'KROOS PROJECT  |  RELATORIO DE JOGO', 48, 810, 9, true, '1 1 1');
-        texto(primeira ? dados.titulo : 'Continuação do relatório', 48, 786, 18, true, '1 1 1');
-        y = 744;
-    };
-    const secao = nome => { garantir(38); texto(nome.toUpperCase(), 48, y, 10, true, cor.join(' ')); y -= 8; linha(); };
-    const tabela = (cabecalhos, linhas, larguras) => {
-        garantir(30); const x = 48; const alturaLinha = 18;
-        retangulo(x, y - alturaLinha + 4, 499, alturaLinha, cor.join(' '));
-        let cursor = x + 6; cabecalhos.forEach((cabecalho, indice) => { texto(cabecalho, cursor, y - 8, 7, true, '1 1 1'); cursor += larguras[indice]; }); y -= alturaLinha;
-        linhas.forEach((dadosLinha, indice) => { garantir(alturaLinha + 6); if (indice % 2 === 0) retangulo(x, y - alturaLinha + 4, 499, alturaLinha, '0.965 0.975 0.980'); cursor = x + 6; dadosLinha.forEach((celula, coluna) => { texto(String(celula).slice(0, Math.floor(larguras[coluna] / 5.5)), cursor, y - 8, 7.5, false); cursor += larguras[coluna]; }); y -= alturaLinha; });
-        y -= 10;
-    };
-    desenharTopo(true);
-    texto(`Tática  ${dados.tatica}`, 48, y, 10, true); texto(`${dados.partes} parte(s) de ${dados.minutos} min.`, 365, y, 10); y -= 28;
-    retangulo(48, y - 55, 499, 55, '0.955 0.970 0.980');
-    texto('RESULTADO FINAL', 66, y - 18, 8, true, '0.35 0.42 0.50');
-    texto(`${dados.resultadoNos}  -  ${dados.resultadoAdv}`, 66, y - 43, 24, true, cor.join(' '));
-    texto('POSSE DE BOLA', 350, y - 18, 8, true, '0.35 0.42 0.50');
-    texto(`Casa ${dados.posseCasa}   |   Visitante ${dados.posseVisitante}`, 350, y - 40, 11, true); y -= 78;
-    secao('Convocatória');
-    tabela(['#', 'JOGADOR', 'ESTATUTO'], dados.convocados.length ? dados.convocados : [['—', 'Sem convocados registados', '—']], [42, 285, 160]);
-    secao('Eventos do jogo');
-    tabela(['SUBSTITUIÇÕES', 'SAI', 'MIN.'], dados.substituicoes.length ? dados.substituicoes : [['Sem registos', '—', '—']], [210, 210, 67]);
-    tabela(['GOLO', 'ASSIST.', 'MIN.', 'ZONA', 'ORIGEM'], dados.golos.length ? dados.golos : [['Sem registos', '—', '—', '—', '—']], [115, 115, 52, 105, 100]);
-    secao('Estatísticas coletivas');
-    const coletivasDuasColunas = [];
-    for (let indice = 0; indice < dados.coletivas.length; indice += 2) coletivasDuasColunas.push([dados.coletivas[indice]?.[0] || '', dados.coletivas[indice]?.[1] || '', dados.coletivas[indice + 1]?.[0] || '', dados.coletivas[indice + 1]?.[1] || '']);
-    tabela(['MÉTRICA', 'VALOR', 'MÉTRICA', 'VALOR'], coletivasDuasColunas, [190, 58, 190, 58]);
-    secao('Estatísticas individuais');
-    const indicesResumo = [0, 1, 2, 3, 4, 5, 6];
-    const cabecalhosResumo = indicesResumo.map(indice => dados.cabecalhoIndividuais[indice] || '');
-    const linhasResumo = dados.individuais.map(linhaDados => indicesResumo.map(indice => linhaDados[indice] || '0'));
-    tabela(cabecalhosResumo, linhasResumo.length ? linhasResumo : [['Sem estatísticas']], [130, 45, 45, 45, 45, 75, 75]);
-    paginas.forEach((paginaComandos, indice) => {
-        paginaComandos.push(`BT /F1 8 Tf 0.40 0.46 0.54 rg 1 0 0 1 470 24 Tm (Pagina ${indice + 1} de ${paginas.length}) Tj ET`);
-    });
-    const objetos = ['<< /Type /Catalog /Pages 2 0 R >>', `<< /Type /Pages /Kids [${paginas.map((_, indice) => `${3 + indice * 2} 0 R`).join(' ')}] /Count ${paginas.length} >>`];
-    paginas.forEach((paginaComandos, indice) => {
-        const paginaId = 3 + indice * 2;
-        const conteudoId = paginaId + 1;
-        const conteudo = paginaComandos.join('\n');
-        objetos.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> /F2 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> >> >> /Contents ${conteudoId} 0 R >>`);
-        objetos.push(`<< /Length ${conteudo.length} >>\nstream\n${conteudo}\nendstream`);
-    });
-    let pdf = '%PDF-1.4\n'; const offsets = [0];
-    objetos.forEach((objeto, indice) => { offsets.push(pdf.length); pdf += `${indice + 1} 0 obj\n${objeto}\nendobj\n`; });
-    const xref = pdf.length;
-    pdf += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => String(offset).padStart(10, '0') + ' 00000 n ').join('\n')}\ntrailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-    const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
-    const download = document.createElement('a');
-    download.href = url;
-    download.download = `${limpar(titulo).replace(/\s+/g, '-').toLowerCase() || 'relatorio-jogo'}.pdf`;
-    download.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function sincronizarConvocatoria() {
-    document.querySelectorAll('.convocado-row').forEach(linha => {
-        const convocado = linha.querySelector('input[name="convocados[]"]');
-        const papel = linha.querySelector('select[name^="papel_jogador"]');
-        if (!convocado || !papel) return;
-        papel.disabled = !convocado.checked;
-        if (!convocado.checked) papel.value = '';
-        linha.classList.toggle('nao-convocado', !convocado.checked);
-    });
-    desenharTaticaJogo();
-    atualizarOpcoesDetalheJogo();
-}
-
-function desenharTaticaJogo() {
-    const relvado = document.getElementById('tacticPitch'); const seletor = document.getElementById('taticaJogo');
-    if (!relvado || !seletor || typeof jogadoresDetalheJogo === 'undefined') return;
-    const esquemas = {
-        '4-3-3': [['GR',50,89],['DE',17,70],['DC E',39,70],['DC D',61,70],['DD',83,70],['MC E',28,49],['MC',50,45],['MC D',72,49],['EE',18,23],['PL',50,16],['ED',82,23]],
-        '4-2-3-1': [['GR',50,89],['DE',17,70],['DC E',39,70],['DC D',61,70],['DD',83,70],['MDC E',38,53],['MDC D',62,53],['EE',20,35],['MO',50,31],['ED',80,35],['PL',50,14]],
-        '4-4-2': [['GR',50,89],['DE',17,70],['DC E',39,70],['DC D',61,70],['DD',83,70],['ME',18,49],['MC E',39,49],['MC D',61,49],['MD',82,49],['PL E',38,18],['PL D',62,18]],
-        '3-5-2': [['GR',50,89],['DC E',25,69],['DC',50,72],['DC D',75,69],['ALA E',14,48],['MC E',34,49],['MC',50,43],['MC D',66,49],['ALA D',86,48],['PL E',38,18],['PL D',62,18]],
-        '3-4-3': [['GR',50,89],['DC E',25,69],['DC',50,72],['DC D',75,69],['ALA E',17,49],['MC E',39,48],['MC D',61,48],['ALA D',83,49],['EE',20,22],['PL',50,15],['ED',80,22]],
-        '4-1-4-1': [['GR',50,89],['DE',17,70],['DC E',39,70],['DC D',61,70],['DD',83,70],['MDC',50,55],['ME',17,34],['MC E',39,34],['MC D',61,34],['MD',83,34],['PL',50,14]],
-        '5-3-2': [['GR',50,89],['ALA E',12,57],['DC E',31,69],['DC',50,72],['DC D',69,69],['ALA D',88,57],['MC E',31,47],['MC',50,43],['MC D',69,47],['PL E',38,18],['PL D',62,18]]
-    };
-    relvado.innerHTML = (esquemas[seletor.value] || esquemas['4-3-3']).map(([posicao, x, y]) => `<div class="tactic-slot" style="left:${x}%;top:${y}%"><label>${posicao}</label><select name="posicao_titular[${posicao}]">${opcoesJogadoresDetalhe((posicoesTitularesGuardadas || {})[posicao])}</select></div>`).join('');
-    relvado.querySelectorAll('select[name^="posicao_titular"]').forEach(select => select.addEventListener('change', () => {
-        if (select.value) {
-            const papel = document.querySelector(`select[name="papel_jogador[${select.value}]"]`);
-            if (papel) papel.value = 'Titular';
-        }
-        atualizarOpcoesDetalheJogo();
-    }));
-}
-
-function iniciarPartesJogo() {
-    const barra = document.getElementById('matchPhaseBar'); if (!barra) return;
-    const botao = document.getElementById('matchPhaseButton'); const rotulo = document.getElementById('matchPhaseLabel');
-    let atual = Number(barra.dataset.atual || 0), total = Number(barra.dataset.partes || 2), terminado = Number(barra.dataset.terminado || 0), aDecorrer = false;
-    const atualizar = () => {
-        document.getElementById('parteAtual').value = atual; document.getElementById('jogoTerminado').value = terminado ? 1 : 0;
-        if (terminado) { rotulo.textContent = 'Jogo terminado'; botao.style.display = 'none'; return; }
-        rotulo.textContent = atual ? `Parte ${atual} de ${total}${aDecorrer ? ' em curso' : ' concluída'}` : `Pronto para iniciar a parte 1 de ${total}`;
-        botao.textContent = aDecorrer ? (atual === total ? 'Terminar jogo' : 'Terminar parte') : `Iniciar parte ${atual + 1}`;
-        botao.classList.toggle('running', aDecorrer);
-    };
-    botao.addEventListener('click', () => {
-        if (!aDecorrer) {
-            if (atual === 0) {
-                const posseInicial = document.getElementById('posseInicial');
-                if (!posseInicial?.value) {
-                    posseInicial?.focus();
-                    return;
-                }
-                window.definirPosseInicial?.(posseInicial.value);
-                posseInicial.disabled = true;
-            }
-            atual++;
-            aDecorrer = true;
-        } else {
-            aDecorrer = false;
-            if (atual === total) terminado = true;
-        }
-        atualizar();
-    });
-    document.querySelector('[name="numero_partes"]').addEventListener('change', event => { total = Math.max(1, Number(event.target.value || 1)); if (atual > total) atual = total; atualizar(); });
-    atualizar();
-}
-
-function iniciarPosseJogo() {
-    const painel = document.querySelector('.posse-controls');
-    if (!painel) return;
-    const valores = { casa: Number(painel.dataset.casa || 0), sem: Number(painel.dataset.sem || 0), visitante: Number(painel.dataset.visitante || 0) };
-    let ativa = null;
-    const mostrar = () => {
-        const total = valores.casa + valores.sem + valores.visitante;
-        const h = String(Math.floor(total / 3600)).padStart(2, '0'); const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0'); const s = String(total % 60).padStart(2, '0');
-        document.getElementById('posseCronometro').textContent = `${h}:${m}:${s}`;
-        painel.querySelector('[name="posse_casa_segundos"]').value = valores.casa;
-        painel.querySelector('[name="sem_posse_segundos"]').value = valores.sem;
-        painel.querySelector('[name="posse_visitante_segundos"]').value = valores.visitante;
-        const comPosse = valores.casa + valores.visitante;
-        document.getElementById('posseCasaPercentagem').textContent = comPosse ? `${(valores.casa * 100 / comPosse).toFixed(1)}%` : '0%';
-        document.getElementById('posseVisitantePercentagem').textContent = comPosse ? `${(valores.visitante * 100 / comPosse).toFixed(1)}%` : '0%';
-    };
-    painel.querySelectorAll('button[data-posse]').forEach(botao => botao.addEventListener('click', () => {
-        ativa = ativa === botao.dataset.posse ? null : botao.dataset.posse;
-        painel.querySelectorAll('button[data-posse]').forEach(b => b.classList.toggle('active', b.dataset.posse === ativa));
-    }));
-    window.definirPosseInicial = equipa => {
-        ativa = equipa;
-        painel.querySelectorAll('button[data-posse]').forEach(botao => botao.classList.toggle('active', botao.dataset.posse === ativa));
-    };
-    setInterval(() => { if (ativa) { valores[ativa]++; mostrar(); } }, 1000);
-    mostrar();
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    if (typeof subsGuardadas !== 'undefined') (subsGuardadas.length ? subsGuardadas : [{}]).forEach(adicionarSubstituicao);
-    if (typeof golosGuardados !== 'undefined') (golosGuardados.length ? golosGuardados : [{}]).forEach(adicionarGolo);
-    desenharTaticaJogo();
-    document.getElementById('taticaJogo')?.addEventListener('change', desenharTaticaJogo);
-    document.querySelectorAll('.convocado-toggle input').forEach(input => input.addEventListener('change', sincronizarConvocatoria));
-    sincronizarConvocatoria();
-    iniciarPartesJogo();
-    iniciarPosseJogo();
-});
 
 </script>
 
