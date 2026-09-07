@@ -792,6 +792,7 @@ body.layout-locked { overflow: hidden; }
 
 .topbar-logo {
     height: 26px;
+    filter: invert(1);
 }
 
 .topbar-menu {
