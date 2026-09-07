@@ -314,6 +314,37 @@ CREATE TABLE `treino` (
 -- --------------------------------------------------------
 
 --
+-- Estrutura das tabelas `presenca_treino` e `avaliacao_esforco`
+--
+
+CREATE TABLE `presenca_treino` (
+  `id_presenca` int(11) NOT NULL AUTO_INCREMENT,
+  `id_treino` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `estado_presenca` enum('Presente','Não Presente Justificado','Não Presente Injustificado') NOT NULL DEFAULT 'Presente',
+  `lesionado` tinyint(1) NOT NULL DEFAULT 0,
+  `observacoes` text DEFAULT NULL,
+  `atualizado_em` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id_presenca`),
+  UNIQUE KEY `uq_presenca_treino_jogador` (`id_treino`,`id_jogador`),
+  KEY `idx_presenca_treino` (`id_treino`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `avaliacao_esforco` (
+  `id_avaliacao` int(11) NOT NULL AUTO_INCREMENT,
+  `id_treino` int(11) NOT NULL,
+  `id_jogador` int(11) NOT NULL,
+  `nivel_esforco` tinyint(4) NOT NULL,
+  `criado_em` timestamp NOT NULL DEFAULT current_timestamp(),
+  `atualizado_em` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id_avaliacao`),
+  UNIQUE KEY `uq_avaliacao_esforco` (`id_treino`,`id_jogador`),
+  KEY `idx_avaliacao_esforco_treino` (`id_treino`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura da tabela `utilizador`
 --
 

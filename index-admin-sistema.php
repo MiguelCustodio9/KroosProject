@@ -530,6 +530,7 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
+$notificacoesNaoLidas = count(array_filter($notificacoesUtilizador, static fn($notificacao) => ($notificacao['estado'] ?? '') === 'Nao Lida'));
 
 $definicoesPlataforma = $definicoesPadrao;
 $resDefinicoesPlataforma = $conn->query("SELECT chave_configuracao, valor_configuracao FROM configuracoes_plataforma");
@@ -701,7 +702,7 @@ html, body {
     overflow-y: auto;
 }
 
-body { background: #ffffff; color: #000000; }
+body { background: #ffffff; color: #000000; filter: invert(1); }
 
 body.layout-locked { overflow: hidden; }
 
@@ -810,6 +811,8 @@ body.layout-locked { overflow: hidden; }
     background: #000;
     border-radius: 0;
 }
+
+.topbar-notification-badge { position: absolute; top: -7px; right: -8px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; }
 
 .platform-settings-form { max-width: 920px; }
 .platform-settings-section { margin-bottom: 16px; padding: 22px; border: 1px solid #e1e6eb; border-radius: 8px; background: #fff; }
@@ -1519,12 +1522,13 @@ body.layout-locked .main {
     </div>
 
     <div class="topbar-right">
-        <img src="assets/kroos-logo.png" class="topbar-logo" alt="Kroos">
+        <img src="assets/kroos-logo-branco.png" class="topbar-logo" alt="Kroos">
 
         <div class="topbar-user-menu-wrap">
             <button class="topbar-menu" type="button" aria-label="Menu" onclick="toggleUserMenu(event)">
                 <span></span><span></span><span></span>
             </button>
+            <?php if ($notificacoesNaoLidas > 0): ?><b class="topbar-notification-badge"><?= $notificacoesNaoLidas ?></b><?php endif; ?>
 
             <div class="user-dropdown" id="userDropdown">
                 <a href="#" onclick="event.preventDefault(); showProfileScreen(); toggleUserMenu(event);">

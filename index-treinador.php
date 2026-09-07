@@ -1129,7 +1129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $posicoesTitulares = [];
             foreach ((array)($_POST['posicao_titular'] ?? []) as $posicao => $idJogadorPosicao) {
                 $idJogadorPosicao = (int)$idJogadorPosicao;
-                if (isset($jogadoresValidos[$idJogadorPosicao])) $posicoesTitulares[$posicao] = $idJogadorPosicao;
+                if (isset($jogadoresValidos[$idJogadorPosicao]) && in_array($idJogadorPosicao, $convocados, true)) $posicoesTitulares[$posicao] = $idJogadorPosicao;
             }
             $parteAtual = max(0, (int)($_POST['parte_atual'] ?? 0));
             $jogoTerminado = !empty($_POST['jogo_terminado']) ? 1 : 0;
@@ -1139,6 +1139,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $camposColetivos = ['remates_nos','remates_adversario','remates_baliza_nos','remates_baliza_adversario','dribles_tentados_nos','dribles_tentados_adversario','dribles_conseguidos_nos','dribles_conseguidos_adversario','defesas_nos','defesas_adversario','cantos_nos','cantos_adversario','passes_nos','passes_adversario','passes_certos_nos','passes_certos_adversario','faltas_nos','faltas_adversario'];
             $coletivas = [];
             foreach ($camposColetivos as $campo) $coletivas[$campo] = max(0, (int)($_POST[$campo] ?? 0));
+            foreach ([['remates_baliza_nos', 'remates_nos'], ['remates_baliza_adversario', 'remates_adversario'], ['dribles_conseguidos_nos', 'dribles_tentados_nos'], ['dribles_conseguidos_adversario', 'dribles_tentados_adversario'], ['passes_certos_nos', 'passes_nos'], ['passes_certos_adversario', 'passes_adversario']] as [$campoDependente, $campoBase]) {
+                $coletivas[$campoBase] = max($coletivas[$campoBase], $coletivas[$campoDependente]);
+            }
             $posseCasaSegundos = max(0, (int)($_POST['posse_casa_segundos'] ?? 0));
             $semPosseSegundos = max(0, (int)($_POST['sem_posse_segundos'] ?? 0));
             $posseVisitanteSegundos = max(0, (int)($_POST['posse_visitante_segundos'] ?? 0));
@@ -1169,12 +1172,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $saidas = (array)($_POST['substituicao_saida'] ?? []);
                 $minutosSubs = (array)($_POST['substituicao_minuto'] ?? []);
                 $stmtSubstituicao = $conn->prepare("INSERT INTO jogo_substituicoes (id_jogo,id_jogador_entrada,id_jogador_saida,minuto) VALUES (?,?,?,?)");
+                $jogadoresEmJogo = array_fill_keys($titulares, true);
+                $substituicoesValidas = [];
                 foreach ($entradas as $indice => $entrada) {
                     $idEntrada = (int)$entrada; $idSaida = (int)($saidas[$indice] ?? 0); $minuto = max(0, (int)($minutosSubs[$indice] ?? 0));
-                    if (isset($jogadoresValidos[$idEntrada], $jogadoresValidos[$idSaida]) && in_array($idEntrada, $suplentes, true) && $idEntrada !== $idSaida && $minuto > 0) {
+                    if (isset($jogadoresValidos[$idEntrada], $jogadoresValidos[$idSaida]) && in_array($idEntrada, $convocados, true) && in_array($idSaida, $convocados, true) && isset($jogadoresEmJogo[$idSaida]) && !isset($jogadoresEmJogo[$idEntrada]) && $idEntrada !== $idSaida && $minuto > 0) {
                         $stmtSubstituicao->bind_param("iiii", $idJogoDetalhe, $idEntrada, $idSaida, $minuto);
                         $stmtSubstituicao->execute();
                         $suplentesUtilizados[$idEntrada] = $idEntrada;
+                        unset($jogadoresEmJogo[$idSaida]);
+                        $jogadoresEmJogo[$idEntrada] = true;
+                        $substituicoesValidas[] = ['entrada' => $idEntrada, 'saida' => $idSaida, 'minuto' => $minuto];
                     }
                 }
 
@@ -1197,8 +1205,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $minuto = max(0, $minutoGolo);
                     $zona = trim($zonasGolo[$indice] ?? '');
                     $forma = trim($formasGolo[$indice] ?? '');
-                    if (isset($jogadoresValidos[$idMarcador]) && $minuto > 0) {
-                        $assistenteNulo = isset($jogadoresValidos[$idAssistente]) ? $idAssistente : null;
+                    $jogadoresNoMinuto = array_fill_keys($titulares, true);
+                    foreach ($substituicoesValidas as $substituicaoValida) {
+                        if ($substituicaoValida['minuto'] > $minuto) continue;
+                        unset($jogadoresNoMinuto[$substituicaoValida['saida']]);
+                        $jogadoresNoMinuto[$substituicaoValida['entrada']] = true;
+                    }
+                    if (isset($jogadoresNoMinuto[$idMarcador]) && $minuto > 0) {
+                        $assistenteNulo = isset($jogadoresNoMinuto[$idAssistente]) ? $idAssistente : null;
                         $stmtGolo->bind_param("iiiiss", $idJogoDetalhe, $idMarcador, $assistenteNulo, $minuto, $zona, $forma);
                         $stmtGolo->execute();
                     }
@@ -1209,8 +1223,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $camposIndividuais = ['minutos_jogados','golos','remates','remates_baliza','assistencias','passes','passes_certos','dribles_tentados','dribles_conseguidos','defesas','desarmes','intercecoes','faltas_sofridas','faltas_cometidas'];
                 foreach ((array)($_POST['estatisticas_individuais'] ?? []) as $idJogador => $estatisticasJogador) {
                     $idJogador = (int)$idJogador;
-                    if (!isset($jogadoresValidos[$idJogador])) continue;
+                    if (!isset($jogadoresEmJogo[$idJogador])) continue;
                     $valores = array_map(static fn($campo) => max(0, (int)($estatisticasJogador[$campo] ?? 0)), $camposIndividuais);
+                    foreach ([['remates_baliza', 'remates'], ['dribles_conseguidos', 'dribles_tentados'], ['passes_certos', 'passes']] as [$campoDependente, $campoBase]) {
+                        $indiceDependente = array_search($campoDependente, $camposIndividuais, true);
+                        $indiceBase = array_search($campoBase, $camposIndividuais, true);
+                        $valores[$indiceBase] = max($valores[$indiceBase], $valores[$indiceDependente]);
+                    }
                     if (array_sum($valores) === 0) continue;
                     $conn->query("INSERT INTO jogo_estatisticas_individuais (id_jogo,id_jogador," . implode(',', $camposIndividuais) . ") VALUES (" . $idJogoDetalhe . "," . $idJogador . "," . implode(',', $valores) . ")");
                 }
@@ -2839,6 +2858,11 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
+$notificacoesNaoLidas = count(array_filter($notificacoesUtilizador, static fn($notificacao) => ($notificacao['estado'] ?? '') === 'Nao Lida'));
+$stmtMensagensNaoLidas = $conn->prepare("SELECT COUNT(*) AS total FROM mensagens WHERE destino = ? AND estado = 'Não Lida'");
+$stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
+$stmtMensagensNaoLidas->execute();
+$mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
 
 /* ── Buscar eventos do calendário das equipas do treinador ── */
 $eventosCalendario = [];
@@ -3367,6 +3391,12 @@ body.layout-locked { overflow: hidden; }
     opacity: 1;
     width: auto;
 }
+
+.sidebar a .sidebar-icon-wrap { position: relative; display: block; width: 34px; height: 34px; flex-shrink: 0; opacity: 1; overflow: visible; }
+.sidebar a .sidebar-icon-wrap img { width: 34px; height: 34px; }
+.menu-count-badge, .topbar-notification-badge { position: absolute; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; }
+.menu-count-badge { top: -6px; right: -8px; }
+.topbar-notification-badge { top: -7px; right: -8px; }
 
 /* ══════════════════════════════════
    MAIN CONTENT
@@ -5693,6 +5723,7 @@ body.layout-locked #dashboardCard {
             <button class="topbar-menu" type="button" aria-label="Menu" onclick="toggleUserMenu(event)">
                 <span></span><span></span><span></span>
             </button>
+            <?php if ($notificacoesNaoLidas > 0): ?><b class="topbar-notification-badge"><?= $notificacoesNaoLidas ?></b><?php endif; ?>
 
             <div class="user-dropdown" id="userDropdown">
                 <a href="#" onclick="event.preventDefault(); showProfileScreen(); toggleUserMenu(event);">
@@ -5730,7 +5761,7 @@ body.layout-locked #dashboardCard {
         <span>Calendário</span>
     </a>
     <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
-        <img src="assets/mensagens.png" alt="">
+        <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
         <span>Mensagens</span>
     </a>
     <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
@@ -6111,6 +6142,7 @@ body.layout-locked #dashboardCard {
                         </div>
                         <div class="match-phase-bar" id="matchPhaseBar" data-partes="<?= (int)$configuracaoJogo['numero_partes'] ?>" data-atual="<?= (int)$configuracaoJogo['parte_atual'] ?>" data-terminado="<?= (int)$configuracaoJogo['jogo_terminado'] ?>">
                             <strong id="matchPhaseLabel">Jogo por iniciar</strong><button type="button" class="match-phase-button" id="matchPhaseButton">Iniciar parte</button>
+                            <select id="posseInicial" aria-label="Quem inicia com a bola"><option value="">Quem começa com a bola?</option><option value="casa">A nossa equipa</option><option value="visitante">Adversário</option></select>
                         </div>
                     </section>
 
@@ -11172,9 +11204,24 @@ planoCanvasWheel = function(ev) {
 /* ══════════════════════════════════
    DETALHE DE JOGO
 ══════════════════════════════════ */
-function opcoesJogadoresDetalhe(selecionado, permitirVazio) {
+function jogadoresConvocadosDetalhe() {
+    return (typeof jogadoresDetalheJogo === 'undefined' ? [] : jogadoresDetalheJogo).filter(j => document.querySelector(`input[name="convocados[]"][value="${j.id_jogador}"]`)?.checked);
+}
+
+function jogadoresEmJogoDetalhe(minuto = 0) {
+    const convocados = jogadoresConvocadosDetalhe();
+    const emJogo = new Map(convocados.filter(j => document.querySelector(`select[name="papel_jogador[${j.id_jogador}]"]`)?.value === 'Titular').map(j => [String(j.id_jogador), j]));
+    [...document.querySelectorAll('#substituicoesLista .game-event-row')]
+        .map(linha => ({entrada: linha.querySelector('[name="substituicao_entrada[]"]')?.value, saida: linha.querySelector('[name="substituicao_saida[]"]')?.value, minuto: Number(linha.querySelector('[name="substituicao_minuto[]"]')?.value || 0)}))
+        .filter(substituicao => substituicao.minuto > 0 && substituicao.minuto <= minuto)
+        .sort((a, b) => a.minuto - b.minuto)
+        .forEach(substituicao => { emJogo.delete(String(substituicao.saida)); const jogador = convocados.find(j => String(j.id_jogador) === String(substituicao.entrada)); if (jogador) emJogo.set(String(jogador.id_jogador), jogador); });
+    return [...emJogo.values()];
+}
+
+function opcoesJogadoresDetalhe(selecionado, permitirVazio, jogadores = jogadoresConvocadosDetalhe()) {
     const vazio = permitirVazio ? '<option value="">Sem assistência</option>' : '<option value="">Selecionar</option>';
-    return vazio + (typeof jogadoresDetalheJogo === 'undefined' ? [] : jogadoresDetalheJogo).map(j => `<option value="${j.id_jogador}" ${String(j.id_jogador) === String(selecionado || '') ? 'selected' : ''}>${esc(j.nome_completo)}</option>`).join('');
+    return vazio + jogadores.map(j => `<option value="${j.id_jogador}" ${String(j.id_jogador) === String(selecionado || '') ? 'selected' : ''}>${esc(j.nome_completo)}</option>`).join('');
 }
 
 function adicionarSubstituicao(valor = {}) {
@@ -11182,8 +11229,9 @@ function adicionarSubstituicao(valor = {}) {
     if (!lista) return;
     const linha = document.createElement('div');
     linha.className = 'game-event-row';
-    linha.innerHTML = `<label>Entra<select name="substituicao_entrada[]">${opcoesJogadoresDetalhe(valor.id_jogador_entrada)}</select></label><label>Sai<select name="substituicao_saida[]">${opcoesJogadoresDetalhe(valor.id_jogador_saida)}</select></label><label>Minuto<input type="number" min="1" name="substituicao_minuto[]" value="${valor.minuto || ''}"></label><button type="button" class="btn-row-edit btn-row-delete" title="Remover substituição" aria-label="Remover substituição" onclick="this.parentElement.remove()">×</button>`;
+    linha.innerHTML = `<label>Entra<select name="substituicao_entrada[]">${opcoesJogadoresDetalhe(valor.id_jogador_entrada)}</select></label><label>Sai<select name="substituicao_saida[]">${opcoesJogadoresDetalhe(valor.id_jogador_saida)}</select></label><label>Minuto<input type="number" min="1" name="substituicao_minuto[]" value="${valor.minuto || ''}"></label><button type="button" class="btn-row-edit btn-row-delete" title="Remover substituição" aria-label="Remover substituição" onclick="this.parentElement.remove();atualizarOpcoesDetalheJogo()">×</button>`;
     lista.appendChild(linha);
+    linha.querySelectorAll('select,input').forEach(campo => campo.addEventListener('change', atualizarOpcoesDetalheJogo));
 }
 
 function adicionarGolo(valor = {}) {
@@ -11193,12 +11241,54 @@ function adicionarGolo(valor = {}) {
     linha.className = 'game-event-row golo';
     linha.innerHTML = `<label>Marcador<select name="golo_marcador[]" onchange="sincronizarGolos()">${opcoesJogadoresDetalhe(valor.id_jogador_marcador)}</select></label><label>Assistência<select name="golo_assistente[]" onchange="sincronizarGolos()">${opcoesJogadoresDetalhe(valor.id_jogador_assistente, true)}</select></label><label>Minuto<input type="number" min="1" name="golo_minuto[]" value="${valor.minuto || ''}"></label><label>Zona<select name="golo_zona[]"><option value="">Selecionar</option><option ${valor.zona === 'Dentro da área' ? 'selected' : ''}>Dentro da área</option><option ${valor.zona === 'Fora da área' ? 'selected' : ''}>Fora da área</option><option ${valor.zona === 'Pequena área' ? 'selected' : ''}>Pequena área</option></select></label><label>Origem<select name="golo_forma[]"><option value="">Selecionar</option><option ${valor.forma === 'Bola corrida' ? 'selected' : ''}>Bola corrida</option><option ${valor.forma === 'Bola parada' ? 'selected' : ''}>Bola parada</option><option ${valor.forma === 'Grande penalidade' ? 'selected' : ''}>Grande penalidade</option><option ${valor.forma === 'Canto' ? 'selected' : ''}>Canto</option><option ${valor.forma === 'Livre' ? 'selected' : ''}>Livre</option></select></label><button type="button" class="btn-row-edit btn-row-delete" title="Remover golo" aria-label="Remover golo" onclick="this.parentElement.remove();sincronizarGolos()">×</button>`;
     lista.appendChild(linha);
+    linha.querySelector('[name="golo_minuto[]"]').addEventListener('change', atualizarOpcoesDetalheJogo);
     sincronizarGolos();
+}
+
+function substituirOpcoes(select, opcoes) {
+    if (!select) return;
+    const selecionado = select.value;
+    select.innerHTML = opcoes;
+    if ([...select.options].some(opcao => opcao.value === selecionado)) select.value = selecionado;
+}
+
+function atualizarOpcoesDetalheJogo() {
+    const convocados = jogadoresConvocadosDetalhe();
+    document.querySelectorAll('#tacticPitch select[name^="posicao_titular"]').forEach(select => substituirOpcoes(select, opcoesJogadoresDetalhe(select.value, false, convocados)));
+
+    document.querySelectorAll('#substituicoesLista .game-event-row').forEach(linha => {
+        const minuto = Number(linha.querySelector('[name="substituicao_minuto[]"]')?.value || 0);
+        const emJogo = jogadoresEmJogoDetalhe(Math.max(0, minuto - 0.01));
+        const entrada = linha.querySelector('[name="substituicao_entrada[]"]');
+        const saida = linha.querySelector('[name="substituicao_saida[]"]');
+        substituirOpcoes(entrada, opcoesJogadoresDetalhe(entrada?.value, false, convocados.filter(jogador => !emJogo.some(ativo => ativo.id_jogador === jogador.id_jogador))));
+        substituirOpcoes(saida, opcoesJogadoresDetalhe(saida?.value, false, emJogo));
+    });
+
+    document.querySelectorAll('#golosLista .game-event-row').forEach(linha => {
+        const minuto = Number(linha.querySelector('[name="golo_minuto[]"]')?.value || 0);
+        const emJogo = jogadoresEmJogoDetalhe(minuto);
+        substituirOpcoes(linha.querySelector('[name="golo_marcador[]"]'), opcoesJogadoresDetalhe(linha.querySelector('[name="golo_marcador[]"]')?.value, false, emJogo));
+        substituirOpcoes(linha.querySelector('[name="golo_assistente[]"]'), opcoesJogadoresDetalhe(linha.querySelector('[name="golo_assistente[]"]')?.value, true, emJogo));
+    });
+
+    const jogadoresComMinutos = jogadoresEmJogoDetalhe(Number.MAX_SAFE_INTEGER);
+    document.querySelectorAll('.game-stats-scroll tbody tr').forEach(linha => {
+        linha.style.display = jogadoresComMinutos.some(jogador => String(jogador.id_jogador) === linha.dataset.jogador) ? '' : 'none';
+    });
 }
 
 function alterarContador(botao, diferenca) {
     const input = botao.parentElement.querySelector('input');
     input.value = Math.max(0, Number(input.value || 0) + diferenca);
+    const dependencias = { remates_baliza: 'remates', passes_certos: 'passes', dribles_conseguidos: 'dribles_tentados', remates_baliza_nos: 'remates_nos', remates_baliza_adversario: 'remates_adversario', passes_certos_nos: 'passes_nos', passes_certos_adversario: 'passes_adversario', dribles_conseguidos_nos: 'dribles_tentados_nos', dribles_conseguidos_adversario: 'dribles_tentados_adversario' };
+    const nome = input.name.match(/\[([^\]]+)\]$/)?.[1] || input.name;
+    const base = dependencias[nome];
+    if (base) {
+        const seletor = input.name.includes('estatisticas_individuais') ? input.name.replace(`[${nome}]`, `[${base}]`) : `[name="${base}"]`;
+        const inputBase = document.querySelector(seletor);
+        if (inputBase) inputBase.value = Math.max(0, Number(inputBase.value || 0) + diferenca);
+    }
     input.dispatchEvent(new Event('change'));
 }
 
@@ -11327,6 +11417,8 @@ function sincronizarConvocatoria() {
         if (!convocado.checked) papel.value = '';
         linha.classList.toggle('nao-convocado', !convocado.checked);
     });
+    desenharTaticaJogo();
+    atualizarOpcoesDetalheJogo();
 }
 
 function desenharTaticaJogo() {
@@ -11342,6 +11434,13 @@ function desenharTaticaJogo() {
         '5-3-2': [['GR',50,89],['ALA E',12,57],['DC E',31,69],['DC',50,72],['DC D',69,69],['ALA D',88,57],['MC E',31,47],['MC',50,43],['MC D',69,47],['PL E',38,18],['PL D',62,18]]
     };
     relvado.innerHTML = (esquemas[seletor.value] || esquemas['4-3-3']).map(([posicao, x, y]) => `<div class="tactic-slot" style="left:${x}%;top:${y}%"><label>${posicao}</label><select name="posicao_titular[${posicao}]">${opcoesJogadoresDetalhe((posicoesTitularesGuardadas || {})[posicao])}</select></div>`).join('');
+    relvado.querySelectorAll('select[name^="posicao_titular"]').forEach(select => select.addEventListener('change', () => {
+        if (select.value) {
+            const papel = document.querySelector(`select[name="papel_jogador[${select.value}]"]`);
+            if (papel) papel.value = 'Titular';
+        }
+        atualizarOpcoesDetalheJogo();
+    }));
 }
 
 function iniciarPartesJogo() {
@@ -11355,7 +11454,25 @@ function iniciarPartesJogo() {
         botao.textContent = aDecorrer ? (atual === total ? 'Terminar jogo' : 'Terminar parte') : `Iniciar parte ${atual + 1}`;
         botao.classList.toggle('running', aDecorrer);
     };
-    botao.addEventListener('click', () => { if (!aDecorrer) { atual++; aDecorrer = true; } else { aDecorrer = false; if (atual === total) terminado = true; } atualizar(); });
+    botao.addEventListener('click', () => {
+        if (!aDecorrer) {
+            if (atual === 0) {
+                const posseInicial = document.getElementById('posseInicial');
+                if (!posseInicial?.value) {
+                    posseInicial?.focus();
+                    return;
+                }
+                window.definirPosseInicial?.(posseInicial.value);
+                posseInicial.disabled = true;
+            }
+            atual++;
+            aDecorrer = true;
+        } else {
+            aDecorrer = false;
+            if (atual === total) terminado = true;
+        }
+        atualizar();
+    });
     document.querySelector('[name="numero_partes"]').addEventListener('change', event => { total = Math.max(1, Number(event.target.value || 1)); if (atual > total) atual = total; atualizar(); });
     atualizar();
 }
@@ -11380,6 +11497,10 @@ function iniciarPosseJogo() {
         ativa = ativa === botao.dataset.posse ? null : botao.dataset.posse;
         painel.querySelectorAll('button[data-posse]').forEach(b => b.classList.toggle('active', b.dataset.posse === ativa));
     }));
+    window.definirPosseInicial = equipa => {
+        ativa = equipa;
+        painel.querySelectorAll('button[data-posse]').forEach(botao => botao.classList.toggle('active', botao.dataset.posse === ativa));
+    };
     setInterval(() => { if (ativa) { valores[ativa]++; mostrar(); } }, 1000);
     mostrar();
 }

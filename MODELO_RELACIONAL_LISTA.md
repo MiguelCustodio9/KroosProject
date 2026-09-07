@@ -26,6 +26,10 @@
 
 • **Treino_Exercicio** (exercicio_id (PK), treino_id (FK), ordem, dados do exercício visual do plano de treino)
 
+• **Presenca_Treino** (presenca_id (PK), treino_id (FK), jogador_id (FK), estado_presenca, lesionado, observacoes, atualizado_em)
+
+• **Avaliacao_Esforco** (avaliacao_id (PK), treino_id (FK), jogador_id (FK), nivel_esforco [1-5], criado_em, atualizado_em)
+
 • **Eventos_Clube** (evento_id (PK), equipa_id (FK), tipo_evento, descrição_evento, estado_evento, data_evento, hora_evento, local_evento)
 
 • **Mensagens** (mensagem_id (PK), origem_id (FK), destino_id (FK), conteúdo, estado, enviada_em)
@@ -70,6 +74,10 @@
 | Jogadores → Lesões | 1:N | Um jogador pode ter várias lesões |
 | Jogadores → Histórico_Carreira | 1:N | Um jogador tem histórico de carreira em várias épocas |
 | Treino → Treino_Exercicio | 1:N | Um treino tem vários exercícios visuais |
+| Treino → Presenca_Treino | 1:N | Um treino regista a presença de cada jogador |
+| Treino → Avaliacao_Esforco | 1:N | Um treino recolhe o esforço reportado pelos jogadores presentes |
+| Jogadores → Presenca_Treino | 1:N | Um jogador tem um registo de presença por treino |
+| Jogadores → Avaliacao_Esforco | 1:N | Um jogador avalia o esforço uma vez por treino |
 | Equipa → Competicoes_Clube | 1:N | Uma equipa participa em várias competições |
 | Competicoes_Clube → Jogos_Clube | 1:N | Uma competição tem vários jogos |
 | Jogos_Clube → Jogo_Configuracao | 1:1 | Um jogo tem uma configuração (tática, partes) |
@@ -111,6 +119,8 @@
 ### Treino e Preparação
 - **Treino**: Regista sessões de treino, ligadas a uma equipa e a um evento de calendário
 - **Treino_Exercicio**: Exercícios visuais (esquema no campo) associados a cada treino
+- **Presenca_Treino**: Folha de presenças, estado de lesão e observações por atleta
+- **Avaliacao_Esforco**: Escala de cansaço de 1 a 5, preenchida apenas por atletas presentes
 
 ### Gestão de Lesões
 - **Lesões**: Registam tipo, duração e estado de recuperação

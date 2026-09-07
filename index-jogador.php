@@ -635,6 +635,11 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
+$notificacoesNaoLidas = count(array_filter($notificacoesUtilizador, static fn($notificacao) => ($notificacao['estado'] ?? '') === 'Nao Lida'));
+$stmtMensagensNaoLidas = $conn->prepare("SELECT COUNT(*) AS total FROM mensagens WHERE destino = ? AND estado = 'Não Lida'");
+$stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
+$stmtMensagensNaoLidas->execute();
+$mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
 
 /* ── Mensagens ── */
 $utilizadoresMensagem = [];
@@ -946,6 +951,12 @@ body.layout-locked { overflow: hidden; }
 .sidebar a.active img { opacity: 1; }
 .sidebar a span { opacity: 0; width: 0; overflow: hidden; transition: opacity .18s, width .22s; }
 .sidebar:hover a span { opacity: 1; width: auto; }
+
+.sidebar a .sidebar-icon-wrap { position: relative; display: block; width: 34px; height: 34px; flex-shrink: 0; opacity: 1; overflow: visible; }
+.sidebar a .sidebar-icon-wrap img { width: 34px; height: 34px; }
+.menu-count-badge, .topbar-notification-badge { position: absolute; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; }
+.menu-count-badge { top: -6px; right: -8px; }
+.topbar-notification-badge { top: -7px; right: -8px; }
 
 .main {
     margin-left: var(--sidebar-w);
@@ -1480,6 +1491,7 @@ body.layout-locked { overflow: hidden; }
             <button class="topbar-menu" type="button" aria-label="Menu" onclick="toggleUserMenu(event)">
                 <span></span><span></span><span></span>
             </button>
+            <?php if ($notificacoesNaoLidas > 0): ?><b class="topbar-notification-badge"><?= $notificacoesNaoLidas ?></b><?php endif; ?>
             <div class="user-dropdown" id="userDropdown">
                 <a href="index-jogador.php?view=perfil"><span>Perfil</span></a>
                 <a href="index-jogador.php?view=notificacoes"><span>Notificações</span></a>
@@ -1511,7 +1523,7 @@ body.layout-locked { overflow: hidden; }
         <span>Calendário</span>
     </a>
     <a href="index-jogador.php?view=mensagens" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>">
-        <img src="assets/mensagens.png" alt="">
+        <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
         <span>Mensagens</span>
     </a>
 </div>

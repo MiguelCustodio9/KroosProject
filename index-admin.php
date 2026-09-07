@@ -1757,6 +1757,11 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
+$notificacoesNaoLidas = count(array_filter($notificacoesUtilizador, static fn($notificacao) => ($notificacao['estado'] ?? '') === 'Nao Lida'));
+$stmtMensagensNaoLidas = $conn->prepare("SELECT COUNT(*) AS total FROM mensagens WHERE destino = ? AND estado = 'Não Lida'");
+$stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
+$stmtMensagensNaoLidas->execute();
+$mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
 
 /* ── Buscar eventos do calendário (todos os escalões do clube) ── */
 $eventosCalendario = [];
@@ -2103,6 +2108,12 @@ body.layout-locked {
     opacity: 1;
     width: auto;
 }
+
+.sidebar a .sidebar-icon-wrap { position: relative; display: block; width: 34px; height: 34px; flex-shrink: 0; opacity: 1; overflow: visible; }
+.sidebar a .sidebar-icon-wrap img { width: 34px; height: 34px; }
+.menu-count-badge, .topbar-notification-badge { position: absolute; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; }
+.menu-count-badge { top: -6px; right: -8px; }
+.topbar-notification-badge { top: -7px; right: -8px; }
 
 /* ══════════════════════════════════
    MAIN CONTENT
@@ -3744,6 +3755,7 @@ body.layout-locked #dashboardCard {
             <button class="topbar-menu" type="button" aria-label="Menu" onclick="toggleUserMenu(event)">
                 <span></span><span></span><span></span>
             </button>
+            <?php if ($notificacoesNaoLidas > 0): ?><b class="topbar-notification-badge"><?= $notificacoesNaoLidas ?></b><?php endif; ?>
 
             <div class="user-dropdown" id="userDropdown">
                 <a href="#" onclick="event.preventDefault(); showProfileScreen(); toggleUserMenu(event);">
@@ -3781,7 +3793,7 @@ body.layout-locked #dashboardCard {
         <span>Calendário</span>
     </a>
     <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
-        <img src="assets/mensagens.png" alt="">
+        <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
         <span>Mensagens</span>
     </a>
     <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
