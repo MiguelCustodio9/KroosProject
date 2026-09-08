@@ -388,25 +388,6 @@ DELIMITER ;
 -- --------------------------------------------------------
 
 --
--- Estrutura da tabela `validação_utilizador`
---
-
-CREATE TABLE `validação_utilizador` (
-  `id_validação` int(11) NOT NULL,
-  `nome_utilizador` varchar(255) NOT NULL,
-  `foto_perfil` mediumblob DEFAULT NULL,
-  `email_utilizador` varchar(255) NOT NULL,
-  `telefone_utilizador` varchar(20) DEFAULT NULL,
-  `primeiro_nome` varchar(50) NOT NULL,
-  `último_nome` varchar(50) NOT NULL,
-  `data_nascimento` date DEFAULT NULL,
-  `password` varchar(255) NOT NULL,
-  `tipo_utilizador` enum('admin_clube','treinador','jogador') DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
 -- Estrutura da tabela `época`
 --
 
