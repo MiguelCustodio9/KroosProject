@@ -702,7 +702,7 @@ html, body {
     overflow-y: auto;
 }
 
-body { background: #ffffff; color: #000000; filter: invert(1); }
+body { background: #ffffff; color: #000000;}
 
 body.layout-locked { overflow: hidden; }
 
