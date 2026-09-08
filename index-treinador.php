@@ -2783,7 +2783,9 @@ while ($row = $resUtilizadoresMensagem->fetch_assoc()) {
     $utilizadoresMensagem[] = $row;
 }
 
-if ($chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
+$abrirMensagensAgora = ($mostrarMensagens || $chatSelecionadoId > 0);
+
+if ($abrirMensagensAgora && $chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
     $chatSelecionadoId = (int)$utilizadoresMensagem[0]['id_utilizador'];
 }
 
@@ -5765,8 +5767,18 @@ body.layout-locked #dashboardCard {
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
+<<<<<<< HEAD
     <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
         <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
+=======
+    <a href="index-treinador.php?view=mensagens" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>">
+        <span class="sidebar-icon-wrap">
+            <img src="assets/mensagens.png" alt="">
+            <?php if ($mensagensNaoLidas > 0): ?>
+                <b class="menu-count-badge"><?= $mensagensNaoLidas ?></b>
+            <?php endif; ?>
+        </span>
+>>>>>>> 8e301f39a883bd01001b1008843ca62f4058cbde
         <span>Mensagens</span>
     </a>
     <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
@@ -8765,7 +8777,11 @@ document.addEventListener('DOMContentLoaded', function () {
     <?php elseif (($_GET['view'] ?? '') === 'home'): ?>
     showMainMenu();
     <?php else: ?>
+<<<<<<< HEAD
     showTreinosScreen();
+=======
+    showMainMenu();
+>>>>>>> 8e301f39a883bd01001b1008843ca62f4058cbde
     <?php endif; ?>
 });
 

@@ -1682,7 +1682,9 @@ while ($row = $resUtilizadoresMensagem->fetch_assoc()) {
     $utilizadoresMensagem[] = $row;
 }
 
-if ($chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
+$abrirMensagensAgora = ($mostrarMensagens || $chatSelecionadoId > 0);
+
+if ($abrirMensagensAgora && $chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
     $chatSelecionadoId = (int)$utilizadoresMensagem[0]['id_utilizador'];
 }
 
@@ -1757,6 +1759,15 @@ $resNotificacoes = $stmtNotificacoes->get_result();
 while ($row = $resNotificacoes->fetch_assoc()) {
     $notificacoesUtilizador[] = $row;
 }
+
+$mensagensNaoLidas = 0;
+$stmtMensagensNaoLidas = $conn->prepare("SELECT COUNT(*) AS total FROM mensagens WHERE destino = ? AND estado = 'Não Lida'");
+if ($stmtMensagensNaoLidas) {
+    $stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
+    $stmtMensagensNaoLidas->execute();
+    $mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
+}
+
 
 /* ── Buscar eventos do calendário (todos os escalões do clube) ── */
 $eventosCalendario = [];
@@ -2098,6 +2109,53 @@ body.layout-locked { overflow: hidden; }
     opacity: 1;
     width: auto;
 }
+
+
+.sidebar a .sidebar-icon-wrap {
+    position: relative;
+    display: block;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    opacity: 1;
+    overflow: visible;
+    transition: width .22s, height .22s, opacity .15s;
+}
+
+.sidebar a .sidebar-icon-wrap img {
+    width: 34px;
+    height: 34px;
+}
+
+.sidebar:hover a .sidebar-icon-wrap {
+    width: 24px;
+    height: 24px;
+}
+
+.sidebar:hover a .sidebar-icon-wrap img {
+    width: 24px;
+    height: 24px;
+}
+
+.menu-count-badge {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #dc2626;
+    color: #fff;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    box-shadow: 0 0 0 2px var(--club);
+    z-index: 2;
+}
+
 
 /* ══════════════════════════════════
    MAIN CONTENT
@@ -3738,8 +3796,8 @@ body.layout-locked #dashboardCard {
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
-    <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
-        <img src="assets/mensagens.png" alt="">
+    <a href="index-admin.php?view=mensagens" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>">
+        <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
         <span>Mensagens</span>
     </a>
     <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
