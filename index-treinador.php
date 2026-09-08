@@ -5808,6 +5808,11 @@ body.layout-locked #dashboardCard {
 }
 
 </style>
+
+<!-- Bibliotecas para gerar o PDF do plano de treino no browser -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 </head>
 <body>
 
@@ -7907,6 +7912,7 @@ body.layout-locked #dashboardCard {
         <div id="planoViewContent"></div>
         <div class="modal-actions">
             <button class="btn-cancel" type="button" onclick="window.print()">Imprimir</button>
+            <button class="btn-plan" type="button" id="btnDescarregarPlanoPdf" onclick="descarregarPlanoTreinoPDF()">Descarregar PDF</button>
             <button class="btn-plan" type="button" id="btnEditarPlanoView">Editar plano</button>
             <button class="btn-save" type="button" onclick="closeModal('modalVerPlanoTreino')">Fechar</button>
         </div>
@@ -9772,7 +9778,88 @@ function limparPlanoCanvas(){if(!confirm('Limpar o desenho deste exercício?'))r
 function recalcularPlanoCounters(){const players=planoObjects.filter(o=>o.type==='player'&&o.color==='#3b82f6'&&Number.isFinite(Number(o.n))).map(o=>Number(o.n));const opp=planoObjects.filter(o=>o.type==='player'&&o.color==='#ef4444'&&Number.isFinite(Number(o.n))).map(o=>Number(o.n));planoPlayerCounter=players.length?Math.max(...players)+1:1;planoOpponentCounter=opp.length?Math.max(...opp)+1:1}
 function prepararSubmissaoPlano(){persistirExercicioAtualPlano();document.getElementById('planoExerciciosJson').value=JSON.stringify(planoExercises.map((ex,i)=>({titulo:(ex.titulo||`Exercício ${i+1}`).trim(),descricao:ex.descricao||'',objetivos:ex.objetivos||'',canvas:ex.canvas||{template:'campo_inteiro',objects:[]}})));return true}
 const planoForm=document.getElementById('planoTreinoForm');if(planoForm)planoForm.addEventListener('submit',prepararSubmissaoPlano);
-function abrirVisualizacaoPlanoTreino(idTreino){const treino=treinosTreinadorData.find(t=>String(t.id_treino)===String(idTreino));const exercicios=exerciciosPorTreinoData[idTreino]||exerciciosPorTreinoData[String(idTreino)]||[];if(!treino||!exercicios.length){alert('Este treino ainda não tem plano visual.');return;}const content=document.getElementById('planoViewContent');const metaEquipa=`${esc(treino.escalão||'')} ${esc(treino.hierarquia||'')}${treino.época?' · '+esc(treino.época):''}`;content.innerHTML=`<div class="plano-view-header"><div class="plano-view-title">Treino #${esc(treino.numero_treino)} — ${esc(treino.conteudo_treino||'')}</div><div class="plano-view-meta">${metaEquipa} · ${esc(treino.data_treino)} · ${(treino.hora_treino||'').substring(0,5)} · ${esc(treino.dia_da_semana||'')}</div></div>${exercicios.map((ex,i)=>`<section class="plano-exercicio-print"><div class="plano-exercicio-visual"><div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:13px;"><strong>Atividade: ${esc(ex.titulo||('Exercício '+(i+1)))}</strong><strong>Duração:</strong></div><div class="plano-print-label">Representação visual</div><canvas class="plano-view-canvas" width="520" height="330" data-view-exercicio="${i}"></canvas></div><div class="plano-exercicio-desc"><div class="plano-print-label">Descrição</div><div class="plano-desc-block">${esc(ex.descricao||'Sem descrição definida.')}</div><div class="plano-print-label">Objetivos / Indicações / Regras</div><div class="plano-objetivo-block">${esc(ex.objetivos||'Sem objetivos definidos.')}</div></div></section>`).join('')}`;document.getElementById('btnEditarPlanoView').onclick=()=>{closeModal('modalVerPlanoTreino');abrirEditorPlanoTreino(idTreino)};openModal('modalVerPlanoTreino');setTimeout(()=>{document.querySelectorAll('.plano-view-canvas').forEach((canvas,i)=>desenharPlano(canvas,exercicios[i]?.canvas||{template:'campo_inteiro',objects:[]}));},80)}
+function abrirVisualizacaoPlanoTreino(idTreino){const treino=treinosTreinadorData.find(t=>String(t.id_treino)===String(idTreino));const exercicios=exerciciosPorTreinoData[idTreino]||exerciciosPorTreinoData[String(idTreino)]||[];if(!treino||!exercicios.length){alert('Este treino ainda não tem plano visual.');return;}const content=document.getElementById('planoViewContent');const metaEquipa=`${esc(treino.escalão||'')} ${esc(treino.hierarquia||'')}${treino.época?' · '+esc(treino.época):''}`;content.innerHTML=`<div class="plano-view-header"><div class="plano-view-title">Treino #${esc(treino.numero_treino)} — ${esc(treino.conteudo_treino||'')}</div><div class="plano-view-meta">${metaEquipa} · ${esc(treino.data_treino)} · ${(treino.hora_treino||'').substring(0,5)} · ${esc(treino.dia_da_semana||'')}</div></div>${exercicios.map((ex,i)=>`<section class="plano-exercicio-print"><div class="plano-exercicio-visual"><div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:13px;"><strong>Atividade: ${esc(ex.titulo||('Exercício '+(i+1)))}</strong><strong>Duração:</strong></div><div class="plano-print-label">Representação visual</div><canvas class="plano-view-canvas" width="520" height="330" data-view-exercicio="${i}"></canvas></div><div class="plano-exercicio-desc"><div class="plano-print-label">Descrição</div><div class="plano-desc-block">${esc(ex.descricao||'Sem descrição definida.')}</div><div class="plano-print-label">Objetivos / Indicações / Regras</div><div class="plano-objetivo-block">${esc(ex.objetivos||'Sem objetivos definidos.')}</div></div></section>`).join('')}`;document.getElementById('btnEditarPlanoView').onclick=()=>{closeModal('modalVerPlanoTreino');abrirEditorPlanoTreino(idTreino)};const btnPdfPlano=document.getElementById('btnDescarregarPlanoPdf');if(btnPdfPlano){const nomePdfBase=`plano-treino-${String(treino.numero_treino||idTreino)}-${String(treino.data_treino||'').replace(/[^0-9-]/g,'')}`.replace(/[^a-z0-9_-]+/gi,'-');btnPdfPlano.dataset.filename=`${nomePdfBase}.pdf`;}openModal('modalVerPlanoTreino');setTimeout(()=>{document.querySelectorAll('.plano-view-canvas').forEach((canvas,i)=>desenharPlano(canvas,exercicios[i]?.canvas||{template:'campo_inteiro',objects:[]}));},80)}
+
+async function descarregarPlanoTreinoPDF(){
+    const content=document.getElementById('planoViewContent');
+    const btn=document.getElementById('btnDescarregarPlanoPdf');
+
+    if(!content||!content.innerHTML.trim()){
+        alert('Abre primeiro um plano de treino.');
+        return;
+    }
+
+    if(!window.html2canvas||!window.jspdf||!window.jspdf.jsPDF){
+        alert('Não foi possível carregar as bibliotecas para gerar o PDF. Confirma a ligação à internet ou instala html2canvas e jsPDF localmente.');
+        return;
+    }
+
+    const textoOriginal=btn?btn.textContent:'';
+
+    try{
+        if(btn){
+            btn.disabled=true;
+            btn.textContent='A gerar PDF...';
+        }
+
+        await new Promise(resolve=>setTimeout(resolve,120));
+
+        const canvas=await html2canvas(content,{
+            scale:2,
+            backgroundColor:'#ffffff',
+            useCORS:true,
+            scrollX:0,
+            scrollY:-window.scrollY,
+            windowWidth:document.documentElement.scrollWidth
+        });
+
+        const {jsPDF}=window.jspdf;
+        const pdf=new jsPDF('p','mm','a4');
+        const margem=10;
+        const larguraPagina=pdf.internal.pageSize.getWidth();
+        const alturaPagina=pdf.internal.pageSize.getHeight();
+        const larguraUtil=larguraPagina-(margem*2);
+        const alturaUtil=alturaPagina-(margem*2);
+        const pxPorMm=canvas.width/larguraUtil;
+        const alturaSlicePx=Math.floor(alturaUtil*pxPorMm);
+
+        let yPx=0;
+        let primeiraPagina=true;
+
+        while(yPx<canvas.height){
+            const alturaAtualPx=Math.min(alturaSlicePx,canvas.height-yPx);
+            const pageCanvas=document.createElement('canvas');
+            pageCanvas.width=canvas.width;
+            pageCanvas.height=alturaAtualPx;
+
+            const ctx=pageCanvas.getContext('2d');
+            ctx.fillStyle='#ffffff';
+            ctx.fillRect(0,0,pageCanvas.width,pageCanvas.height);
+            ctx.drawImage(canvas,0,yPx,canvas.width,alturaAtualPx,0,0,canvas.width,alturaAtualPx);
+
+            const imgData=pageCanvas.toDataURL('image/jpeg',0.96);
+            const alturaImgMm=alturaAtualPx/pxPorMm;
+
+            if(!primeiraPagina) pdf.addPage();
+            pdf.addImage(imgData,'JPEG',margem,margem,larguraUtil,alturaImgMm);
+
+            primeiraPagina=false;
+            yPx+=alturaAtualPx;
+        }
+
+        const filename=(btn&&btn.dataset.filename)?btn.dataset.filename:'plano-treino.pdf';
+        pdf.save(filename);
+    }catch(e){
+        console.error(e);
+        alert('Erro ao gerar o PDF do plano de treino.');
+    }finally{
+        if(btn){
+            btn.disabled=false;
+            btn.textContent=textoOriginal||'Descarregar PDF';
+        }
+    }
+}
+
 function renderMiniPlanoThumbs(){document.querySelectorAll('canvas[data-plan-thumb]').forEach(canvas=>{const id=canvas.dataset.planThumb;const ex=exerciciosPorTreinoData[id]||exerciciosPorTreinoData[String(id)]||[];if(ex.length)desenharPlano(canvas,ex[0].canvas||{template:'campo_inteiro',objects:[]});})}
 document.addEventListener('DOMContentLoaded',()=>{renderMiniPlanoThumbs();});
 
