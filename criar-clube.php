@@ -368,8 +368,6 @@ input[type="date"] {
                 <div class="step">1</div>
                 <div class="line"></div>
                 <div class="step">2</div>
-                <div class="line"></div>
-                <div class="step">3</div>
             </div>
         </div>
 

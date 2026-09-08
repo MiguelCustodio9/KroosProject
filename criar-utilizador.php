@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($stmt->execute()) {
                 $_SESSION['id_validacao'] = $stmt->insert_id;
-                $redirectTo = 'juntar-criar-clube.php';
+                $redirectTo = 'criar-clube.php';
             } else {
                 $erro = 'Erro ao guardar utilizador.';
             }
@@ -198,8 +198,6 @@ input {
         <div class="step">1</div>
         <div class="line"></div>
         <div class="step inactive">2</div>
-        <div class="line inactive"></div>
-        <div class="step inactive">3</div>
     </div>
 
     <form method="POST" class="form-grid" id="registerForm">
