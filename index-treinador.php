@@ -53,7 +53,7 @@ $isAdminClube = false;
 $erro = '';
 $sucesso = '';
 $activeTab = 'tab-info';
-$viewMode = $_GET['view'] ?? 'treinos';
+$viewMode = $_GET['view'] ?? 'home';
 $mostrarMensagens = ($viewMode === 'mensagens');
 $activeSidebarView = match ($viewMode) {
     'mensagens' => 'mensagens',
@@ -2778,6 +2778,21 @@ while ($row = $resTreinadores->fetch_assoc()) {
 $utilizadoresMensagem = [];
 $mensagensConversa = [];
 
+$mensagensNaoLidas = 0;
+
+$stmtMensagensNaoLidas = $conn->prepare("
+    SELECT COUNT(*) AS total
+    FROM mensagens
+    WHERE destino = ?
+      AND estado = 'Não Lida'
+");
+
+if ($stmtMensagensNaoLidas) {
+    $stmtMensagensNaoLidas->bind_param("i", $id_utilizador);
+    $stmtMensagensNaoLidas->execute();
+    $mensagensNaoLidas = (int)($stmtMensagensNaoLidas->get_result()->fetch_assoc()['total'] ?? 0);
+}
+
 $stmtUtilizadoresMensagem = $conn->prepare(" 
     SELECT
         u.id_utilizador,
@@ -2821,7 +2836,9 @@ while ($row = $resUtilizadoresMensagem->fetch_assoc()) {
     $utilizadoresMensagem[] = $row;
 }
 
-if ($chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
+$abrirMensagensAgora = $mostrarMensagens || $chatSelecionadoId > 0;
+
+if ($abrirMensagensAgora && $chatSelecionadoId <= 0 && !empty($utilizadoresMensagem)) {
     $chatSelecionadoId = (int)$utilizadoresMensagem[0]['id_utilizador'];
 }
 
@@ -2833,7 +2850,7 @@ foreach ($utilizadoresMensagem as $utilizadorMsg) {
     }
 }
 
-if ($chatSelecionado) {
+if ($abrirMensagensAgora && $chatSelecionado) {
     $stmtMarcarLidas = $conn->prepare(" 
         UPDATE mensagens
         SET estado = 'Lida'
@@ -5880,10 +5897,15 @@ body.layout-locked #dashboardCard {
         <img src="assets/calendario.png" alt="">
         <span>Calendário</span>
     </a>
-    <a href="#" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>" onclick="event.preventDefault(); showMessagesScreen();">
-        <span class="sidebar-icon-wrap"><img src="assets/mensagens.png" alt=""><?php if ($mensagensNaoLidas > 0): ?><b class="menu-count-badge"><?= $mensagensNaoLidas ?></b><?php endif; ?></span>
-        <span>Mensagens</span>
-    </a>
+    <a href="index-treinador.php?view=mensagens" data-view="mensagens" class="<?= $activeSidebarView === 'mensagens' ? 'active' : '' ?>">
+    <span class="sidebar-icon-wrap">
+        <img src="assets/mensagens.png" alt="">
+        <?php if ($mensagensNaoLidas > 0): ?>
+            <b class="menu-count-badge"><?= $mensagensNaoLidas ?></b>
+        <?php endif; ?>
+    </span>
+    <span>Mensagens</span>
+</a>
     <a href="#" data-view="home" class="<?= $activeSidebarView === 'home' ? 'active' : '' ?>" onclick="event.preventDefault(); showMainMenu();">
         <img src="assets/home.png" alt="">
         <span>Página Principal</span>
@@ -8932,10 +8954,10 @@ document.addEventListener('DOMContentLoaded', function () {
     showJogosScreen();
     <?php elseif (($_GET['view'] ?? '') === 'campeonato'): ?>
     showCampeonatoScreen();
-    <?php elseif (($_GET['view'] ?? '') === 'home'): ?>
-    showMainMenu();
+    <?php elseif (($_GET['view'] ?? '') === 'treinos'): ?>
+    showTreinosMenu();
     <?php else: ?>
-    showTreinosScreen();
+    showMainScreen();
     <?php endif; ?>
 });
 

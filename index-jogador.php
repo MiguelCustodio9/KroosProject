@@ -37,9 +37,15 @@ $id_clube      = (int)$_SESSION['id_clube'];
 $erro = '';
 $sucesso = '';
 $viewMode = $_GET['view'] ?? 'home';
+
+if ($viewMode === 'jogos' && isset($_GET['jogo'])) {
+    $viewMode = 'jogo';
+}
+
 $activeSidebarView = match ($viewMode) {
     'equipa' => 'equipa',
     'jogos' => 'jogos',
+    'jogo' => 'jogos',
     'campeonato' => 'campeonato',
     'calendario' => 'calendario',
     'treino' => 'calendario',
@@ -47,6 +53,7 @@ $activeSidebarView = match ($viewMode) {
     default => 'home',
 };
 $chatSelecionadoId = (int)($_GET['chat'] ?? 0);
+$idJogoSelecionado = (int)($_GET['jogo'] ?? (($viewMode === 'jogo') ? ($_GET['id'] ?? 0) : 0));
 
 /* ── Compatibilidade com versões antigas da BD ── */
 $ckJogUtil = $conn->query("SHOW COLUMNS FROM jogadores LIKE 'id_utilizador'");
@@ -92,6 +99,95 @@ $conn->query("CREATE TABLE IF NOT EXISTS `jogos_clube` (
     `resultado_adv` INT DEFAULT NULL,
     `estado` ENUM('Agendado','Realizado','Cancelado','Adiado') NOT NULL DEFAULT 'Agendado',
     `id_evento_clube` INT DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+/* ── Tabelas de detalhe e estatísticas dos jogos ── */
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_configuracao` (
+    `id_jogo` INT NOT NULL PRIMARY KEY,
+    `numero_partes` INT NOT NULL DEFAULT 2,
+    `minutos_por_parte` INT NOT NULL DEFAULT 45,
+    `presenca_equipa_tecnica` TEXT DEFAULT NULL,
+    `tatica` VARCHAR(30) DEFAULT '4-3-3',
+    `posicoes_titulares` LONGTEXT DEFAULT NULL,
+    `parte_atual` INT NOT NULL DEFAULT 0,
+    `jogo_terminado` TINYINT(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_participantes` (
+    `id_participante` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `tipo` ENUM('Convocado','Titular','Suplente','Suplente Utilizado') NOT NULL,
+    UNIQUE KEY `uq_jogo_participante_tipo` (`id_jogo`, `id_jogador`, `tipo`),
+    KEY `idx_jogo_participantes_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_substituicoes` (
+    `id_substituicao` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador_entrada` INT NOT NULL,
+    `id_jogador_saida` INT NOT NULL,
+    `minuto` INT NOT NULL,
+    KEY `idx_jogo_substituicoes_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_golos` (
+    `id_golo` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador_marcador` INT NOT NULL,
+    `id_jogador_assistente` INT DEFAULT NULL,
+    `minuto` INT NOT NULL,
+    `zona` VARCHAR(50) DEFAULT NULL,
+    `forma` VARCHAR(80) DEFAULT NULL,
+    KEY `idx_jogo_golos_jogo` (`id_jogo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_estatisticas_coletivas` (
+    `id_jogo` INT NOT NULL PRIMARY KEY,
+    `posse_casa_segundos` INT NOT NULL DEFAULT 0,
+    `sem_posse_segundos` INT NOT NULL DEFAULT 0,
+    `posse_visitante_segundos` INT NOT NULL DEFAULT 0,
+    `posse_casa_percentagem` DECIMAL(5,2) NOT NULL DEFAULT 0,
+    `posse_visitante_percentagem` DECIMAL(5,2) NOT NULL DEFAULT 0,
+    `remates_nos` INT NOT NULL DEFAULT 0,
+    `remates_adversario` INT NOT NULL DEFAULT 0,
+    `remates_baliza_nos` INT NOT NULL DEFAULT 0,
+    `remates_baliza_adversario` INT NOT NULL DEFAULT 0,
+    `dribles_tentados_nos` INT NOT NULL DEFAULT 0,
+    `dribles_tentados_adversario` INT NOT NULL DEFAULT 0,
+    `dribles_conseguidos_nos` INT NOT NULL DEFAULT 0,
+    `dribles_conseguidos_adversario` INT NOT NULL DEFAULT 0,
+    `defesas_nos` INT NOT NULL DEFAULT 0,
+    `defesas_adversario` INT NOT NULL DEFAULT 0,
+    `cantos_nos` INT NOT NULL DEFAULT 0,
+    `cantos_adversario` INT NOT NULL DEFAULT 0,
+    `passes_nos` INT NOT NULL DEFAULT 0,
+    `passes_adversario` INT NOT NULL DEFAULT 0,
+    `passes_certos_nos` INT NOT NULL DEFAULT 0,
+    `passes_certos_adversario` INT NOT NULL DEFAULT 0,
+    `faltas_nos` INT NOT NULL DEFAULT 0,
+    `faltas_adversario` INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$conn->query("CREATE TABLE IF NOT EXISTS `jogo_estatisticas_individuais` (
+    `id_estatistica` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_jogo` INT NOT NULL,
+    `id_jogador` INT NOT NULL,
+    `minutos_jogados` INT NOT NULL DEFAULT 0,
+    `golos` INT NOT NULL DEFAULT 0,
+    `remates` INT NOT NULL DEFAULT 0,
+    `remates_baliza` INT NOT NULL DEFAULT 0,
+    `assistencias` INT NOT NULL DEFAULT 0,
+    `passes` INT NOT NULL DEFAULT 0,
+    `passes_certos` INT NOT NULL DEFAULT 0,
+    `dribles_tentados` INT NOT NULL DEFAULT 0,
+    `dribles_conseguidos` INT NOT NULL DEFAULT 0,
+    `defesas` INT NOT NULL DEFAULT 0,
+    `desarmes` INT NOT NULL DEFAULT 0,
+    `intercecoes` INT NOT NULL DEFAULT 0,
+    `faltas_sofridas` INT NOT NULL DEFAULT 0,
+    `faltas_cometidas` INT NOT NULL DEFAULT 0,
+    UNIQUE KEY `uq_estatistica_individual` (`id_jogo`, `id_jogador`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 $checkTreinoEquipa = $conn->query("SHOW COLUMNS FROM treino LIKE 'id_equipa'");
@@ -415,7 +511,12 @@ if ($id_equipa > 0) {
             ec.local_evento,
             t.id_treino,
             t.`número_treino` AS numero_treino,
-            t.`conteúdo` AS conteudo_treino
+            t.`conteúdo` AS conteudo_treino,
+            CASE WHEN ccJog.id_competicao IS NOT NULL THEN jc.id_jogo ELSE NULL END AS id_jogo,
+            CASE WHEN ccJog.id_competicao IS NOT NULL THEN jc.adversario ELSE NULL END AS jogo_adversario,
+            CASE WHEN ccJog.id_competicao IS NOT NULL THEN jc.resultado_nos ELSE NULL END AS jogo_resultado_nos,
+            CASE WHEN ccJog.id_competicao IS NOT NULL THEN jc.resultado_adv ELSE NULL END AS jogo_resultado_adv,
+            CASE WHEN ccJog.id_competicao IS NOT NULL THEN jc.estado ELSE NULL END AS jogo_estado
         FROM eventos_clube ec
         LEFT JOIN treino t
           ON t.id_equipa = ec.id_equipa
@@ -430,10 +531,26 @@ if ($id_equipa > 0) {
                     )
                 )
              )
+        LEFT JOIN jogos_clube jc
+          ON (
+                jc.id_evento_clube = ec.id_evento
+             OR (
+                    ec.tipo_evento = 'Jogo'
+                AND jc.data_jogo = ec.data_evento
+                AND (
+                        jc.hora_jogo = ec.hora_evento
+                     OR (jc.hora_jogo IS NULL AND ec.hora_evento IS NULL)
+                    )
+                )
+             )
+        LEFT JOIN competicoes_clube ccJog
+          ON ccJog.id_competicao = jc.id_competicao
+         AND ccJog.id_clube = ?
+         AND ccJog.id_equipa = ec.id_equipa
         WHERE ec.id_equipa = ?
         ORDER BY ec.data_evento ASC, ec.hora_evento ASC, ec.id_evento ASC
     ");
-    $stmtEventos->bind_param("i", $id_equipa);
+    $stmtEventos->bind_param("ii", $id_clube, $id_equipa);
     $stmtEventos->execute();
     $resEventos = $stmtEventos->get_result();
     while ($row = $resEventos->fetch_assoc()) {
@@ -517,6 +634,177 @@ if ($id_equipa > 0) {
                 $estatisticasPorCompeticao[$idComp]['pontos'] += 1;
             } else {
                 $estatisticasPorCompeticao[$idComp]['derrotas']++;
+            }
+        }
+    }
+}
+
+
+/* ── Jogo selecionado pelo jogador, aberto a partir da lista/calendário ── */
+$jogoSelecionado = null;
+$configuracaoJogoSelecionado = [
+    'numero_partes' => 2,
+    'minutos_por_parte' => 45,
+    'presenca_equipa_tecnica' => '',
+    'tatica' => '4-3-3',
+    'posicoes_titulares' => null,
+    'parte_atual' => 0,
+    'jogo_terminado' => 0,
+];
+$participantesJogoSelecionado = [
+    'Convocado' => [],
+    'Titular' => [],
+    'Suplente' => [],
+    'Suplente Utilizado' => [],
+];
+$substituicoesJogoSelecionado = [];
+$golosJogoSelecionado = [];
+$estatisticasColetivasJogoSelecionado = [];
+$estatisticasIndividuaisJogoSelecionado = [];
+$rotulosEstatisticasColetivasJogo = [
+    'remates_nos' => 'Remates',
+    'remates_baliza_nos' => 'Remates à baliza',
+    'dribles_tentados_nos' => 'Dribles tentados',
+    'dribles_conseguidos_nos' => 'Dribles conseguidos',
+    'defesas_nos' => 'Defesas',
+    'cantos_nos' => 'Cantos',
+    'passes_nos' => 'Passes',
+    'passes_certos_nos' => 'Passes certos',
+    'faltas_nos' => 'Faltas',
+];
+$paresEstatisticasColetivasJogo = [
+    'Remates' => ['remates_nos', 'remates_adversario'],
+    'Remates à baliza' => ['remates_baliza_nos', 'remates_baliza_adversario'],
+    'Dribles tentados' => ['dribles_tentados_nos', 'dribles_tentados_adversario'],
+    'Dribles conseguidos' => ['dribles_conseguidos_nos', 'dribles_conseguidos_adversario'],
+    'Defesas' => ['defesas_nos', 'defesas_adversario'],
+    'Cantos' => ['cantos_nos', 'cantos_adversario'],
+    'Passes' => ['passes_nos', 'passes_adversario'],
+    'Passes certos' => ['passes_certos_nos', 'passes_certos_adversario'],
+    'Faltas' => ['faltas_nos', 'faltas_adversario'],
+];
+$rotulosEstatisticasIndividuaisJogo = [
+    'minutos_jogados' => 'Min.',
+    'golos' => 'Golos',
+    'assistencias' => 'Assist.',
+    'remates' => 'Rem.',
+    'remates_baliza' => 'R. baliza',
+    'passes' => 'Passes',
+    'passes_certos' => 'P. certos',
+    'dribles_tentados' => 'Drib. tent.',
+    'dribles_conseguidos' => 'Drib. cons.',
+    'defesas' => 'Defesas',
+    'desarmes' => 'Desarmes',
+    'intercecoes' => 'Interceções',
+    'faltas_sofridas' => 'F. sofridas',
+    'faltas_cometidas' => 'F. cometidas',
+];
+
+$nomesJogadoresEquipa = [];
+foreach ($jogadoresEquipa as $colegaEquipa) {
+    $nomesJogadoresEquipa[(int)$colegaEquipa['id_jogador']] = $colegaEquipa['nome_completo'];
+}
+
+if ($id_equipa > 0 && $idJogoSelecionado > 0) {
+    $stmtJogoSelecionado = $conn->prepare("
+        SELECT
+            jc.id_jogo,
+            jc.id_competicao,
+            jc.adversario,
+            jc.data_jogo,
+            jc.hora_jogo,
+            jc.casa,
+            jc.local_jogo,
+            jc.resultado_nos,
+            jc.resultado_adv,
+            jc.estado,
+            cc.nome AS competicao_nome,
+            cc.tipo AS competicao_tipo,
+            cc.epoca AS competicao_epoca
+        FROM jogos_clube jc
+        INNER JOIN competicoes_clube cc ON cc.id_competicao = jc.id_competicao
+        WHERE jc.id_jogo = ?
+          AND cc.id_clube = ?
+          AND cc.id_equipa = ?
+        LIMIT 1
+    ");
+    $stmtJogoSelecionado->bind_param("iii", $idJogoSelecionado, $id_clube, $id_equipa);
+    $stmtJogoSelecionado->execute();
+    $jogoSelecionado = $stmtJogoSelecionado->get_result()->fetch_assoc() ?: null;
+
+    if ($jogoSelecionado) {
+        $stmtConfigJogo = $conn->prepare("
+            SELECT numero_partes, minutos_por_parte, presenca_equipa_tecnica, tatica,
+                   posicoes_titulares, parte_atual, jogo_terminado
+            FROM jogo_configuracao
+            WHERE id_jogo = ?
+            LIMIT 1
+        ");
+        if ($stmtConfigJogo) {
+            $stmtConfigJogo->bind_param("i", $idJogoSelecionado);
+            $stmtConfigJogo->execute();
+            $configJogo = $stmtConfigJogo->get_result()->fetch_assoc();
+            if ($configJogo) {
+                $configuracaoJogoSelecionado = array_merge($configuracaoJogoSelecionado, $configJogo);
+            }
+        }
+
+        $stmtParticipantesJogo = $conn->prepare("SELECT id_jogador, tipo FROM jogo_participantes WHERE id_jogo = ?");
+        if ($stmtParticipantesJogo) {
+            $stmtParticipantesJogo->bind_param("i", $idJogoSelecionado);
+            $stmtParticipantesJogo->execute();
+            $resParticipantesJogo = $stmtParticipantesJogo->get_result();
+            while ($participante = $resParticipantesJogo->fetch_assoc()) {
+                if (isset($participantesJogoSelecionado[$participante['tipo']])) {
+                    $participantesJogoSelecionado[$participante['tipo']][] = (int)$participante['id_jogador'];
+                }
+            }
+        }
+
+        $stmtSubstituicoesJogo = $conn->prepare("
+            SELECT id_jogador_entrada, id_jogador_saida, minuto
+            FROM jogo_substituicoes
+            WHERE id_jogo = ?
+            ORDER BY minuto ASC, id_substituicao ASC
+        ");
+        if ($stmtSubstituicoesJogo) {
+            $stmtSubstituicoesJogo->bind_param("i", $idJogoSelecionado);
+            $stmtSubstituicoesJogo->execute();
+            $resSubstituicoesJogo = $stmtSubstituicoesJogo->get_result();
+            while ($substituicao = $resSubstituicoesJogo->fetch_assoc()) {
+                $substituicoesJogoSelecionado[] = $substituicao;
+            }
+        }
+
+        $stmtGolosJogo = $conn->prepare("
+            SELECT id_jogador_marcador, id_jogador_assistente, minuto, zona, forma
+            FROM jogo_golos
+            WHERE id_jogo = ?
+            ORDER BY minuto ASC, id_golo ASC
+        ");
+        if ($stmtGolosJogo) {
+            $stmtGolosJogo->bind_param("i", $idJogoSelecionado);
+            $stmtGolosJogo->execute();
+            $resGolosJogo = $stmtGolosJogo->get_result();
+            while ($golo = $resGolosJogo->fetch_assoc()) {
+                $golosJogoSelecionado[] = $golo;
+            }
+        }
+
+        $stmtColetivasJogo = $conn->prepare("SELECT * FROM jogo_estatisticas_coletivas WHERE id_jogo = ? LIMIT 1");
+        if ($stmtColetivasJogo) {
+            $stmtColetivasJogo->bind_param("i", $idJogoSelecionado);
+            $stmtColetivasJogo->execute();
+            $estatisticasColetivasJogoSelecionado = $stmtColetivasJogo->get_result()->fetch_assoc() ?: [];
+        }
+
+        $stmtIndividuaisJogo = $conn->prepare("SELECT * FROM jogo_estatisticas_individuais WHERE id_jogo = ?");
+        if ($stmtIndividuaisJogo) {
+            $stmtIndividuaisJogo->bind_param("i", $idJogoSelecionado);
+            $stmtIndividuaisJogo->execute();
+            $resIndividuaisJogo = $stmtIndividuaisJogo->get_result();
+            while ($individual = $resIndividuaisJogo->fetch_assoc()) {
+                $estatisticasIndividuaisJogoSelecionado[(int)$individual['id_jogador']] = $individual;
             }
         }
     }
@@ -669,7 +957,7 @@ if ($chatSelecionado) {
 }
 
 /* ── Treino selecionado pelo jogador, aberto a partir do calendário ── */
-$idTreinoSelecionado = (int)($_GET['id'] ?? $_GET['treino'] ?? 0);
+$idTreinoSelecionado = ($viewMode === 'treino') ? (int)($_GET['id'] ?? $_GET['treino'] ?? 0) : 0;
 $treinoSelecionado = null;
 $exerciciosTreinoSelecionado = [];
 
@@ -1354,6 +1642,235 @@ body.layout-locked { overflow: hidden; }
     .form-grid { grid-template-columns: 1fr; }
     .tabs { overflow-x: auto; }
 }
+/* ══════════════════════════════════
+   JOGOS — vista detalhada do jogador
+══════════════════════════════════ */
+.table-action-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--club);
+    color: #fff;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.table-action-link:hover { opacity: .9; }
+
+.jogo-view-header {
+    border-bottom: 3px solid #111827;
+    padding-bottom: 16px;
+    margin-bottom: 22px;
+}
+.jogo-view-title {
+    font-size: clamp(24px, 3vw, 36px);
+    font-weight: 900;
+    color: #0f172a;
+    letter-spacing: -.8px;
+}
+.jogo-view-meta {
+    margin-top: 7px;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 700;
+}
+.jogo-scoreboard {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 18px;
+    align-items: center;
+    background: #0f172a;
+    border-radius: 22px;
+    padding: 24px;
+    color: #fff;
+    margin-bottom: 22px;
+}
+.jogo-score-team {
+    min-width: 0;
+}
+.jogo-score-team span {
+    display: block;
+    color: rgba(255,255,255,.68);
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 6px;
+}
+.jogo-score-team strong {
+    display: block;
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1.15;
+}
+.jogo-score-team:last-child { text-align: right; }
+.jogo-score-result {
+    min-width: 130px;
+    text-align: center;
+    padding: 12px 18px;
+    border-radius: 18px;
+    background: rgba(255,255,255,.12);
+    font-size: 34px;
+    font-weight: 900;
+    letter-spacing: -.8px;
+}
+.jogo-info-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.jogo-info-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 14px 16px;
+}
+.jogo-info-box span {
+    display: block;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 6px;
+}
+.jogo-info-box strong {
+    display: block;
+    color: #1f2b3d;
+    font-size: 15px;
+}
+.jogo-section {
+    background: #fff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 20px;
+    margin-top: 18px;
+}
+.jogo-section h3 {
+    font-size: 16px;
+    font-weight: 900;
+    color: #0f172a;
+    margin-bottom: 14px;
+}
+.jogo-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+}
+.jogo-list-box {
+    border: 1px solid #e8edf5;
+    border-radius: 16px;
+    background: #f8fafc;
+    padding: 14px;
+}
+.jogo-list-box h4 {
+    font-size: 12px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 10px;
+}
+.jogo-player-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 4px 5px 4px 0;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #1f2b3d;
+    font-size: 12px;
+    font-weight: 800;
+}
+.jogo-player-pill.me {
+    background: var(--club);
+    color: #fff;
+}
+.jogo-event-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #edf1f7;
+}
+.jogo-event-row:last-child { border-bottom: none; }
+.jogo-event-minute {
+    min-width: 48px;
+    color: var(--club);
+    font-weight: 900;
+}
+.jogo-event-main {
+    color: #1f2b3d;
+    font-size: 14px;
+    line-height: 1.45;
+}
+.jogo-event-main small {
+    display: block;
+    color: #64748b;
+    margin-top: 2px;
+}
+.jogo-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.jogo-stats-table th,
+.jogo-stats-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #edf1f7;
+    text-align: left;
+    vertical-align: middle;
+}
+.jogo-stats-table th {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 900;
+}
+.jogo-stats-table td {
+    color: #1f2b3d;
+    font-weight: 700;
+}
+.jogo-stats-scroll {
+    overflow-x: auto;
+}
+.jogo-own-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+    gap: 10px;
+}
+.jogo-own-stat {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 12px;
+}
+.jogo-own-stat span {
+    display: block;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 5px;
+}
+.jogo-own-stat strong {
+    color: #0f172a;
+    font-size: 20px;
+    font-weight: 900;
+}
+@media (max-width: 800px) {
+    .jogo-scoreboard { grid-template-columns: 1fr; text-align: center; }
+    .jogo-score-team:last-child { text-align: center; }
+    .jogo-info-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+    .jogo-info-grid { grid-template-columns: 1fr; }
+}
+
 </style>
 </head>
 <body>
@@ -1653,6 +2170,7 @@ body.layout-locked { overflow: hidden; }
                             <th>Casa/Fora</th>
                             <th>Resultado</th>
                             <th>Estado</th>
+                            <th>Ação</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1676,12 +2194,281 @@ body.layout-locked { overflow: hidden; }
                                 <td><span class="badge gray"><?= ((int)$jogo['casa'] === 1) ? 'Casa' : 'Fora' ?></span></td>
                                 <td><strong><?= h($resultado) ?></strong></td>
                                 <td><span class="badge <?= $estadoClass ?>"><?= h($estado) ?></span></td>
+                                <td><a class="table-action-link" href="index-jogador.php?view=jogo&id=<?= (int)$jogo['id_jogo'] ?>">Ver jogo</a></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             <?php endif; ?>
         </div>
+    <?php elseif ($viewMode === 'jogo'): ?>
+        <div class="screen-shell visible">
+            <?php if (!$jogoSelecionado): ?>
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title">Jogo não encontrado</h2>
+                        <p class="section-subtitle">Este jogo não existe ou não pertence à tua equipa.</p>
+                    </div>
+                    <a href="index-jogador.php?view=jogos" class="btn-soft-link">← Voltar aos jogos</a>
+                </div>
+                <div class="empty-state">Não tens acesso a este jogo.</div>
+            <?php else: ?>
+                <?php
+                    $resultadoJogoSelecionado = ($jogoSelecionado['resultado_nos'] !== null && $jogoSelecionado['resultado_adv'] !== null)
+                        ? ((int)$jogoSelecionado['resultado_nos'] . ' - ' . (int)$jogoSelecionado['resultado_adv'])
+                        : '— - —';
+
+                    $estadoJogoClass = match ($jogoSelecionado['estado']) {
+                        'Realizado' => 'green',
+                        'Cancelado' => 'red',
+                        'Adiado' => 'yellow',
+                        default => 'blue',
+                    };
+
+                    $posicoesTitularesJogo = json_decode($configuracaoJogoSelecionado['posicoes_titulares'] ?? '{}', true);
+                    if (!is_array($posicoesTitularesJogo)) {
+                        $posicoesTitularesJogo = [];
+                    }
+
+                    $estatisticaPropriaJogo = $jogador
+                        ? ($estatisticasIndividuaisJogoSelecionado[(int)$jogador['id_jogador']] ?? null)
+                        : null;
+
+                    $tempoComPosseJogo = (int)($estatisticasColetivasJogoSelecionado['posse_casa_segundos'] ?? 0)
+                        + (int)($estatisticasColetivasJogoSelecionado['posse_visitante_segundos'] ?? 0);
+                    $posseNossaJogo = $tempoComPosseJogo > 0
+                        ? round(((int)($estatisticasColetivasJogoSelecionado['posse_casa_segundos'] ?? 0)) * 100 / $tempoComPosseJogo, 1)
+                        : 0;
+                    $posseAdvJogo = $tempoComPosseJogo > 0
+                        ? round(((int)($estatisticasColetivasJogoSelecionado['posse_visitante_segundos'] ?? 0)) * 100 / $tempoComPosseJogo, 1)
+                        : 0;
+                ?>
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title">Detalhe do jogo</h2>
+                        <p class="section-subtitle">Consulta apenas. Só a equipa técnica pode editar estatísticas.</p>
+                    </div>
+                    <a href="index-jogador.php?view=jogos" class="btn-soft-link">← Voltar aos jogos</a>
+                </div>
+
+                <div class="jogo-view-header">
+                    <div class="jogo-view-title">Jogo vs <?= h($jogoSelecionado['adversario']) ?></div>
+                    <div class="jogo-view-meta">
+                        <?= h($jogoSelecionado['competicao_nome']) ?>
+                        <?= $jogoSelecionado['competicao_epoca'] ? ' · ' . h($jogoSelecionado['competicao_epoca']) : '' ?>
+                        · <?= h(formatDatePt($jogoSelecionado['data_jogo'])) ?>
+                        <?= $jogoSelecionado['hora_jogo'] ? ' · ' . h(formatTimePt($jogoSelecionado['hora_jogo'])) : '' ?>
+                        · <span class="badge <?= $estadoJogoClass ?>"><?= h($jogoSelecionado['estado']) ?></span>
+                    </div>
+                </div>
+
+                <div class="jogo-scoreboard">
+                    <div class="jogo-score-team">
+                        <span><?= ((int)$jogoSelecionado['casa'] === 1) ? 'Casa' : 'Fora' ?></span>
+                        <strong><?= h($nomeClube) ?></strong>
+                    </div>
+                    <div class="jogo-score-result"><?= h($resultadoJogoSelecionado) ?></div>
+                    <div class="jogo-score-team">
+                        <span>Adversário</span>
+                        <strong><?= h($jogoSelecionado['adversario']) ?></strong>
+                    </div>
+                </div>
+
+                <div class="jogo-info-grid">
+                    <div class="jogo-info-box"><span>Data</span><strong><?= h(formatDatePt($jogoSelecionado['data_jogo'])) ?></strong></div>
+                    <div class="jogo-info-box"><span>Hora</span><strong><?= h(formatTimePt($jogoSelecionado['hora_jogo']) ?: '—') ?></strong></div>
+                    <div class="jogo-info-box"><span>Local</span><strong><?= h($jogoSelecionado['local_jogo'] ?: '—') ?></strong></div>
+                    <div class="jogo-info-box"><span>Competição</span><strong><?= h($jogoSelecionado['competicao_tipo']) ?></strong></div>
+                    <div class="jogo-info-box"><span>Nº de partes</span><strong><?= (int)$configuracaoJogoSelecionado['numero_partes'] ?></strong></div>
+                    <div class="jogo-info-box"><span>Minutos / parte</span><strong><?= (int)$configuracaoJogoSelecionado['minutos_por_parte'] ?></strong></div>
+                    <div class="jogo-info-box"><span>Tática</span><strong><?= h($configuracaoJogoSelecionado['tatica'] ?: '—') ?></strong></div>
+                    <div class="jogo-info-box"><span>Estado</span><strong><?= h($jogoSelecionado['estado']) ?></strong></div>
+                </div>
+
+                <section class="jogo-section">
+                    <h3>Convocatória e ficha de jogo</h3>
+                    <div class="jogo-list-grid">
+                        <div class="jogo-list-box">
+                            <h4>Convocados</h4>
+                            <?php if (empty($participantesJogoSelecionado['Convocado'])): ?>
+                                <div class="empty-state">Sem convocatória registada.</div>
+                            <?php else: ?>
+                                <?php foreach ($participantesJogoSelecionado['Convocado'] as $idJogadorConvocado): ?>
+                                    <span class="jogo-player-pill <?= ($jogador && (int)$jogador['id_jogador'] === (int)$idJogadorConvocado) ? 'me' : '' ?>">
+                                        <?= h($nomesJogadoresEquipa[(int)$idJogadorConvocado] ?? ('Jogador #' . (int)$idJogadorConvocado)) ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                        <div class="jogo-list-box">
+                            <h4>Titulares</h4>
+                            <?php if (empty($participantesJogoSelecionado['Titular'])): ?>
+                                <div class="empty-state">Sem titulares registados.</div>
+                            <?php else: ?>
+                                <?php foreach ($participantesJogoSelecionado['Titular'] as $idJogadorTitular): ?>
+                                    <span class="jogo-player-pill <?= ($jogador && (int)$jogador['id_jogador'] === (int)$idJogadorTitular) ? 'me' : '' ?>">
+                                        <?= h($nomesJogadoresEquipa[(int)$idJogadorTitular] ?? ('Jogador #' . (int)$idJogadorTitular)) ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                        <div class="jogo-list-box">
+                            <h4>Suplentes</h4>
+                            <?php if (empty($participantesJogoSelecionado['Suplente'])): ?>
+                                <div class="empty-state">Sem suplentes registados.</div>
+                            <?php else: ?>
+                                <?php foreach ($participantesJogoSelecionado['Suplente'] as $idJogadorSuplente): ?>
+                                    <span class="jogo-player-pill <?= ($jogador && (int)$jogador['id_jogador'] === (int)$idJogadorSuplente) ? 'me' : '' ?>">
+                                        <?= h($nomesJogadoresEquipa[(int)$idJogadorSuplente] ?? ('Jogador #' . (int)$idJogadorSuplente)) ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </section>
+
+                <?php if (!empty($posicoesTitularesJogo)): ?>
+                    <section class="jogo-section">
+                        <h3>Onze inicial</h3>
+                        <div class="jogo-list-grid">
+                            <?php foreach ($posicoesTitularesJogo as $posicaoJogo => $idJogadorPosicao): ?>
+                                <?php if ((int)$idJogadorPosicao <= 0) continue; ?>
+                                <div class="jogo-list-box">
+                                    <h4><?= h($posicaoJogo) ?></h4>
+                                    <span class="jogo-player-pill <?= ($jogador && (int)$jogador['id_jogador'] === (int)$idJogadorPosicao) ? 'me' : '' ?>">
+                                        <?= h($nomesJogadoresEquipa[(int)$idJogadorPosicao] ?? ('Jogador #' . (int)$idJogadorPosicao)) ?>
+                                    </span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                <?php endif; ?>
+
+                <section class="jogo-section">
+                    <h3>Golos</h3>
+                    <?php if (empty($golosJogoSelecionado)): ?>
+                        <div class="empty-state">Ainda não existem golos registados neste jogo.</div>
+                    <?php else: ?>
+                        <?php foreach ($golosJogoSelecionado as $goloJogo): ?>
+                            <div class="jogo-event-row">
+                                <div class="jogo-event-minute"><?= (int)$goloJogo['minuto'] ?>'</div>
+                                <div class="jogo-event-main">
+                                    <strong><?= h($nomesJogadoresEquipa[(int)$goloJogo['id_jogador_marcador']] ?? ('Jogador #' . (int)$goloJogo['id_jogador_marcador'])) ?></strong>
+                                    <?php if (!empty($goloJogo['id_jogador_assistente'])): ?>
+                                        <small>Assistência: <?= h($nomesJogadoresEquipa[(int)$goloJogo['id_jogador_assistente']] ?? ('Jogador #' . (int)$goloJogo['id_jogador_assistente'])) ?></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($goloJogo['zona']) || !empty($goloJogo['forma'])): ?>
+                                        <small><?= h(trim(($goloJogo['zona'] ?? '') . ' ' . ($goloJogo['forma'] ?? ''))) ?></small>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </section>
+
+                <section class="jogo-section">
+                    <h3>Substituições</h3>
+                    <?php if (empty($substituicoesJogoSelecionado)): ?>
+                        <div class="empty-state">Ainda não existem substituições registadas neste jogo.</div>
+                    <?php else: ?>
+                        <?php foreach ($substituicoesJogoSelecionado as $substituicaoJogo): ?>
+                            <div class="jogo-event-row">
+                                <div class="jogo-event-minute"><?= (int)$substituicaoJogo['minuto'] ?>'</div>
+                                <div class="jogo-event-main">
+                                    Entra <strong><?= h($nomesJogadoresEquipa[(int)$substituicaoJogo['id_jogador_entrada']] ?? ('Jogador #' . (int)$substituicaoJogo['id_jogador_entrada'])) ?></strong>
+                                    · Sai <strong><?= h($nomesJogadoresEquipa[(int)$substituicaoJogo['id_jogador_saida']] ?? ('Jogador #' . (int)$substituicaoJogo['id_jogador_saida'])) ?></strong>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </section>
+
+                <section class="jogo-section">
+                    <h3>Estatísticas coletivas</h3>
+                    <?php if (empty($estatisticasColetivasJogoSelecionado)): ?>
+                        <div class="empty-state">Ainda não existem estatísticas coletivas registadas neste jogo.</div>
+                    <?php else: ?>
+                        <div class="jogo-stats-scroll">
+                            <table class="jogo-stats-table">
+                                <thead>
+                                    <tr>
+                                        <th>Estatística</th>
+                                        <th><?= h($nomeClube) ?></th>
+                                        <th><?= h($jogoSelecionado['adversario']) ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Posse de bola</td>
+                                        <td><?= h($posseNossaJogo) ?>%</td>
+                                        <td><?= h($posseAdvJogo) ?>%</td>
+                                    </tr>
+                                    <?php foreach ($paresEstatisticasColetivasJogo as $rotuloPar => [$campoNos, $campoAdv]): ?>
+                                        <tr>
+                                            <td><?= h($rotuloPar) ?></td>
+                                            <td><?= (int)($estatisticasColetivasJogoSelecionado[$campoNos] ?? 0) ?></td>
+                                            <td><?= (int)($estatisticasColetivasJogoSelecionado[$campoAdv] ?? 0) ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </section>
+
+                <section class="jogo-section">
+                    <h3>As tuas estatísticas</h3>
+                    <?php if (!$estatisticaPropriaJogo || (int)($estatisticaPropriaJogo['minutos_jogados'] ?? 0) <= 0): ?>
+                        <div class="empty-state">Ainda não tens estatísticas individuais registadas neste jogo.</div>
+                    <?php else: ?>
+                        <div class="jogo-own-stats">
+                            <?php foreach ($rotulosEstatisticasIndividuaisJogo as $campo => $rotulo): ?>
+                                <div class="jogo-own-stat">
+                                    <span><?= h($rotulo) ?></span>
+                                    <strong><?= (int)($estatisticaPropriaJogo[$campo] ?? 0) ?></strong>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </section>
+
+                <section class="jogo-section">
+                    <h3>Estatísticas individuais da equipa</h3>
+                    <?php if (empty($estatisticasIndividuaisJogoSelecionado)): ?>
+                        <div class="empty-state">Ainda não existem estatísticas individuais registadas neste jogo.</div>
+                    <?php else: ?>
+                        <div class="jogo-stats-scroll">
+                            <table class="jogo-stats-table">
+                                <thead>
+                                    <tr>
+                                        <th>Jogador</th>
+                                        <?php foreach ($rotulosEstatisticasIndividuaisJogo as $rotulo): ?>
+                                            <th><?= h($rotulo) ?></th>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($estatisticasIndividuaisJogoSelecionado as $idJogadorStats => $statsJogador): ?>
+                                        <?php if ((int)($statsJogador['minutos_jogados'] ?? 0) <= 0) continue; ?>
+                                        <tr>
+                                            <td>
+                                                <span class="jogo-player-pill <?= ($jogador && (int)$jogador['id_jogador'] === (int)$idJogadorStats) ? 'me' : '' ?>">
+                                                    <?= h($nomesJogadoresEquipa[(int)$idJogadorStats] ?? ('Jogador #' . (int)$idJogadorStats)) ?>
+                                                </span>
+                                            </td>
+                                            <?php foreach ($rotulosEstatisticasIndividuaisJogo as $campo => $rotulo): ?>
+                                                <td><?= (int)($statsJogador[$campo] ?? 0) ?></td>
+                                            <?php endforeach; ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </section>
+            <?php endif; ?>
+        </div>
+
     <?php elseif ($viewMode === 'campeonato'): ?>
         <div class="screen-shell visible">
             <div class="section-header">
@@ -1813,23 +2600,31 @@ body.layout-locked { overflow: hidden; }
                         ?>
                         <?php
                             $isTreinoCalendario = ($evento['tipo_evento'] === 'Treino' && !empty($evento['id_treino']));
-                            $eventTag = $isTreinoCalendario ? 'a' : 'div';
-                            $eventHref = $isTreinoCalendario ? ' href="index-jogador.php?view=treino&id=' . (int)$evento['id_treino'] . '"' : '';
+                            $isJogoCalendario = ($evento['tipo_evento'] === 'Jogo' && !empty($evento['id_jogo']));
+                            $eventTag = ($isTreinoCalendario || $isJogoCalendario) ? 'a' : 'div';
+                            $eventHref = $isTreinoCalendario
+                                ? ' href="index-jogador.php?view=treino&id=' . (int)$evento['id_treino'] . '"'
+                                : ($isJogoCalendario ? ' href="index-jogador.php?view=jogo&id=' . (int)$evento['id_jogo'] . '"' : '');
                         ?>
-                        <<?= $eventTag ?> class="event-card <?= $isTreinoCalendario ? 'event-card-link' : '' ?>"<?= $eventHref ?>>
+                        <<?= $eventTag ?> class="event-card <?= ($isTreinoCalendario || $isJogoCalendario) ? 'event-card-link' : '' ?>"<?= $eventHref ?>>
                             <div class="event-date">
                                 <?= h(formatDatePt($evento['data_evento'])) ?>
                                 <?= $evento['hora_evento'] ? '<br>' . h(formatTimePt($evento['hora_evento'])) : '' ?>
                             </div>
                             <div class="event-main">
                                 <strong><?= h($evento['tipo_evento']) ?></strong>
-                                <span><?= h($evento['descricao_evento'] ?: ($isTreinoCalendario ? ('Treino #' . $evento['numero_treino']) : 'Sem descrição')) ?></span>
+                                <span><?= h($evento['descricao_evento'] ?: ($isTreinoCalendario ? ('Treino #' . $evento['numero_treino']) : ($isJogoCalendario ? ('Jogo vs ' . $evento['jogo_adversario']) : 'Sem descrição'))) ?></span>
+                                <?php if ($isJogoCalendario && $evento['jogo_resultado_nos'] !== null && $evento['jogo_resultado_adv'] !== null): ?>
+                                    <br><span>Resultado: <?= h($evento['jogo_resultado_nos'] . ' - ' . $evento['jogo_resultado_adv']) ?></span>
+                                <?php endif; ?>
                                 <?php if ($evento['local_evento']): ?>
                                     <br><span><?= h($evento['local_evento']) ?></span>
                                 <?php endif; ?>
                             </div>
                             <?php if ($isTreinoCalendario): ?>
                                 <span class="event-action">Ver treino</span>
+                            <?php elseif ($isJogoCalendario): ?>
+                                <span class="event-action">Ver jogo</span>
                             <?php else: ?>
                                 <span class="badge <?= $estadoEvClass ?>"><?= h($evento['estado_evento']) ?></span>
                             <?php endif; ?>
