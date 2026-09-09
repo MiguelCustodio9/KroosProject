@@ -1,31 +1,92 @@
 <?php
 session_start();
+
 require_once __DIR__ . '/basedados.h';
+require_once __DIR__ . '/vendor/autoload.php';
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+$mailConfigPath = __DIR__ . '/mail-config.php';
+$mailConfig = file_exists($mailConfigPath) ? require $mailConfigPath : null;
 
 $erro = '';
 $sucesso = '';
 $mostrarFormularioCodigo = false;
 
-function h($value): string {
+function h($value): string
+{
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
-function enviarEmailCodigo(string $email, string $nome, string $codigo): bool {
-    $assunto = 'Código de recuperação de password - Kroos';
+function enviarEmailCodigo(string $email, string $nome, string $codigo): array
+{
+    global $mailConfig;
 
-    $mensagem =
-        "Olá " . $nome . ",\n\n" .
-        "Recebemos um pedido para recuperar a tua password no Kroos.\n\n" .
-        "O teu código de recuperação é: " . $codigo . "\n\n" .
-        "Este código expira em 15 minutos.\n\n" .
-        "Se não foste tu a pedir isto, ignora este email.\n\n" .
-        "Kroos";
+    if (!is_array($mailConfig)) {
+        return [
+            'ok' => false,
+            'erro' => 'O ficheiro mail-config.php não foi encontrado ou não devolve uma configuração válida.'
+        ];
+    }
 
-    $headers  = "From: Kroos <no-reply@kroos.local>\r\n";
-    $headers .= "Reply-To: no-reply@kroos.local\r\n";
-    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    $camposObrigatorios = ['host', 'port', 'smtp_secure', 'username', 'password', 'from_email', 'from_name'];
+    foreach ($camposObrigatorios as $campo) {
+        if (!isset($mailConfig[$campo]) || trim((string)$mailConfig[$campo]) === '') {
+            return [
+                'ok' => false,
+                'erro' => 'Falta configurar o campo ' . $campo . ' no mail-config.php.'
+            ];
+        }
+    }
 
-    return mail($email, $assunto, $mensagem, $headers);
+    $mail = new PHPMailer(true);
+
+    try {
+        $mail->isSMTP();
+        $mail->Host = $mailConfig['host'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $mailConfig['username'];
+        $mail->Password = $mailConfig['password'];
+        $mail->Port = (int)$mailConfig['port'];
+
+        if (($mailConfig['smtp_secure'] ?? 'tls') === 'ssl') {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+        } else {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        }
+
+        $mail->CharSet = 'UTF-8';
+        $mail->setFrom($mailConfig['from_email'], $mailConfig['from_name']);
+        $mail->addAddress($email, $nome);
+
+        $mail->isHTML(false);
+        $mail->Subject = 'Código de recuperação de password - Kroos';
+        $mail->Body =
+            "Olá " . $nome . ",\n\n" .
+            "Recebemos um pedido para recuperar a tua password no Kroos.\n\n" .
+            "O teu código de recuperação é: " . $codigo . "\n\n" .
+            "Este código expira em 15 minutos.\n\n" .
+            "Se não foste tu a pedir isto, ignora este email.\n\n" .
+            "Kroos";
+
+        $mail->send();
+
+        return [
+            'ok' => true,
+            'erro' => ''
+        ];
+    } catch (Exception $e) {
+        return [
+            'ok' => false,
+            'erro' => $mail->ErrorInfo ?: $e->getMessage()
+        ];
+    } catch (Throwable $e) {
+        return [
+            'ok' => false,
+            'erro' => $e->getMessage()
+        ];
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -37,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($email === '') {
             $erro = 'Indica o teu email.';
         } else {
-            $stmtUser = $conn->prepare("
+            $stmtUser = $conn->prepare(" 
                 SELECT id_utilizador, email_utilizador, primeiro_nome, último_nome
                 FROM utilizador
                 WHERE email_utilizador = ?
@@ -48,14 +109,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user = $stmtUser->get_result()->fetch_assoc();
 
             if (!$user) {
-                $erro = 'Não existe nenhuma conta com esse email.';
+                // Mensagem genérica para não revelar se o email existe ou não.
+                $sucesso = 'Se existir uma conta com esse email, será enviado um código de recuperação.';
             } else {
                 $idUtilizador = (int)$user['id_utilizador'];
                 $codigo = (string)random_int(100000, 999999);
                 $codigoHash = password_hash($codigo, PASSWORD_DEFAULT);
                 $expiraEm = date('Y-m-d H:i:s', time() + 15 * 60);
 
-                $stmtLimpar = $conn->prepare("
+                $stmtLimpar = $conn->prepare(" 
                     UPDATE recuperacao_password
                     SET usado = 1, usado_em = NOW()
                     WHERE id_utilizador = ?
@@ -64,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtLimpar->bind_param("i", $idUtilizador);
                 $stmtLimpar->execute();
 
-                $stmtInsert = $conn->prepare("
+                $stmtInsert = $conn->prepare(" 
                     INSERT INTO recuperacao_password
                         (id_utilizador, codigo_hash, expira_em)
                     VALUES (?, ?, ?)
@@ -76,21 +138,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $nomeCompleto = trim(($user['primeiro_nome'] ?? '') . ' ' . ($user['último_nome'] ?? ''));
 
-                    $emailEnviado = enviarEmailCodigo(
+                    $resultadoEmail = enviarEmailCodigo(
                         $user['email_utilizador'],
                         $nomeCompleto ?: 'utilizador',
                         $codigo
                     );
 
-                    $_SESSION['reset_id_utilizador'] = $idUtilizador;
-                    $_SESSION['reset_email'] = $user['email_utilizador'];
+                    if ($resultadoEmail['ok']) {
+                        $_SESSION['reset_id_utilizador'] = $idUtilizador;
+                        $_SESSION['reset_email'] = $user['email_utilizador'];
 
-                    $mostrarFormularioCodigo = true;
-
-                    if ($emailEnviado) {
+                        $mostrarFormularioCodigo = true;
                         $sucesso = 'Enviámos um código para o teu email.';
                     } else {
-                        $erro = 'O código foi criado, mas o email não foi enviado. No XAMPP é preciso configurar envio de emails.';
+                        $mostrarFormularioCodigo = false;
+                        $erro = 'Não foi possível enviar o email de recuperação: ' . $resultadoEmail['erro'];
                     }
                 }
             }
@@ -115,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strlen($novaPassword) < 6) {
             $erro = 'A password deve ter pelo menos 6 caracteres.';
         } else {
-            $stmtCodigo = $conn->prepare("
+            $stmtCodigo = $conn->prepare(" 
                 SELECT id_recuperacao, codigo_hash, expira_em
                 FROM recuperacao_password
                 WHERE id_utilizador = ?
@@ -134,12 +196,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!password_verify($codigo, $reset['codigo_hash'])) {
                 $erro = 'Código incorreto.';
             } else {
-                /*
-                    IMPORTANTE:
-                    Não usamos MD5 aqui.
-                    A tua base de dados já tem trigger para fazer hash da password no UPDATE.
-                */
-                $stmtUpdate = $conn->prepare("
+                // Não uses MD5 aqui. A trigger da tabela utilizador faz o hash no UPDATE.
+                $stmtUpdate = $conn->prepare(" 
                     UPDATE utilizador
                     SET password = ?
                     WHERE id_utilizador = ?
@@ -151,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $idRecuperacao = (int)$reset['id_recuperacao'];
 
-                    $stmtUsado = $conn->prepare("
+                    $stmtUsado = $conn->prepare(" 
                         UPDATE recuperacao_password
                         SET usado = 1, usado_em = NOW()
                         WHERE id_recuperacao = ?
