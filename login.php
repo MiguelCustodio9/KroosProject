@@ -195,20 +195,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-bottom: 18px;
         }
 
-        .btn-google {
-            background: #fff;
-            border: 1.5px solid #ccc;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            margin-bottom: 24px;
-        }
-
-        .btn-google img {
-            height: 18px;
-        }
-
         /* Separador */
         .divider {
             height: 1px;
@@ -274,16 +260,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <div class="forgot">
-            <a href="#">Esqueceu-se da password?</a>
+            <a href="recuperar-password.php">Esqueceu-se da password?</a>
         </div>
 
         <button class="btn btn-primary" type="submit">
             Login
-        </button>
-
-        <button class="btn btn-google" type="button">
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google">
-            Continuar com Google
         </button>
 
         <div class="divider"></div>

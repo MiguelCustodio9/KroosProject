@@ -366,6 +366,21 @@ CREATE TABLE `utilizador` (
   `id_clube` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE IF NOT EXISTS recuperacao_password (
+    id_recuperacao INT AUTO_INCREMENT PRIMARY KEY,
+    id_utilizador INT NOT NULL,
+    codigo_hash VARCHAR(255) NOT NULL,
+    expira_em DATETIME NOT NULL,
+    usado TINYINT(1) NOT NULL DEFAULT 0,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usado_em DATETIME DEFAULT NULL,
+    KEY idx_recuperacao_utilizador (id_utilizador),
+    CONSTRAINT fk_recuperacao_utilizador
+        FOREIGN KEY (id_utilizador)
+        REFERENCES utilizador(id_utilizador)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 --
 -- Acionadores `utilizador`
 --
