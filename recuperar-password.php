@@ -109,8 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user = $stmtUser->get_result()->fetch_assoc();
 
             if (!$user) {
-                // Mensagem genérica para não revelar se o email existe ou não.
-                $sucesso = 'Se existir uma conta com esse email, será enviado um código de recuperação.';
+                $erro = 'Email inválido! Tente novamente.';
+                $mostrarFormularioCodigo = false;
             } else {
                 $idUtilizador = (int)$user['id_utilizador'];
                 $codigo = (string)random_int(100000, 999999);

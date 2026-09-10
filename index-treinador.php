@@ -3035,25 +3035,55 @@ if (!empty($treinosTreinador)) {
 
 /* ── Buscar jogadores por equipa (para o ecrã de escalões) ── */
 $jogadoresPorEquipa = [];
+
 $stmtJogadores = $conn->prepare("
-    SELECT DISTINCT j.id_jogador, j.nome_completo, j.alcunha_jogador, j.`posição_principal`,
-           j.`posição_secundária`, j.`número_favorito`, j.`pé_preferencial`,
-           j.data_nascimento, j.nacionalidade, j.altura, j.peso,
-           j.id_equipa, j.id_utilizador, j.foto_jogador
+    SELECT DISTINCT 
+           j.id_jogador,
+           j.nome_completo,
+           j.alcunha_jogador,
+           j.`posição_principal`,
+           j.`posição_secundária`,
+           j.`número_favorito`,
+           j.`pé_preferencial`,
+           j.data_nascimento,
+           j.nacionalidade,
+           j.altura,
+           j.peso,
+           j.id_equipa,
+           j.id_utilizador,
+           j.foto_jogador,
+           u.foto_perfil AS foto_perfil_utilizador
     FROM jogadores j
-    INNER JOIN equipa eq ON eq.id_equipa = j.id_equipa
-    INNER JOIN acesso_equipa ae ON ae.id_equipa = eq.id_equipa
+    INNER JOIN equipa eq 
+            ON eq.id_equipa = j.id_equipa
+    INNER JOIN acesso_equipa ae 
+            ON ae.id_equipa = eq.id_equipa
+    LEFT JOIN utilizador u
+           ON u.id_utilizador = j.id_utilizador
+          AND u.id_clube = eq.id_clube
+          AND u.tipo_utilizador = 'jogador'
     WHERE ae.id_utilizador = ?
       AND eq.id_clube = ?
     ORDER BY j.id_equipa, j.`número_favorito` ASC, j.nome_completo ASC
 ");
+
 $stmtJogadores->bind_param("ii", $id_utilizador, $id_clube);
 $stmtJogadores->execute();
 $resJogadores = $stmtJogadores->get_result();
+
 while ($row = $resJogadores->fetch_assoc()) {
-    $row['tem_foto'] = !empty($row['foto_jogador']) && strlen($row['foto_jogador']) > 10;
-    $row['foto_base64'] = $row['tem_foto'] ? 'data:image/png;base64,' . base64_encode($row['foto_jogador']) : null;
-    unset($row['foto_jogador']);
+    if (!empty($row['foto_perfil_utilizador'])) {
+        $row['foto_base64'] = 'data:image/png;base64,' . base64_encode($row['foto_perfil_utilizador']);
+    } elseif (!empty($row['foto_jogador']) && strlen($row['foto_jogador']) > 10) {
+        $row['foto_base64'] = 'data:image/png;base64,' . base64_encode($row['foto_jogador']);
+    } else {
+        $row['foto_base64'] = null;
+    }
+
+    $row['tem_foto'] = !empty($row['foto_base64']);
+
+    unset($row['foto_jogador'], $row['foto_perfil_utilizador']);
+
     $jogadoresPorEquipa[$row['id_equipa']][] = $row;
 }
 
