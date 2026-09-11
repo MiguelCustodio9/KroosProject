@@ -5854,6 +5854,29 @@ body.layout-locked #dashboardCard {
     background: #dbe5f3;
 }
 
+/* Miniaturas reais dos templates do plano de treino */
+.template-btn.has-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+}
+
+.template-btn.has-preview::before {
+    display: none;
+}
+
+.template-field-preview {
+    width: 58px;
+    height: 36px;
+    display: block;
+}
+
+.template-btn.has-preview.active .template-field-preview,
+.template-btn.has-preview:hover .template-field-preview {
+    color: var(--club);
+}
+
 </style>
 
 <!-- Bibliotecas para gerar o PDF do plano de treino no browser -->
@@ -7882,9 +7905,41 @@ body.layout-locked #dashboardCard {
 
                 <section class="plano-canvas-panel">
                     <div class="plano-template-strip">
-                        <button class="template-btn active" type="button" data-template="campo_inteiro" title="Campo inteiro" onclick="selecionarTemplatePlano('campo_inteiro', this)"></button>
-                        <button class="template-btn template-area" type="button" data-template="area" title="Zona da área" onclick="selecionarTemplatePlano('area', this)"></button>
-                        <button class="template-btn template-futsal" type="button" data-template="futsal" title="Futsal" onclick="selecionarTemplatePlano('futsal', this)"></button>
+                        <button class="template-btn template-full has-preview active" type="button" data-template="campo_inteiro" title="Campo inteiro" onclick="selecionarTemplatePlano('campo_inteiro', this)">
+                            <svg class="template-field-preview" viewBox="0 0 120 75" aria-hidden="true">
+                                <rect x="6" y="6" width="108" height="63" fill="none" stroke="currentColor" stroke-width="3"/>
+                                <line x1="60" y1="6" x2="60" y2="69" stroke="currentColor" stroke-width="2"/>
+                                <circle cx="60" cy="37.5" r="11" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <rect x="6" y="22" width="20" height="31" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <rect x="6" y="29" width="9" height="17" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <circle cx="20" cy="37.5" r="1.8" fill="currentColor"/>
+                                <rect x="94" y="22" width="20" height="31" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <rect x="105" y="29" width="9" height="17" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <circle cx="100" cy="37.5" r="1.8" fill="currentColor"/>
+                            </svg>
+                        </button>
+
+                        <button class="template-btn template-area has-preview" type="button" data-template="area" title="Zona da área" onclick="selecionarTemplatePlano('area', this)">
+                            <svg class="template-field-preview" viewBox="0 0 120 75" aria-hidden="true">
+                                <rect x="6" y="6" width="108" height="63" fill="none" stroke="currentColor" stroke-width="3"/>
+                                <rect x="6" y="17" width="50" height="41" fill="none" stroke="currentColor" stroke-width="2.5"/>
+                                <rect x="6" y="28" width="24" height="19" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <circle cx="41" cy="37.5" r="2" fill="currentColor"/>
+                                <path d="M56 24 A16 16 0 0 1 56 51" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+
+                        <button class="template-btn template-futsal has-preview" type="button" data-template="futsal" title="Futsal" onclick="selecionarTemplatePlano('futsal', this)">
+                            <svg class="template-field-preview" viewBox="0 0 120 75" aria-hidden="true">
+                                <rect x="7" y="7" width="106" height="61" rx="8" fill="none" stroke="currentColor" stroke-width="3"/>
+                                <line x1="60" y1="7" x2="60" y2="68" stroke="currentColor" stroke-width="2"/>
+                                <circle cx="60" cy="37.5" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <path d="M7 23 A19 14 0 0 1 7 52" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <path d="M113 23 A19 14 0 0 0 113 52" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <rect x="7" y="31" width="6" height="13" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <rect x="107" y="31" width="6" height="13" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
                     </div>
 
                     <div class="plano-workspace">

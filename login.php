@@ -237,6 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     </style>
 </head>
+
 <body>
 
 <div class="card">
@@ -296,6 +297,12 @@ if (goRegister) {
     });
 }
 </script>
-
+<script>
+window.addEventListener('pageshow', function () {
+    document.body.style.opacity = '1';
+    document.body.style.transform = 'none';
+    document.body.classList.remove('fade-out', 'page-out', 'leaving');
+});
+</script>
 </body>
 </html>
